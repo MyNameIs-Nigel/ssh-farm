@@ -12,6 +12,7 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
+	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	applog "github.com/mynameis-nigel/ssh-farm/internal/log"
 	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 	"github.com/mynameis-nigel/ssh-farm/internal/store"
@@ -22,6 +23,7 @@ type fixture struct {
 	content *content.Content
 	id      identity.SessionIdentity
 	st      *store.Store
+	board   *leaderboard.Engine
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -40,6 +42,7 @@ func newFixture(t *testing.T) *fixture {
 		content: c,
 		id:      identity.SessionIdentity{Fingerprint: "SHA256:tuitest", Slot: "farm"},
 		st:      st,
+		board:   leaderboard.New(st, 15*time.Second, 0, 0, time.Now),
 	}
 }
 
@@ -56,7 +59,7 @@ func (f *fixture) newGame(t *testing.T, now int64) *Game {
 	t.Helper()
 	res := f.attach(t, now)
 	t.Cleanup(res.Session.Detach)
-	return NewGame(f.id, res, f.content, 100, 35, now, 0)
+	return NewGame(f.id, res, f.content, f.board, 100, 35, now, 0)
 }
 
 func key(s string) tea.KeyPressMsg {
@@ -247,6 +250,7 @@ func TestScreenNavigationAndHelp(t *testing.T) {
 		"3": "Your land",
 		"4": "Next rebirth unlocks",
 		"6": "Achievements",
+		"7": "LEADERBOARD",
 		"1": "Plot 1",
 	}
 	for k, want := range screens {
@@ -255,17 +259,27 @@ func TestScreenNavigationAndHelp(t *testing.T) {
 			t.Fatalf("key %q: expected %q on screen, got:\n%s", k, want, view(g))
 		}
 	}
+	// Nav order (tui/01): farm, market, land, rebirth, starshop, stats,
+	// board (tui/02), help — so one tab from stats reaches board first.
 	g = press(t, g, "6", "tab")
+	if !strings.Contains(view(g), "LEADERBOARD") {
+		t.Fatalf("tab from stats should reach the board, got:\n%s", view(g))
+	}
+	g = press(t, g, "tab")
 	if !strings.Contains(view(g), "How it works") {
-		t.Fatalf("tab from stats should reach help, got:\n%s", view(g))
+		t.Fatalf("tab from board should reach help, got:\n%s", view(g))
 	}
 	g = press(t, g, "esc")
 	if !strings.Contains(view(g), "Plot 1") {
 		t.Fatalf("esc from help should return to farm, got:\n%s", view(g))
 	}
-	g = press(t, g, "6", "tab", "shift+tab")
+	g = press(t, g, "6", "tab", "tab", "shift+tab")
+	if !strings.Contains(view(g), "LEADERBOARD") {
+		t.Fatalf("shift+tab from help should return to board, got:\n%s", view(g))
+	}
+	g = press(t, g, "shift+tab")
 	if !strings.Contains(view(g), "Achievements") {
-		t.Fatalf("shift+tab from help should return to stats, got:\n%s", view(g))
+		t.Fatalf("shift+tab from board should return to stats, got:\n%s", view(g))
 	}
 	g = press(t, g, "?")
 	if !strings.Contains(view(g), "How it works") {
@@ -279,7 +293,7 @@ func TestHelpGameplayPage(t *testing.T) {
 	g := f.newGame(t, base)
 	g = dismissIntro(t, g)
 	g, _ = tick(t, g, base)
-	g = press(t, g, "6", "tab")
+	g = press(t, g, "6", "tab", "tab") // stats -> board -> help
 	g = press(t, g, "right")
 
 	if !strings.Contains(view(g), "Gameplay") {
@@ -362,7 +376,7 @@ func TestAwaySummaryOnReturn(t *testing.T) {
 
 	res2 := f.attach(t, base+5000)
 	t.Cleanup(res2.Session.Detach)
-	g := NewGame(f.id, res2, f.content, 100, 35, base+5000, 0)
+	g := NewGame(f.id, res2, f.content, f.board, 100, 35, base+5000, 0)
 	out := view(g)
 	if !strings.Contains(out, "Welcome back") {
 		t.Fatalf("expected away summary, got:\n%s", out)
@@ -457,7 +471,7 @@ func TestHostileSlotNameIsEscapedInView(t *testing.T) {
 	// Identity slots are sanitized at the door; simulate a hostile value
 	// reaching the UI anyway (defense in depth).
 	hostile := identity.SessionIdentity{Fingerprint: "SHA256:x", Slot: "evil\x1b[2Jslot"}
-	g := NewGame(hostile, res, f.content, 100, 35, base, 0)
+	g := NewGame(hostile, res, f.content, f.board, 100, 35, base, 0)
 	g, _ = tick(t, g, base)
 	if strings.Contains(view(g), "\x1b[2J") {
 		t.Fatal("escape sequence from a slot name reached the terminal")
@@ -469,7 +483,7 @@ func TestIdleSessionGetsTuckedIn(t *testing.T) {
 	base := time.Now().Unix()
 	res := f.attach(t, base)
 	t.Cleanup(res.Session.Detach)
-	g := NewGame(f.id, res, f.content, 100, 35, base, 60)
+	g := NewGame(f.id, res, f.content, f.board, 100, 35, base, 60)
 	g = dismissIntro(t, g)
 
 	// Activity keeps the session alive.

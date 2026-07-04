@@ -30,6 +30,11 @@ var (
 	stylePlotSel  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("114")).Padding(0, 1).Width(20)
 	styleBanner   = lipgloss.NewStyle().Foreground(lipgloss.Color("222")).Italic(true)
 	styleEvent    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229")).Background(lipgloss.Color("54")).Padding(0, 1)
+
+	// tui/02: tasteful (not rainbow) top-3 accents for the leaderboard.
+	styleBoardGold   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("220"))
+	styleBoardSilver = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("152"))
+	styleBoardBronze = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("183"))
 )
 
 func (g *Game) View() tea.View {
@@ -82,6 +87,8 @@ func (g *Game) screenBody() string {
 		return g.viewStarShop()
 	case scrStats:
 		return g.viewStats()
+	case scrBoard:
+		return g.viewBoard()
 	case scrHelp:
 		return g.viewHelp()
 	}
@@ -170,7 +177,7 @@ func (g *Game) viewNav() string {
 	}{
 		{scrFarm, "1 Farm", false}, {scrMarket, "2 Market", false}, {scrLand, "3 Land", false},
 		{scrRebirth, "4 Rebirth", false}, {scrStarShop, "5 StarShop", g.snap.State.Rebirths < 1},
-		{scrStats, "6 Stats", false}, {scrHelp, "? Help", false},
+		{scrStats, "6 Stats", false}, {scrBoard, "7 Board", false}, {scrHelp, "? Help", false},
 	}
 	parts := make([]string, 0, len(labels))
 	for _, l := range labels {
@@ -237,6 +244,8 @@ func (g *Game) viewFooter() string {
 		hints = "↑/↓ select · enter buy · q quit"
 	case g.scr == scrStats:
 		hints = "n name farm · c config · q quit"
+	case g.scr == scrBoard:
+		hints = "↑/↓/wheel scroll · n rename farm · r refresh · esc back"
 	default:
 		hints = "1-6 screens · tab/shift+tab cycle · g gift · q leave"
 	}
@@ -747,6 +756,36 @@ func (g *Game) viewStats() string {
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// viewBoard renders gameplay/02's Board: it computes nothing (rank, ties,
+// window are all pre-computed on g.lbBoard by refreshBoard/Engine.Get) and
+// masks nothing (gameplay/03 already re-checked every name). The header
+// line is written before the scrolled region so it never scrolls away.
+func (g *Game) viewBoard() string {
+	cw := g.contentWidth()
+	header := g.boardHeaderLine(cw)
+	if g.lbErr != nil {
+		return header + "\n\n" + styleLocked.Render(truncate("LEADERBOARD UNAVAILABLE — TRY AGAIN SOON", cw))
+	}
+
+	lines := g.boardLines(cw)
+	start, end := g.boardVisibleRange(len(lines))
+
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("\n\n")
+	for i := start; i < end; i++ {
+		b.WriteString(lines[i].text)
+		b.WriteString("\n")
+	}
+	if start > 0 || end < len(lines) {
+		b.WriteString(styleHint.Render("  ↑↓ scroll for more"))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(styleHint.Render("updated " + duration(max(g.now-g.lbBoard.AsOf, 0)) + " ago"))
+	return b.String()
 }
 
 func (g *Game) viewHelp() string {

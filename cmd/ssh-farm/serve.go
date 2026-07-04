@@ -15,6 +15,7 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
+	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	applog "github.com/mynameis-nigel/ssh-farm/internal/log"
 	"github.com/mynameis-nigel/ssh-farm/internal/server"
 	"github.com/mynameis-nigel/ssh-farm/internal/store"
@@ -61,7 +62,9 @@ func runServe() {
 	games := game.NewManager(st, c, logger, cfg.AutosaveInterval, game.Policy(cfg.SessionPolicy))
 	server.RegisterShutdownHook(games.Shutdown)
 
-	srv, err := server.New(cfg, logger, games, resolver)
+	board := leaderboard.New(st, cfg.LeaderboardTTL, cfg.LeaderboardActivityWindow, cfg.LeaderboardMinCoins, time.Now)
+
+	srv, err := server.New(cfg, logger, games, resolver, board)
 	if err != nil {
 		logger.Error("server init failed", "error", err)
 		os.Exit(1)

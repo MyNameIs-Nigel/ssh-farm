@@ -27,6 +27,8 @@ func (g *Game) registerHitboxes() {
 			g.registerStarShopHits()
 		case scrStats:
 			g.registerStatsHits()
+		case scrBoard:
+			g.registerBoardHits()
 		case scrHelp:
 			g.registerHelpHits()
 		}
@@ -69,7 +71,7 @@ func (g *Game) registerNavHits() {
 	}{
 		{scrFarm, "1 Farm", false}, {scrMarket, "2 Market", false}, {scrLand, "3 Land", false},
 		{scrRebirth, "4 Rebirth", false}, {scrStarShop, "5 StarShop", g.snap.State.Rebirths < 1},
-		{scrStats, "6 Stats", false}, {scrHelp, "? Help", false},
+		{scrStats, "6 Stats", false}, {scrBoard, "7 Board", false}, {scrHelp, "? Help", false},
 	}
 	x := g.layout.navX
 	for _, l := range labels {
@@ -177,6 +179,32 @@ func (g *Game) registerStatsHits() {
 	y := g.layout.bodyY + 6
 	g.addHit(g.layout.cx+2, y, 16, 1, "stats:rename", nil)
 	g.addHit(g.layout.cx+2, y+2, 14, 1, "stats:config", nil)
+}
+
+// registerBoardHits mirrors viewBoard's line layout exactly (header, blank,
+// visible rows, optional scroll hint, blank, "updated…") so a click always
+// lands on what's actually drawn there.
+func (g *Game) registerBoardHits() {
+	if g.lbErr != nil {
+		return
+	}
+	ly := g.layout
+	cw := ly.cw
+	lines := g.boardLines(cw)
+	start, end := g.boardVisibleRange(len(lines))
+
+	y := ly.bodyY + 2
+	for i := start; i < end; i++ {
+		if l := lines[i]; l.row != nil && l.row.IsYou {
+			g.addHit(ly.cx, y, cw, 1, "board:yourow", nil)
+		}
+		y++
+	}
+	if start > 0 || end < len(lines) {
+		y++ // scroll hint line
+	}
+	y++ // blank line before "updated…"
+	g.addHit(ly.cx, y, cw, 1, "board:refresh", nil)
 }
 
 func (g *Game) registerHelpHits() {

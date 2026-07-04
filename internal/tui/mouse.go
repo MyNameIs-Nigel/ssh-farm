@@ -70,6 +70,9 @@ func (g *Game) handleMouseWheel(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 		case scrHelp:
 			g.helpScroll = max(g.helpScroll+delta, 0)
 			g.clampHelpScroll()
+		case scrBoard:
+			g.lbScroll = max(g.lbScroll+delta, 0)
+			g.clampBoardScroll()
 		}
 	}
 	return g, nil
@@ -94,6 +97,9 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 			if g.scr == scrHelp {
 				g.helpPage = 0
 				g.helpScroll = 0
+			}
+			if g.scr == scrBoard {
+				g.refreshBoard()
 			}
 		}
 	case strings.HasPrefix(id, "plot:"):
@@ -145,6 +151,10 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 	case id == "stats:rename":
 		g.nameInput = g.snap.State.FarmName
 		g.overlay = ovName
+	case id == "board:yourow":
+		g.openRename()
+	case id == "board:refresh":
+		g.refreshBoard()
 	case id == "stats:config":
 		g.configIdx = 0
 		g.overlay = ovConfig

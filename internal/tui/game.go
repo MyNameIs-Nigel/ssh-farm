@@ -4,6 +4,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 	"unicode"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
+	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 	"github.com/mynameis-nigel/ssh-farm/internal/tui/hitbox"
 )
@@ -61,10 +63,17 @@ const (
 	scrRebirth
 	scrStarShop
 	scrStats
+	scrBoard
 	scrHelp
 )
 
-var screenOrder = []screen{scrFarm, scrMarket, scrLand, scrRebirth, scrStarShop, scrStats, scrHelp}
+var screenOrder = []screen{scrFarm, scrMarket, scrLand, scrRebirth, scrStarShop, scrStats, scrBoard, scrHelp}
+
+// boardRefreshSeconds is how often the board screen re-calls Engine.Get
+// while it's the active screen (gameplay/02's engine is itself TTL-cached,
+// so this is just "don't even bother trying more often than this" — it
+// does not bypass or shorten that cache).
+const boardRefreshSeconds = 15
 
 type overlay int
 
@@ -121,6 +130,12 @@ type Game struct {
 	helpScroll    int
 	nameInput     string
 
+	board         *leaderboard.Engine
+	lbBoard       leaderboard.Board
+	lbErr         error
+	lbNextRefresh int64
+	lbScroll      int
+
 	tutorialPage  int
 	tutorialSkip  bool
 	configIdx     int
@@ -140,7 +155,7 @@ type Game struct {
 	lastClickAt int64
 }
 
-func NewGame(id identity.SessionIdentity, res game.AttachResult, c *content.Content, width, height int, now int64, idleTimeout int64) *Game {
+func NewGame(id identity.SessionIdentity, res game.AttachResult, c *content.Content, board *leaderboard.Engine, width, height int, now int64, idleTimeout int64) *Game {
 	g := &Game{
 		sess:        res.Session,
 		content:     c,
@@ -152,6 +167,7 @@ func NewGame(id identity.SessionIdentity, res game.AttachResult, c *content.Cont
 		idleTimeout: idleTimeout,
 		lastInput:   now,
 		hits:        &hitbox.Registry{},
+		board:       board,
 	}
 	switch {
 	case res.Created:
@@ -221,6 +237,9 @@ func (g *Game) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		g.snap = snap
 		g.eventNotices(ev)
 		g.pruneNotices()
+		if g.scr == scrBoard && g.now >= g.lbNextRefresh {
+			g.refreshBoard()
+		}
 		return g, tickCmd()
 
 	case tea.KeyPressMsg:
@@ -297,6 +316,10 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "6":
 		g.scr = scrStats
 		return g, nil
+	case "7":
+		g.scr = scrBoard
+		g.refreshBoard()
+		return g, nil
 	case "?":
 		g.scr = scrHelp
 		g.helpPage = 0
@@ -323,6 +346,8 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return g.handleStarShopKey(key)
 	case scrStats:
 		return g.handleStatsKey(key)
+	case scrBoard:
+		return g.handleBoardKey(key)
 	case scrHelp:
 		switch key {
 		case "esc":
@@ -362,6 +387,9 @@ func (g *Game) cycleScreen(forward bool) {
 			if g.scr == scrHelp {
 				g.helpPage = 0
 				g.helpScroll = 0
+			}
+			if g.scr == scrBoard {
+				g.refreshBoard()
 			}
 			return
 		}
@@ -752,6 +780,180 @@ func (g *Game) handleStatsKey(key string) (tea.Model, tea.Cmd) {
 		g.overlay = ovName
 	}
 	return g, nil
+}
+
+// handleBoardKey drives the leaderboard screen (gameplay/02's Board,
+// gameplay/03's per-row display rules). It computes nothing itself — every
+// number on screen comes straight from the last Engine.Get result.
+func (g *Game) handleBoardKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "esc":
+		g.scr = scrFarm
+	case "up", "k":
+		if g.lbScroll > 0 {
+			g.lbScroll--
+		}
+	case "down", "j":
+		g.lbScroll++
+		g.clampBoardScroll()
+	case "n":
+		g.openRename()
+	case "r", "R":
+		g.refreshBoard()
+	}
+	return g, nil
+}
+
+// openRename primes the rename overlay with the farm's current name — the
+// same shortcut the Stats screen's "n" key and the board's your-row click
+// both offer.
+func (g *Game) openRename() {
+	g.nameInput = g.snap.State.FarmName
+	g.overlay = ovName
+}
+
+// refreshBoard calls the leaderboard engine for "you" (which is cheap: the
+// engine holds its own TTL-bounded cache, see internal/leaderboard) and
+// schedules the next automatic refresh boardRefreshSeconds out. Called on
+// every path that enters the board screen, on the tick loop while it's
+// open, and on an explicit r/click refresh.
+func (g *Game) refreshBoard() {
+	you := leaderboard.SaveRef{Fingerprint: g.id.Fingerprint, Slot: g.id.Slot}
+	board, err := g.board.Get(context.Background(), you)
+	g.lbErr = err
+	if err == nil {
+		g.lbBoard = board
+	}
+	g.lbNextRefresh = g.now + boardRefreshSeconds
+	g.clampBoardScroll()
+}
+
+// boardLine is one rendered line of the board's scrollable region, paired
+// with its source Row (nil for the divider/status lines) so hitboxes can
+// be attached without re-deriving the same line layout twice.
+type boardLine struct {
+	text string
+	row  *leaderboard.Row
+}
+
+// boardLines lays out gameplay/02's Top (up to 10) then, only when it
+// exists, a divider and the ±3 Window around you — gameplay/02 already
+// dedupes the window against Top, so this never repeats a row.
+func (g *Game) boardLines(cw int) []boardLine {
+	rankWidth := 0
+	for _, r := range g.lbBoard.Top {
+		rankWidth = max(rankWidth, len(itoa(r.Rank)))
+	}
+	for _, r := range g.lbBoard.Window {
+		rankWidth = max(rankWidth, len(itoa(r.Rank)))
+	}
+
+	var lines []boardLine
+	for i := range g.lbBoard.Top {
+		lines = append(lines, boardLine{text: g.boardRowLine(g.lbBoard.Top[i], cw, rankWidth), row: &g.lbBoard.Top[i]})
+	}
+	if len(g.lbBoard.Window) > 0 {
+		lines = append(lines, boardLine{text: styleRule.Render(strings.Repeat("─", max(cw, 1)))})
+		for i := range g.lbBoard.Window {
+			lines = append(lines, boardLine{text: g.boardRowLine(g.lbBoard.Window[i], cw, rankWidth), row: &g.lbBoard.Window[i]})
+		}
+	}
+	if len(lines) == 0 {
+		lines = append(lines, boardLine{text: styleHint.Render("No farms on the board yet — be the first!")})
+	}
+	return lines
+}
+
+// boardRowLine renders one Row: a "▸"+highlight+"← YOU" marker on your own
+// row (rendered highlighted exactly once — Row.IsYou is only ever true for
+// the one row matching your fingerprint+slot, even amid coin ties), the
+// suffix always shown next to the name (gameplay/03's anti-impersonation
+// signal), and a tasteful gold/cyan/violet accent on the top 3 ranks.
+// rankWidth right-aligns the rank number to the widest rank in the current
+// Top+Window so "#1" and "#10" don't stagger the name column.
+func (g *Game) boardRowLine(r leaderboard.Row, cw, rankWidth int) string {
+	name := r.DisplayName
+	if name == "" {
+		name = "FARM" // never-renamed farm; gameplay/02's documented UI fallback
+	}
+	marker := "  "
+	if r.IsYou {
+		marker = "▸ "
+	}
+	rank := itoa(r.Rank)
+	if pad := rankWidth - len(rank); pad > 0 {
+		rank = strings.Repeat(" ", pad) + rank
+	}
+	left := marker + "#" + rank + "  " + sanitizeText(name) + " ·" + r.Suffix
+	if r.IsYou {
+		left += "  ← YOU"
+	}
+	right := "◈ " + money(r.Coins)
+	line := alignSides(left, right, cw)
+	switch {
+	case r.IsYou:
+		return styleSelected.Render(line)
+	case r.Rank == 1:
+		return styleBoardGold.Render(line)
+	case r.Rank == 2:
+		return styleBoardSilver.Render(line)
+	case r.Rank == 3:
+		return styleBoardBronze.Render(line)
+	default:
+		return styleValue.Render(line)
+	}
+}
+
+// boardHeaderLine is the one line that must never scroll away: the title
+// plus "YOU: #rank/total" (or the unranked callout for a farm still below
+// gameplay/02's coin floor).
+func (g *Game) boardHeaderLine(cw int) string {
+	title := styleSection.Render("LEADERBOARD — RICHEST FARMS")
+	var rank string
+	switch {
+	case g.lbBoard.You == nil:
+		rank = "YOU: UNRANKED — EARN YOUR FIRST COIN"
+	default:
+		rank = "YOU: #" + itoa(g.lbBoard.You.Rank) + "/" + itoa(g.lbBoard.Total)
+	}
+	return alignSides(title, styleValue.Render(rank), cw)
+}
+
+// boardVisibleRows is how many of boardLines' rows fit under the pinned
+// header, above the scroll hint + staleness line.
+func (g *Game) boardVisibleRows() int {
+	return max(g.contentHeight()-11, 3)
+}
+
+// boardVisibleRange clamps g.lbScroll and returns the [start,end) slice of
+// boardLines currently on screen — shared by the renderer and the hitbox
+// registration so the two can never disagree about which line is where.
+func (g *Game) boardVisibleRange(total int) (start, end int) {
+	visible := g.boardVisibleRows()
+	maxStart := max(total-visible, 0)
+	start = g.lbScroll
+	if start > maxStart {
+		start = maxStart
+	}
+	if start < 0 {
+		start = 0
+	}
+	end = start + visible
+	if end > total {
+		end = total
+	}
+	return start, end
+}
+
+func (g *Game) clampBoardScroll() {
+	total := len(g.boardLines(g.contentWidth()))
+	maxStart := max(total-g.boardVisibleRows(), 0)
+	if g.lbScroll > maxStart {
+		g.lbScroll = maxStart
+	}
+	if g.lbScroll < 0 {
+		g.lbScroll = 0
+	}
 }
 
 func (g *Game) handleNameKey(key string, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {

@@ -21,6 +21,7 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
+	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	"github.com/mynameis-nigel/ssh-farm/internal/tui"
 )
 
@@ -46,10 +47,13 @@ type Server struct {
 	ssh      *ssh.Server
 	games    SaveManager
 	identity *identity.Resolver
+	board    *leaderboard.Engine
 }
 
 // New constructs and configures the SSH server over the given save manager.
-func New(cfg config.Config, logger *slog.Logger, games SaveManager, resolver *identity.Resolver) (*Server, error) {
+// board is gameplay/02's leaderboard engine, shared read-only across every
+// session's tui/02 board screen.
+func New(cfg config.Config, logger *slog.Logger, games SaveManager, resolver *identity.Resolver, board *leaderboard.Engine) (*Server, error) {
 	if err := ensureHostKeyDir(cfg.HostKeyPath); err != nil {
 		return nil, err
 	}
@@ -61,7 +65,7 @@ func New(cfg config.Config, logger *slog.Logger, games SaveManager, resolver *id
 		cfg.RateLimitMaxEntries,
 	)
 
-	srv := &Server{cfg: cfg, logger: logger, games: games, identity: resolver}
+	srv := &Server{cfg: cfg, logger: logger, games: games, identity: resolver, board: board}
 
 	s, err := wish.NewServer(
 		wish.WithAddress(cfg.ListenAddr()),
@@ -155,7 +159,7 @@ func (srv *Server) teaHandler(s ssh.Session) (tui.Model, []tui.ProgramOption) {
 	// never fire. Only key presses count as activity.
 	idleSecs := int64(srv.cfg.IdleTimeout / time.Second)
 	now := time.Now().Unix()
-	return tui.NewGame(state.id, state.res, srv.games.Content(), width, height, now, idleSecs), nil
+	return tui.NewGame(state.id, state.res, srv.games.Content(), srv.board, width, height, now, idleSecs), nil
 }
 
 // ListenAndServe starts accepting SSH connections.

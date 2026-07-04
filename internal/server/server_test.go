@@ -19,6 +19,7 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
+	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	applog "github.com/mynameis-nigel/ssh-farm/internal/log"
 	"github.com/mynameis-nigel/ssh-farm/internal/store"
 )
@@ -62,7 +63,9 @@ func testServer(t *testing.T, mutate func(*config.Config)) (*Server, string) {
 	}
 	resolver := identity.NewResolver(cfg.DefaultSlot, proxyKeys)
 
-	srv, err := New(cfg, logger, games, resolver)
+	board := leaderboard.New(st, cfg.LeaderboardTTL, cfg.LeaderboardActivityWindow, cfg.LeaderboardMinCoins, time.Now)
+
+	srv, err := New(cfg, logger, games, resolver, board)
 	if err != nil {
 		t.Fatal(err)
 	}

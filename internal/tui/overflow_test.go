@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 )
 
 // designGame returns a game rendered at the maximum canvas size. The canvas
@@ -52,6 +55,9 @@ func TestScreenBodiesFitContentWidth(t *testing.T) {
 		{"starshop-locked", func() { g.scr = scrStarShop; g.snap.State.Rebirths = 0 }},
 		{"starshop-unlocked", func() { g.scr = scrStarShop; g.snap.State.Rebirths = 2 }},
 		{"stats", func() { g.scr = scrStats }},
+		{"board-empty", func() { g.scr = scrBoard; g.lbErr = nil; g.lbBoard = leaderboard.Board{} }},
+		{"board-error", func() { g.scr = scrBoard; g.lbErr = errBoardUnavailable }},
+		{"board-populated", func() { g.scr = scrBoard; g.lbErr = nil; g.lbBoard = wideBoardFixture() }},
 		{"help-controls", func() { g.scr = scrHelp; g.helpPage = 0 }},
 		{"help-gameplay", func() { g.scr = scrHelp; g.helpPage = 1 }},
 	}
@@ -59,6 +65,28 @@ func TestScreenBodiesFitContentWidth(t *testing.T) {
 		c.setup()
 		assertFits(t, "screen "+c.name, g.screenBody(), cw)
 	}
+}
+
+var errBoardUnavailable = errors.New("board fixture: store unavailable")
+
+// wideBoardFixture stresses boardRowLine's alignSides layout with the
+// longest names moderation.MaxNameLen allows and the biggest coin totals
+// money() formats, top-3 accent styling, and a full Top+window with You
+// outside Top so the divider renders too.
+func wideBoardFixture() leaderboard.Board {
+	row := func(rank int, name string, coins int64, isYou bool) leaderboard.Row {
+		return leaderboard.Row{Rank: rank, DisplayName: name, Suffix: "wX9zK", Coins: coins, IsYou: isYou}
+	}
+	top := make([]leaderboard.Row, 10)
+	for i := range top {
+		top[i] = row(i+1, "TWENTY CHARACTER NAME", 999_999_999_999-int64(i), false)
+	}
+	window := []leaderboard.Row{
+		row(23, "TWENTY CHARACTER NAME", 4_200, false),
+		row(24, "TWENTY CHARACTER NAME", 4_199, true),
+		row(25, "TWENTY CHARACTER NAME", 4_198, false),
+	}
+	return leaderboard.Board{Top: top, Window: window, Total: 400, You: &window[1], AsOf: time.Now().Unix()}
 }
 
 // TestOverlayBoxesFitContentWidth guards modal overlays. Overlay content is
