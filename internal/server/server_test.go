@@ -163,7 +163,7 @@ func readScreen(t *testing.T, addr, user string, signer gossh.Signer) string {
 	return stripANSI(string(b))
 }
 
-func TestPlaceholderShowsTitleAndSlot(t *testing.T) {
+func TestGameShowsTitleAndSlot(t *testing.T) {
 	_, addr := testServer(t, nil)
 	signer := testSigner(t)
 
@@ -173,6 +173,9 @@ func TestPlaceholderShowsTitleAndSlot(t *testing.T) {
 	}
 	if !strings.Contains(screenDefault, "alice") {
 		t.Fatalf("expected slot alice in %q", screenDefault)
+	}
+	if !strings.Contains(screenDefault, "Farm") {
+		t.Fatalf("expected farm nav in %q", screenDefault)
 	}
 
 	screenOther := readScreen(t, addr, "other", signer)

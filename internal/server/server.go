@@ -18,6 +18,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/config"
+	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
 	"github.com/mynameis-nigel/ssh-farm/internal/tui"
@@ -35,6 +36,7 @@ type sessionState struct {
 type SaveManager interface {
 	Attach(ctx context.Context, id identity.SessionIdentity, publicKey string, now int64, kick func(reason string)) (game.AttachResult, error)
 	Shutdown(ctx context.Context) error
+	Content() *content.Content
 }
 
 // Server wraps the Wish SSH server and related middleware.
@@ -152,7 +154,8 @@ func (srv *Server) teaHandler(s ssh.Session) (tui.Model, []tui.ProgramOption) {
 	// keeps the transport busy, so a connection-level idle timer would
 	// never fire. Only key presses count as activity.
 	idleSecs := int64(srv.cfg.IdleTimeout / time.Second)
-	return tui.NewPlaceholder(state.id, width, height, idleSecs), nil
+	now := time.Now().Unix()
+	return tui.NewGame(state.id, state.res, srv.games.Content(), width, height, now, idleSecs), nil
 }
 
 // ListenAndServe starts accepting SSH connections.

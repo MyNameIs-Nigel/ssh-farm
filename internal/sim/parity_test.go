@@ -98,3 +98,22 @@ func TestScriptedSequenceMatchesV1Golden(t *testing.T) {
 		t.Fatalf("scripted replay diverged from v1 golden:\ngot:  %+v\nwant: %+v", s, want)
 	}
 }
+
+// TestLongRunAdvanceInvariants runs 10,000 one-second advances and asserts
+// the sim stays well-formed — catches accumulation bugs short goldens miss.
+func TestLongRunAdvanceInvariants(t *testing.T) {
+	c := realContent(t)
+	s, _ := loadGolden(t, "scripted_start.json")
+	for i := 0; i < 10000; i++ {
+		Advance(s, c, s.UpdatedAt+1)
+		if s.Coins < 0 {
+			t.Fatalf("negative coins at step %d", i+1)
+		}
+		if len(s.Plots) < 1 {
+			t.Fatalf("plots vanished at step %d", i+1)
+		}
+	}
+	if s.UpdatedAt <= 0 {
+		t.Fatal("updated at not advancing")
+	}
+}
