@@ -1,0 +1,149 @@
+# Test fixture: stable numbers for the sim unit tests.
+
+[start]
+coins = 25
+plots = 3
+
+[land]
+base_plot_cost = 50
+growth_pct = 170
+max_plots = 6
+
+[prestige]
+divisor = 100
+min_earnings = 10000
+
+[labels]
+starseed_name = "Starseeds"
+
+[[upgrade]]
+id = "growth"
+name = "Rich Soil"
+description = "Crops grow 10% faster per level."
+cost = 2
+cost_growth_pct = 200
+max_level = 5
+effect = "grow_speed_pct"
+effect_value = 10
+
+[[upgrade]]
+id = "haggling"
+name = "Market Haggling"
+description = "Crops sell for 15% more per level."
+cost = 3
+cost_growth_pct = 200
+max_level = 5
+effect = "sell_bonus_pct"
+effect_value = 15
+
+[[upgrade]]
+id = "inheritance"
+name = "Inheritance"
+description = "Start each run with 150 extra coins per level."
+cost = 1
+cost_growth_pct = 300
+max_level = 4
+effect = "start_coins"
+effect_value = 150
+
+[[upgrade]]
+id = "surveying"
+name = "Surveying"
+description = "New plots cost 10% less per level."
+cost = 2
+cost_growth_pct = 200
+max_level = 4
+effect = "plot_discount_pct"
+effect_value = 10
+
+[[multiplier]]
+id = "fertilizer"
+name = "Fertilizer"
+description = "Grow 8% faster per level."
+cost = 200
+cost_growth_pct = 250
+max_level = 3
+effect = "grow_speed_pct"
+effect_value = 8
+
+[[seed_upgrade]]
+id = "gamble_strain"
+crop_id = "gamble"
+name = "Hardier Gamble"
+description = "Better salvage on failure."
+cost = 100
+cost_growth_pct = 200
+max_level = 3
+
+[[zone]]
+id = "greenhouse"
+name = "Greenhouse"
+description = "+6 plots and exotic crops."
+cost = 25000
+extra_plots = 6
+unlock = { kind = "earnings", value = 15000 }
+
+[events]
+min_interval_sec = 900
+max_interval_sec = 1500
+min_duration_sec = 90
+max_duration_sec = 180
+
+[[event]]
+id = "market_day"
+name = "Market Day"
+description = "Seeds cheaper."
+effect = "seed_discount_pct"
+effect_value = 40
+
+[plot_automation]
+auto_harvest_base_cost = 600
+auto_harvest_growth_pct = 150
+auto_sow_cost = 1400
+auto_sow_min_earnings = 5000
+
+[gifts]
+online_interval_sec = 1200
+offline_interval_sec = 18000
+starseed_chance_pct = 20
+coin_reward_floor = 8
+coin_reward_ceiling = 5000
+
+[golden_harvest]
+chance_pct = 0
+multiplier = 100
+
+[moon]
+cycle_days = 28
+full_moon_sell_bonus_pct = 15
+moonberry_crop_id = "moonberry"
+
+[critters]
+visit_chance_pct = 0
+shoo_reward_min = 3
+shoo_reward_max = 12
+kind = ["crow"]
+
+[[achievement]]
+id = "first_sprout"
+name = "First Sprout"
+description = "Harvest your first crop."
+condition = { kind = "harvests", value = 1 }
+
+[[achievement]]
+id = "tidy_sum"
+name = "A Tidy Sum"
+description = "Hold 1,000 coins at once."
+condition = { kind = "balance", value = 1000 }
+
+[[achievement]]
+id = "born_again"
+name = "Born Again"
+description = "Rebirth for the first time."
+condition = { kind = "rebirths", value = 1 }
+
+[flavor]
+enabled = true
+discovery_chance_pct = 4
+discovery_min = 5
+discovery_max = 40

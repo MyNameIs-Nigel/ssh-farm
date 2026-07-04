@@ -1,0 +1,118 @@
+# Crop definitions for ssh-idlefarmer.
+#
+# Profit-per-second increases with grow time (patience pays).
+# Risky crops: fail_chance_pct chance of salvage (1/8 sell by default),
+# otherwise full sell value. Hardier Strain upgrades improve salvage.
+#
+# unlock kinds: start, earnings, prestige, zone
+
+[[crop]]
+id = "turnip"
+name = "Turnip"
+archetype = "fast"
+seed_cost = 5
+grow_seconds = 60
+sell_value = 9
+unlock = { kind = "start" }
+
+[[crop]]
+id = "carrot"
+name = "Carrot"
+archetype = "fast"
+seed_cost = 14
+grow_seconds = 240
+sell_value = 32
+unlock = { kind = "start" }
+
+[[crop]]
+id = "glimmercorn"
+name = "Glimmercorn"
+archetype = "risky"
+seed_cost = 40
+grow_seconds = 900
+sell_value = 150
+fail_chance_pct = 25
+unlock = { kind = "earnings", value = 500 }
+
+[[crop]]
+id = "pumpkin"
+name = "Pumpkin"
+archetype = "slow"
+seed_cost = 80
+grow_seconds = 3600
+sell_value = 440
+unlock = { kind = "start" }
+
+[[crop]]
+id = "starfruit"
+name = "Starfruit"
+archetype = "slow"
+seed_cost = 600
+grow_seconds = 28800
+sell_value = 4800
+unlock = { kind = "earnings", value = 2000 }
+
+[[crop]]
+id = "moonberry"
+name = "Moonberry"
+archetype = "risky"
+seed_cost = 350
+grow_seconds = 7200
+sell_value = 1300
+fail_chance_pct = 30
+unlock = { kind = "prestige", value = 1 }
+
+[[crop]]
+id = "emberwheat"
+name = "Emberwheat"
+archetype = "fast"
+seed_cost = 120
+grow_seconds = 600
+sell_value = 190
+unlock = { kind = "prestige", value = 1 }
+
+[[crop]]
+id = "frostplum"
+name = "Frostplum"
+archetype = "slow"
+seed_cost = 900
+grow_seconds = 14400
+sell_value = 2700
+unlock = { kind = "prestige", value = 2 }
+
+[[crop]]
+id = "thunderpod"
+name = "Thunderpod"
+archetype = "risky"
+seed_cost = 200
+grow_seconds = 1800
+sell_value = 520
+fail_chance_pct = 28
+unlock = { kind = "prestige", value = 2 }
+
+[[crop]]
+id = "sunroot"
+name = "Sunroot"
+archetype = "fast"
+seed_cost = 400
+grow_seconds = 1200
+sell_value = 560
+unlock = { kind = "prestige", value = 3 }
+
+[[crop]]
+id = "voidlotus"
+name = "Voidlotus"
+archetype = "slow"
+seed_cost = 2000
+grow_seconds = 43200
+sell_value = 14000
+unlock = { kind = "prestige", value = 3 }
+
+[[crop]]
+id = "dewmelon"
+name = "Dewmelon"
+archetype = "slow"
+seed_cost = 1200
+grow_seconds = 43200
+sell_value = 10000
+unlock = { kind = "zone", zone = "greenhouse" }

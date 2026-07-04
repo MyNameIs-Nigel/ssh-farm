@@ -1,0 +1,267 @@
+# Tunable balance for ssh-idlefarmer. All money values are integer coins.
+
+[start]
+coins = 25
+plots = 3
+
+[land]
+base_plot_cost = 50
+growth_pct = 170
+# Hard cap on non-greenhouse plots (3 starting + up to 7 bought = 10). The
+# Greenhouse zone then adds 6, for a maximum farm of 16 plots.
+max_plots = 10
+
+[prestige]
+divisor = 100
+min_earnings = 10000
+
+[labels]
+starseed_name = "Starseeds"
+starseed_desc = "Cosmic seeds earned when a life returns to the soil."
+
+# Permanent upgrades bought with Starseeds (Progress tab).
+[[upgrade]]
+id = "growth"
+name = "Rich Soil"
+description = "Crops grow 10% faster per level."
+cost = 2
+cost_growth_pct = 200
+max_level = 5
+effect = "grow_speed_pct"
+effect_value = 10
+
+[[upgrade]]
+id = "haggling"
+name = "Market Haggling"
+description = "Crops sell for 15% more per level."
+cost = 3
+cost_growth_pct = 200
+max_level = 5
+effect = "sell_bonus_pct"
+effect_value = 15
+
+[[upgrade]]
+id = "inheritance"
+name = "Inheritance"
+description = "Start each run with 150 extra coins per level."
+cost = 1
+cost_growth_pct = 300
+max_level = 4
+effect = "start_coins"
+effect_value = 150
+
+[[upgrade]]
+id = "surveying"
+name = "Surveying"
+description = "New plots cost 10% less per level."
+cost = 2
+cost_growth_pct = 200
+max_level = 4
+effect = "plot_discount_pct"
+effect_value = 10
+
+[[upgrade]]
+id = "gift_magnet"
+name = "Gift Magnet"
+description = "Parcels arrive 20% more often per level."
+cost = 4
+cost_growth_pct = 200
+max_level = 3
+effect = "gift_rate_pct"
+effect_value = 20
+
+[[upgrade]]
+id = "stargazer"
+name = "Stargazer's Almanac"
+description = "Random events 15% more frequent and 10% longer per level."
+cost = 5
+cost_growth_pct = 200
+max_level = 3
+effect = "event_rate_pct"
+effect_value = 15
+
+# Run-scoped multipliers (Market tab, bought with coins).
+[[multiplier]]
+id = "fertilizer"
+name = "Fertilizer"
+description = "Crops grow 8% faster per level this run."
+cost = 200
+cost_growth_pct = 250
+max_level = 3
+effect = "grow_speed_pct"
+effect_value = 8
+
+[[multiplier]]
+id = "merchant_scale"
+name = "Merchant's Scale"
+description = "Crops sell for 10% more per level this run."
+cost = 300
+cost_growth_pct = 250
+max_level = 3
+effect = "sell_bonus_pct"
+effect_value = 10
+
+# Hardier Strain upgrades for risky crops (Market tab).
+[[seed_upgrade]]
+id = "glimmercorn_strain"
+crop_id = "glimmercorn"
+name = "Hardier Glimmercorn"
+description = "Failed harvests salvage more (1/4 → 1/2 → 3/4 of sell value)."
+cost = 150
+cost_growth_pct = 200
+max_level = 3
+
+[[seed_upgrade]]
+id = "moonberry_strain"
+crop_id = "moonberry"
+name = "Hardier Moonberry"
+description = "Failed harvests salvage more (1/4 → 1/2 → 3/4 of sell value)."
+cost = 400
+cost_growth_pct = 200
+max_level = 3
+
+[[seed_upgrade]]
+id = "thunderpod_strain"
+crop_id = "thunderpod"
+name = "Hardier Thunderpod"
+description = "Failed harvests salvage more (1/4 → 1/2 → 3/4 of sell value)."
+cost = 250
+cost_growth_pct = 200
+max_level = 3
+
+[[zone]]
+id = "greenhouse"
+name = "Greenhouse"
+description = "A warm glass annex. +6 plots and exotic crops."
+cost = 25000
+extra_plots = 6
+unlock = { kind = "earnings", value = 15000 }
+
+[events]
+min_interval_sec = 900
+max_interval_sec = 1500
+min_duration_sec = 90
+max_duration_sec = 180
+
+[[event]]
+id = "market_day"
+name = "Market Day"
+description = "Seed prices tumble!"
+effect = "seed_discount_pct"
+effect_value = 40
+
+[[event]]
+id = "bumper_demand"
+name = "Bumper Demand"
+description = "Buyers pay premium prices!"
+effect = "sell_bonus_pct"
+effect_value = 30
+
+[[event]]
+id = "warm_front"
+name = "Warm Front"
+description = "Crops grow twice as fast!"
+effect = "grow_speed_pct"
+effect_value = 50
+
+[plot_automation]
+auto_harvest_base_cost = 600
+auto_harvest_growth_pct = 150
+auto_sow_cost = 1400
+auto_sow_min_earnings = 5000
+
+[gifts]
+online_interval_sec = 1200
+offline_interval_sec = 18000
+starseed_chance_pct = 20
+coin_reward_floor = 8
+coin_reward_ceiling = 5000
+
+[golden_harvest]
+chance_pct = 1
+multiplier = 100
+
+[moon]
+cycle_days = 28
+full_moon_sell_bonus_pct = 15
+moonberry_crop_id = "moonberry"
+
+[critters]
+visit_chance_pct = 1
+max_active = 3
+shoo_reward_min = 3
+shoo_reward_max = 12
+kind = ["crow", "rabbit", "mole"]
+
+# The Scarecrow is a run-scoped Market purchase that auto-shoos critters and
+# banks their bounty. Online it earns whatever critters wander in; offline it
+# trickles a much smaller passive income so it never breaks the economy.
+[scarecrow]
+cost = 1200
+offline_coins_per_hour = 60
+
+[[achievement]]
+id = "first_sprout"
+name = "First Sprout"
+description = "Harvest your first crop."
+condition = { kind = "harvests", value = 1 }
+
+[[achievement]]
+id = "green_thumb"
+name = "Green Thumb"
+description = "Harvest 100 crops."
+condition = { kind = "harvests", value = 100 }
+
+[[achievement]]
+id = "tidy_sum"
+name = "A Tidy Sum"
+description = "Hold 1,000 coins at once."
+condition = { kind = "balance", value = 1000 }
+
+[[achievement]]
+id = "landed_gentry"
+name = "Landed Gentry"
+description = "Own 10 plots at once."
+condition = { kind = "plots", value = 10 }
+
+[[achievement]]
+id = "magnate"
+name = "Turnip Magnate"
+description = "Earn 100,000 lifetime coins."
+condition = { kind = "earnings", value = 100000 }
+
+[[achievement]]
+id = "born_again"
+name = "Born Again"
+description = "Rebirth for the first time."
+condition = { kind = "rebirths", value = 1 }
+
+[[headline]]
+text = "LOCAL FARMER REPORTS UNUSUALLY LARGE TURNIP"
+
+[[headline]]
+text = "WEATHER: MILD WITH A CHANCE OF MOONBERRIES"
+
+[[headline]]
+text = "MARKET DAY DECLARED — SEED PRICES TUMBLE"
+
+[[headline]]
+text = "BUYERS FLOCK TO REGION AS BUMPER DEMAND HITS"
+
+[[headline]]
+text = "WARM FRONT SWEEPS VALLEY — CROPS RACE TO RIPEN"
+
+[[headline]]
+text = "PARCEL DELIVERY UP ACROSS THE COUNTY"
+
+[[headline]]
+text = "FULL MOON TONIGHT — LUNAR CROPS SHINE BRIGHTER"
+
+[[headline]]
+text = "CROW SPOTTED NEAR FENCE LINE, FARMERS UNFAZED"
+
+[flavor]
+enabled = true
+discovery_chance_pct = 4
+discovery_min = 5
+discovery_max = 40
