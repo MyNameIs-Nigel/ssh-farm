@@ -2,6 +2,8 @@
 package tui
 
 import (
+	"context"
+	"errors"
 	"time"
 	"unicode"
 
@@ -11,7 +13,6 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
-	"github.com/mynameis-nigel/ssh-farm/internal/moderation"
 	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 	"github.com/mynameis-nigel/ssh-farm/internal/tui/hitbox"
 )
@@ -758,19 +759,21 @@ func (g *Game) handleNameKey(key string, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 	case "esc", "q":
 		g.overlay = ovNone
 	case "enter":
-		filtered, locked := moderation.Filter(g.nameInput)
-		if locked {
-			g.addNotice("That name isn't allowed.")
+		snap, err := g.sess.RenameFarm(context.Background(), g.now, g.nameInput)
+		if err != nil {
+			switch {
+			case errors.Is(err, game.ErrNameRateLimited):
+				g.addNotice("Slow down — try again in a bit.")
+			case errors.Is(err, game.ErrNameLocked):
+				g.addNotice("This farm's name has been locked.")
+			default:
+				g.addNotice("That name isn't allowed.")
+			}
 			return g, nil
 		}
-		snap, err := g.sess.SetFarmName(g.now, filtered)
-		if err != nil {
-			g.addNotice("Hmm: " + err.Error() + ".")
-		} else {
-			g.snap = snap
-			g.overlay = ovNone
-			g.addNotice("Your farm is now called " + sanitizeText(filtered) + ".")
-		}
+		g.snap = snap
+		g.overlay = ovNone
+		g.addNotice("Your farm is now called " + sanitizeText(g.snap.State.FarmName) + ".")
 	case "backspace":
 		runes := []rune(g.nameInput)
 		if len(runes) > 0 {

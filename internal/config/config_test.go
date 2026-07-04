@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("FARM_LISTEN_PORT", "")
@@ -18,6 +21,15 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.DBPath != "var/farm.db" {
 		t.Fatalf("DBPath = %q, want var/farm.db", cfg.DBPath)
+	}
+	if cfg.LeaderboardTTL != 15*time.Second {
+		t.Fatalf("LeaderboardTTL = %v, want 15s", cfg.LeaderboardTTL)
+	}
+	if cfg.LeaderboardActivityWindow != 90*24*time.Hour {
+		t.Fatalf("LeaderboardActivityWindow = %v, want 90 days", cfg.LeaderboardActivityWindow)
+	}
+	if cfg.LeaderboardMinCoins != 1 {
+		t.Fatalf("LeaderboardMinCoins = %d, want 1", cfg.LeaderboardMinCoins)
 	}
 }
 

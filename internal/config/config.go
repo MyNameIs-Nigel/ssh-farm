@@ -28,6 +28,12 @@ type Config struct {
 	SessionPolicy       string // "takeover" or "refuse"
 	DataDir             string // content override dir; empty = embedded
 	ProxyKeysPath       string // trusted arcade proxy keys; empty = direct-only dev
+
+	// Leaderboard (gameplay/02): both filters gate which saves count toward
+	// the board at all, independent of the in-process cache TTL.
+	LeaderboardTTL            time.Duration // FARM_LEADERBOARD_TTL: max snapshot staleness
+	LeaderboardActivityWindow time.Duration // FARM_LEADERBOARD_ACTIVITY_DAYS: dormant-farm cutoff
+	LeaderboardMinCoins       int64         // FARM_LEADERBOARD_MIN_COINS: unranked-below-this floor
 }
 
 // Load reads configuration from the environment with documented defaults.
@@ -68,6 +74,17 @@ func Load() (Config, error) {
 	if cfg.AutosaveInterval, err = envDurationOr("FARM_AUTOSAVE_INTERVAL", 30*time.Second); err != nil {
 		return Config{}, err
 	}
+	if cfg.LeaderboardTTL, err = envDurationOr("FARM_LEADERBOARD_TTL", 15*time.Second); err != nil {
+		return Config{}, err
+	}
+	activityDays, err := envIntOr("FARM_LEADERBOARD_ACTIVITY_DAYS", 90)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.LeaderboardActivityWindow = time.Duration(activityDays) * 24 * time.Hour
+	if cfg.LeaderboardMinCoins, err = envInt64Or("FARM_LEADERBOARD_MIN_COINS", 1); err != nil {
+		return Config{}, err
+	}
 
 	if cfg.ListenPort < 1 || cfg.ListenPort > 65535 {
 		return Config{}, fmt.Errorf("FARM_LISTEN_PORT must be 1-65535, got %d", cfg.ListenPort)
@@ -102,6 +119,15 @@ func Load() (Config, error) {
 	if cfg.DBPath == "" {
 		return Config{}, fmt.Errorf("FARM_DB_PATH must not be empty")
 	}
+	if cfg.LeaderboardTTL <= 0 {
+		return Config{}, fmt.Errorf("FARM_LEADERBOARD_TTL must be positive")
+	}
+	if cfg.LeaderboardActivityWindow < 0 {
+		return Config{}, fmt.Errorf("FARM_LEADERBOARD_ACTIVITY_DAYS must be zero or positive")
+	}
+	if cfg.LeaderboardMinCoins < 0 {
+		return Config{}, fmt.Errorf("FARM_LEADERBOARD_MIN_COINS must be zero or positive")
+	}
 
 	return cfg, nil
 }
@@ -123,6 +149,18 @@ func envIntOr(key string, fallback int) (int, error) {
 		return fallback, nil
 	}
 	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("%s: invalid integer %q", key, v)
+	}
+	return n, nil
+}
+
+func envInt64Or(key string, fallback int64) (int64, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback, nil
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("%s: invalid integer %q", key, v)
 	}

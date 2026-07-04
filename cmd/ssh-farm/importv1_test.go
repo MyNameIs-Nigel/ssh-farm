@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
+	"github.com/mynameis-nigel/ssh-farm/internal/moderation"
 	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 	"github.com/mynameis-nigel/ssh-farm/internal/store"
 )
@@ -306,8 +307,10 @@ func TestImportV1LocksOverlongName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !row.NameLocked || row.FarmName != "" {
-		t.Fatalf("overlong v1 name should import locked and anonymized, got name=%q locked=%v", row.FarmName, row.NameLocked)
+	wantName := moderation.Generate("SHA256:a")
+	if !row.NameLocked || row.FarmName != wantName {
+		t.Fatalf("overlong v1 name should import locked with the generated default, got name=%q (want %q) locked=%v",
+			row.FarmName, wantName, row.NameLocked)
 	}
 }
 

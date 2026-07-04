@@ -1,15 +1,31 @@
 package game
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"sync"
 
+	"github.com/mynameis-nigel/ssh-farm/internal/moderation"
 	"github.com/mynameis-nigel/ssh-farm/internal/sim"
+	"github.com/mynameis-nigel/ssh-farm/internal/store"
 )
 
 // ErrSessionClosed is returned when an intent arrives after the session's
 // actor has stopped (the player was kicked or the server is shutting down).
 var ErrSessionClosed = errors.New("session is closed")
+
+// Rename sentinel errors (gameplay/03). ErrNameRateLimited and
+// ErrNameDenied deliberately have generic, distinct-but-non-revealing
+// messages: rate limiting is an expected, explainable UX ("try again in a
+// bit"), while ErrNameDenied covers both an invalid name and a
+// denylist-denied one identically — see internal/moderation's package doc
+// for why those two must never be distinguishable.
+var (
+	ErrNameLocked      = errors.New("this farm's name has been locked by an operator")
+	ErrNameRateLimited = errors.New("please wait a moment before renaming again")
+	ErrNameDenied      = errors.New("that name isn't available")
+)
 
 // Session is one terminal's handle onto a save actor.
 type Session struct {
@@ -228,10 +244,53 @@ func (s *Session) ShooCritter(now int64, plot int) (int64, Snapshot, []string, e
 	return reward, snap, newly, err
 }
 
-// SetFarmName sets the farm's display name.
+// SetFarmName sets the farm's display name directly, with no rate limiting
+// or content moderation. It exists for callers that have already applied
+// gameplay/03's checks themselves (or, as here, none — see RenameFarm,
+// which every player-facing entry point should call instead).
 func (s *Session) SetFarmName(now int64, name string) (Snapshot, error) {
 	snap, _, err := s.intent(now, func(st *sim.State) error {
 		return sim.SetFarmName(st, name)
+	})
+	return snap, err
+}
+
+// RenameFarm is gameplay/03's player-facing rename action: the one path
+// that should ever turn raw player input into a stored farm name. In
+// order:
+//
+//  1. Store.GateRename checks the operator lock and atomically consumes
+//     one unit of the rename rate-limit budget (1/minute, 10/day) — before
+//     moderation runs, so a rate-limited request never even reaches the
+//     denylist, and the budget is spent whether or not the name below
+//     turns out to be denied (retrying denied names buys no extra
+//     probes).
+//  2. moderation.Filter validates and content-checks the name.
+//  3. sim.SetFarmName applies it.
+//
+// Every rejection reason maps to its own sentinel error, but ErrNameDenied
+// covers both "invalid" and "denylist-denied" identically by design (see
+// internal/moderation) — callers must not show a different message for
+// the two.
+func (s *Session) RenameFarm(ctx context.Context, now int64, rawName string) (Snapshot, error) {
+	gate, err := s.actor.mgr.store.GateRename(ctx, s.actor.key.fingerprint, s.actor.key.slot, now)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("game: rename gate: %w", err)
+	}
+	switch gate {
+	case store.RenameLocked:
+		return Snapshot{}, ErrNameLocked
+	case store.RenameRateLimited:
+		return Snapshot{}, ErrNameRateLimited
+	}
+
+	filtered, denied := moderation.Filter(rawName)
+	if denied {
+		return Snapshot{}, ErrNameDenied
+	}
+
+	snap, _, err := s.intent(now, func(st *sim.State) error {
+		return sim.SetFarmName(st, filtered)
 	})
 	return snap, err
 }

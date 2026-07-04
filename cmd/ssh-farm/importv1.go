@@ -149,9 +149,21 @@ func doImportV1(ctx context.Context, logger *slog.Logger, from, dest string, dry
 			return fmt.Errorf("decode save %s/%s: %w (aborting import, no partial writes)", truncateFingerprint(sv.Fingerprint), sv.Slot, err)
 		}
 		name, locked := moderation.Filter(state.FarmName)
+		wasFiltered := locked && state.FarmName != ""
+		if wasFiltered {
+			// gameplay/03 / framework/02: a v1 name the current denylist
+			// denies imports as the generated default rather than a blank
+			// name, so the row keeps a real display identity. name_locked
+			// still records that this name was auto-replaced (an operator
+			// can override it per the runbook); the render-time re-check
+			// in internal/leaderboard would fall back to the same
+			// generated name anyway, so this just avoids a needless blank
+			// window between import and the board's next rebuild.
+			name = moderation.Generate(sv.Fingerprint)
+		}
 		plan = append(plan, decoded{
 			sv: sv, state: state, name: name, locked: locked,
-			wasFiltered: locked && state.FarmName != "",
+			wasFiltered: wasFiltered,
 		})
 	}
 

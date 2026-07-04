@@ -444,3 +444,197 @@ func TestImportHelpers(t *testing.T) {
 		t.Fatal("LockName(false) should clear the flag")
 	}
 }
+
+func TestGateRenameAllowsThenRateLimitsWithinCooldown(t *testing.T) {
+	st := openTest(t)
+	ctx := context.Background()
+	if err := st.TouchAccount(ctx, "SHA256:r", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:r", "farm", 1, freshPayload("blob", 0, "")); err != nil {
+		t.Fatal(err)
+	}
+
+	gate, err := st.GateRename(ctx, "SHA256:r", "farm", 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameAllowed {
+		t.Fatalf("first attempt gate = %v, want RenameAllowed", gate)
+	}
+
+	// A second attempt 30s later (inside the 60s cooldown) is refused.
+	gate, err = st.GateRename(ctx, "SHA256:r", "farm", 1030)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameRateLimited {
+		t.Fatalf("second attempt (30s later) gate = %v, want RenameRateLimited", gate)
+	}
+
+	// Past the cooldown, a third attempt is allowed again.
+	gate, err = st.GateRename(ctx, "SHA256:r", "farm", 1061)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameAllowed {
+		t.Fatalf("third attempt (61s later) gate = %v, want RenameAllowed", gate)
+	}
+}
+
+func TestGateRenameEnforcesDailyLimitAndRollsOverWindow(t *testing.T) {
+	st := openTest(t)
+	ctx := context.Background()
+	if err := st.TouchAccount(ctx, "SHA256:d", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:d", "farm", 1, freshPayload("blob", 0, "")); err != nil {
+		t.Fatal(err)
+	}
+
+	now := int64(0)
+	for i := 0; i < renameDailyLimit; i++ {
+		now += renameCooldownSeconds + 1
+		gate, err := st.GateRename(ctx, "SHA256:d", "farm", now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gate != RenameAllowed {
+			t.Fatalf("attempt %d gate = %v, want RenameAllowed", i+1, gate)
+		}
+	}
+
+	// The 11th attempt, still within the day window, is refused even
+	// though the per-minute cooldown has elapsed.
+	now += renameCooldownSeconds + 1
+	gate, err := st.GateRename(ctx, "SHA256:d", "farm", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameRateLimited {
+		t.Fatalf("11th same-day attempt gate = %v, want RenameRateLimited", gate)
+	}
+
+	// A day later the window rolls over and the budget resets.
+	now += renameDayWindowSeconds
+	gate, err = st.GateRename(ctx, "SHA256:d", "farm", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameAllowed {
+		t.Fatalf("first attempt of the new day gate = %v, want RenameAllowed", gate)
+	}
+}
+
+func TestGateRenameLockedBeatsEverythingAndCostsNothing(t *testing.T) {
+	st := openTest(t)
+	ctx := context.Background()
+	if err := st.TouchAccount(ctx, "SHA256:l", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:l", "farm", 1, freshPayload("blob", 0, "")); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.LockName(ctx, "SHA256:l", "farm", true); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 3; i++ {
+		gate, err := st.GateRename(ctx, "SHA256:l", "farm", int64(1000+i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gate != RenameLocked {
+			t.Fatalf("attempt %d gate = %v, want RenameLocked", i+1, gate)
+		}
+	}
+
+	// Unlocking restores normal rate-limited behavior with a fresh budget
+	// (a locked attempt never consumed any).
+	if err := st.LockName(ctx, "SHA256:l", "farm", false); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := st.GateRename(ctx, "SHA256:l", "farm", 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameAllowed {
+		t.Fatalf("first attempt after unlock gate = %v, want RenameAllowed", gate)
+	}
+}
+
+func TestGateRenameCountersSurviveReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gate-reopen.db")
+	ctx := context.Background()
+
+	st, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.TouchAccount(ctx, "SHA256:p", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:p", "farm", 1, freshPayload("blob", 0, "")); err != nil {
+		t.Fatal(err)
+	}
+	if gate, err := st.GateRename(ctx, "SHA256:p", "farm", 1000); err != nil || gate != RenameAllowed {
+		t.Fatalf("gate = %v, err = %v, want RenameAllowed", gate, err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	st2, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st2.Close()
+	// A restart-and-reconnect within the cooldown must still be refused:
+	// the counters are read from disk, not process memory.
+	gate, err := st2.GateRename(ctx, "SHA256:p", "farm", 1010)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameRateLimited {
+		t.Fatalf("gate after reopen = %v, want RenameRateLimited (counters must survive save/load)", gate)
+	}
+}
+
+func TestLeaderboardSnapshotOrdersByCoinsThenActivityThenFingerprint(t *testing.T) {
+	st := openTest(t)
+	ctx := context.Background()
+
+	seed := func(fp string, coins, lastActive int64, name string) {
+		t.Helper()
+		if err := st.TouchAccount(ctx, fp, "k", 1); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := st.LoadOrCreateSave(ctx, fp, "farm", 1, freshPayload("blob", coins, name)); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.PersistSave(ctx, fp, "farm", []byte("blob"), 4, lastActive, coins, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Two saves tie on coins (100): "SHA256:b" reached it first
+	// (lastActive=5) so it must rank above "SHA256:a" (lastActive=9).
+	seed("SHA256:a", 100, 9, "Tie A")
+	seed("SHA256:b", 100, 5, "Tie B")
+	seed("SHA256:z", 500, 1, "Leader")
+	seed("SHA256:c", 0, 1, "")
+
+	rows, err := st.LeaderboardSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 4 {
+		t.Fatalf("got %d rows, want 4", len(rows))
+	}
+	want := []string{"SHA256:z", "SHA256:b", "SHA256:a", "SHA256:c"}
+	for i, w := range want {
+		if rows[i].Fingerprint != w {
+			t.Fatalf("row %d = %s, want %s (order: %+v)", i, rows[i].Fingerprint, w, rows)
+		}
+	}
+}

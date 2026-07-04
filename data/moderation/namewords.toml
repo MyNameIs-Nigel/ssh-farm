@@ -1,0 +1,33 @@
+# Default farm-name word lists (gameplay/03): every unnamed or moderated-out
+# farm gets a deterministic "<adjective> <noun>" name derived from its key
+# fingerprint (internal/moderation.Generate), so the leaderboard never shows
+# a blank identity for a player who never touches the rename overlay. Safe
+# by construction: every word here is wholesome and every combination must
+# pass Check (see generate_test.go's exhaustive all-pairs test) — keep new
+# additions boring on purpose.
+
+adjective = [
+	"SUNNY", "CLOVER", "MAPLE", "HOLLOW", "MEADOW", "GOLDEN", "SILVER",
+	"AMBER", "COZY", "QUIET", "BREEZY", "DUSTY", "MOSSY", "ROLLING",
+	"MISTY", "FROSTY", "HARVEST", "RUSTIC", "HUMBLE", "TIDY", "LUCKY",
+	"MERRY", "GENTLE", "HAPPY", "WHOLESOME", "HEARTY", "STURDY", "BUSY",
+	"DAPPER", "SLEEPY", "WOOLY", "SHADY", "SANDY", "ROSY", "PLUCKY",
+	"NIFTY", "SPRY", "SNUG", "BRAMBLE", "THISTLE", "WILLOW", "BIRCH",
+	"CEDAR", "PINEY", "OAKEN", "GRASSY", "EARLY", "FRESH", "RIPE",
+	"BOUNTIFUL", "PEACEFUL", "SPARKLING", "TWINKLING", "DRIFTING",
+	"WANDERING", "HOMESPUN", "TIMEWORN", "STOUT", "NIMBLE", "JOLLY",
+	"CHEERFUL",
+]
+
+noun = [
+	"HOLLOW", "MEADOW", "ORCHARD", "PASTURE", "HOMESTEAD", "ACRE",
+	"FIELD", "BROOK", "RIDGE", "VALLEY", "GLEN", "GROVE", "BARN",
+	"SILO", "PATCH", "FURROW", "HAYSTACK", "SCARECROW", "TRACTOR",
+	"COOP", "STABLE", "GARDEN", "VINEYARD", "PADDOCK", "CREEK",
+	"HILLSIDE", "COTTAGE", "CABIN", "MILL", "WELL", "GATE", "FENCE",
+	"TRAIL", "MARSH", "THICKET", "BRAMBLE", "WILLOW", "CLOVER", "MAPLE",
+	"BIRCH", "CEDAR", "PINE", "OAK", "HARVEST", "BUSHEL", "PLOT",
+	"ALLOTMENT", "FARMSTEAD", "GRANARY", "TROUGH", "PEN", "ROOST",
+	"BURROW", "DELL", "KNOLL", "DALE", "COMMONS", "CROFT", "PLANTATION",
+	"NOOK",
+]
