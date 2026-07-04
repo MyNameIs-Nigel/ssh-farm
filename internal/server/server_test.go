@@ -16,9 +16,11 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/config"
+	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
 	applog "github.com/mynameis-nigel/ssh-farm/internal/log"
+	"github.com/mynameis-nigel/ssh-farm/internal/store"
 )
 
 func testServer(t *testing.T, mutate func(*config.Config)) (*Server, string) {
@@ -42,7 +44,17 @@ func testServer(t *testing.T, mutate func(*config.Config)) (*Server, string) {
 	}
 
 	logger := applog.New("error", "text")
-	games := game.NewStubManager(game.Policy(cfg.SessionPolicy))
+
+	st, err := store.Open(context.Background(), cfg.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	c, err := content.Load("../sim/testdata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	games := game.NewManager(st, c, logger, cfg.AutosaveInterval, game.Policy(cfg.SessionPolicy))
 
 	proxyKeys, err := identity.LoadProxyKeys(cfg.ProxyKeysPath)
 	if err != nil {

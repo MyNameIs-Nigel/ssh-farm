@@ -1,0 +1,60 @@
+services:
+  farm:
+    build: .
+    image: ssh-farm:latest
+    container_name: ssh-farm
+
+    # Host port 22 -> container 2222: players just `ssh farm.example.com`,
+    # while the process inside stays unprivileged. Change the left side to
+    # expose the game on a different host port.
+    ports:
+      - "22:2222"
+
+    # The volume is a fast local cache, not the durability story: with
+    # LITESTREAM_REPLICA_URL set, every write also streams to S3 (or MinIO
+    # locally), so losing this volume loses at most one autosave interval.
+    # Without LITESTREAM_REPLICA_URL, the entrypoint skips replication
+    # entirely (dev mode) and this volume is the only copy — fine for a
+    # laptop, not for the fleet.
+    volumes:
+      - farm-data:/var/lib/farm
+
+    environment:
+      FARM_LOG_FORMAT: json
+      # Durability (leave unset for dev mode; see entrypoint.sh):
+      # LITESTREAM_REPLICA_URL: s3://<bucket>/farm/db
+      # LITESTREAM_S3_REGION: us-east-1
+      # FARM_HOST_KEY_MC_PATH: s3/<bucket>/keys/farm/ssh_host_key
+      # MC_HOST_s3: https://<access-key>:<secret-key>@s3.amazonaws.com
+      # AWS credentials for litestream come from the EC2 instance role —
+      # never set LITESTREAM_ACCESS_KEY_ID/SECRET in production compose.
+      # mc has no instance-role support, so MC_HOST_s3 needs an explicit
+      # key pair scoped to the same bucket-only IAM policy (see the
+      # canonical doc); it is only used for the one small host-key object.
+      #
+      # Tune limits here if needed; see README for the full variable table.
+      # FARM_MAX_CONNECTIONS: "100"
+      # FARM_MAX_SESSIONS_PER_KEY: "2"
+      # FARM_SESSION_POLICY: takeover
+
+    restart: unless-stopped
+
+    # Docker sends SIGTERM on stop; the server flushes every active save
+    # before exiting (within its internal 30s budget). The grace period sits
+    # comfortably above that so a flush is never cut off mid-write.
+    stop_grace_period: 45s
+
+    # Hardening: immutable root filesystem (only the volume and /tmp are
+    # writable), no capabilities, no privilege escalation, bounded resources.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 1.0
+
+volumes:
+  farm-data:
