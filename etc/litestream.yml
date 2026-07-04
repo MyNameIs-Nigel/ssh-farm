@@ -1,0 +1,21 @@
+# Litestream replication config template for ssh-farm.
+#
+# Values expand from the environment (litestream expands $VAR / ${VAR} by
+# default). Production (real S3, per the canonical fleet doc) only needs
+# LITESTREAM_REPLICA_URL and LITESTREAM_S3_REGION set — leave endpoint and
+# the access-key/secret-key vars unset so litestream's AWS SDK picks up the
+# EC2 instance role automatically (no AWS keys in compose files or images,
+# per ../../ssh-arcadelobby/docs/06-fleet-data-durability.md's IAM rule).
+#
+# Local/CI durability drills against MinIO (scripts/restore-drill/) set all
+# five: litestream 0.5+ auto-detects non-AWS endpoints and enables
+# path-style addressing, so no extra force-path-style flag is needed.
+dbs:
+  - path: ${FARM_DB_PATH}
+    replicas:
+      - url: ${LITESTREAM_REPLICA_URL}
+        region: ${LITESTREAM_S3_REGION}
+        endpoint: ${LITESTREAM_S3_ENDPOINT}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        retention: 72h

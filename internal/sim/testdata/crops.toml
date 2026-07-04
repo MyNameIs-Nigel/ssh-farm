@@ -1,0 +1,38 @@
+# Test fixture: stable numbers for the sim unit tests.
+
+[[crop]]
+id = "turnip"
+name = "Turnip"
+archetype = "fast"
+seed_cost = 5
+grow_seconds = 60
+sell_value = 9
+unlock = { kind = "start" }
+
+[[crop]]
+id = "pumpkin"
+name = "Pumpkin"
+archetype = "slow"
+seed_cost = 80
+grow_seconds = 3600
+sell_value = 440
+unlock = { kind = "start" }
+
+[[crop]]
+id = "gamble"
+name = "Gamble"
+archetype = "risky"
+seed_cost = 40
+grow_seconds = 600
+sell_value = 140
+fail_chance_pct = 25
+unlock = { kind = "earnings", value = 500 }
+
+[[crop]]
+id = "hothouse_vine"
+name = "Hothouse Vine"
+archetype = "slow"
+seed_cost = 100
+grow_seconds = 1200
+sell_value = 400
+unlock = { kind = "zone", zone = "greenhouse" }
