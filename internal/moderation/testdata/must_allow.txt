@@ -1,0 +1,29 @@
+# Corpus: names that must NEVER be blocked by the real embedded denylist
+# (data/moderation/denylist.toml). Unlike must_block.txt, these are checked
+# against the actual production Filter/Check — this is the regression
+# guard: CI fails the moment a future denylist edit accidentally denies a
+# legitimate word. See corpus_test.go for a companion check against a
+# sample of Generate()'s deterministic output; the exhaustive
+# adjective x noun product is already covered by generate_test.go's
+# TestGenerateAllPairsPassFilter.
+#
+# Blank lines and lines starting with # are ignored.
+
+# --- Scunthorpe-class: legitimate words containing a denylist substring as
+#     part of a longer word, never as a standalone token ---
+SCUNTHORPE
+CLASS ACT FARM
+GRASS VALLEY
+PASSING GRADE
+ASSISTANT FARMER
+COCKTAIL HOUR
+
+# --- ordinary farm vocabulary players would plausibly pick ---
+SUNNY HOLLOW
+MOSSY CREEK
+GOLDEN HARVEST
+QUIET PASTURE
+NORTHFIELD
+XX_POTATO_LORD_XX
+RUSTY PLOW
+HARVEST MOON

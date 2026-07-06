@@ -3,6 +3,7 @@ package moderation
 import (
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -39,6 +40,42 @@ func TestFilterRejectionIsIndistinguishableForInvalidVsDenied(t *testing.T) {
 	if invalidOut != deniedOut {
 		t.Fatalf("invalid and denied outputs differ (%q vs %q); this is an oracle", invalidOut, deniedOut)
 	}
+}
+
+// TestFilterRejectionTimingIsNotAnObviousOracle complements
+// TestFilterRejectionIsIndistinguishableForInvalidVsDenied's output-shape
+// check with a coarse timing one. Validate fails fast on a too-short input
+// (a handful of instructions) while a denylist rejection additionally runs
+// the full candidates/tokens/substring-scan pipeline, so some difference is
+// structurally unavoidable without deliberately padding the fast path — the
+// question this test asks is whether that difference is large enough to
+// matter over a real network. It isn't unless the per-call gap approaches
+// millisecond scale, since SSH/TCP round-trip and scheduling jitter already
+// dwarf anything in the low-microsecond range; a relative (ratio) bound
+// would unfairly flag two already-fast operations being compared to each
+// other, so this uses an absolute per-call budget instead.
+func TestFilterRejectionTimingIsNotAnObviousOracle(t *testing.T) {
+	const iterations = 2000
+	invalidElapsed := timeFilter(iterations, "ab")  // Validate failure: too short
+	deniedElapsed := timeFilter(iterations, "FUCK") // Check failure: denylist
+
+	diffPerCall := (deniedElapsed - invalidElapsed) / iterations
+	if diffPerCall < 0 {
+		diffPerCall = -diffPerCall
+	}
+	const maxDiffPerCall = 100 * time.Microsecond
+	if diffPerCall > maxDiffPerCall {
+		t.Fatalf("invalid-vs-denied per-call timing gap = %v (invalid=%v, denied=%v over %d iterations), want <= %v — a distinguishable fast path may exist",
+			diffPerCall, invalidElapsed, deniedElapsed, iterations, maxDiffPerCall)
+	}
+}
+
+func timeFilter(iterations int, name string) time.Duration {
+	start := time.Now()
+	for i := 0; i < iterations; i++ {
+		Filter(name)
+	}
+	return time.Since(start)
 }
 
 func TestFilterScunthorpeProblemCasesPass(t *testing.T) {

@@ -24,9 +24,20 @@ fi
 
 if [ -n "$HOST_KEY_MC_PATH" ] && [ ! -f "$HOST_KEY_PATH" ]; then
 	echo "entrypoint: restoring host key from $HOST_KEY_MC_PATH"
-	mc cat "$HOST_KEY_MC_PATH" >"$HOST_KEY_PATH" 2>/dev/null \
-		&& chmod 600 "$HOST_KEY_PATH" \
-		|| echo "entrypoint: no host key found in bucket yet — a new one will be generated and uploaded"
+	# Write to a temp path first: on a genuinely first-ever boot the bucket
+	# has no key yet and `mc cat` fails, but a bare `>"$HOST_KEY_PATH"`
+	# redirect still creates/truncates its target before mc even runs —
+	# leaving a 0-byte file at $HOST_KEY_PATH that satisfies the app's own
+	# "does a key already exist" check and skips key generation entirely,
+	# crashing the server with "ssh: no key found". Only promote the temp
+	# file if mc actually produced non-empty content.
+	if mc cat "$HOST_KEY_MC_PATH" >"$HOST_KEY_PATH.tmp" 2>/dev/null && [ -s "$HOST_KEY_PATH.tmp" ]; then
+		mv "$HOST_KEY_PATH.tmp" "$HOST_KEY_PATH"
+		chmod 600 "$HOST_KEY_PATH"
+	else
+		rm -f "$HOST_KEY_PATH.tmp"
+		echo "entrypoint: no host key found in bucket yet — a new one will be generated and uploaded"
+	fi
 fi
 
 # -config defaults to /etc/litestream.yml, which resolves $FARM_DB_PATH and

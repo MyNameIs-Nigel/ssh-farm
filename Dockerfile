@@ -14,6 +14,12 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
         -o /out/ssh-farm ./cmd/ssh-farm
 
+# restore-check (docs/tests/02): a read-only integrity/decode verifier the
+# durability drills run inside this same image against a restored database —
+# built alongside the game so the drill never needs a second image.
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+        -o /out/restore-check ./cmd/restore-check
+
 # Pre-create the data directory with the runtime user's ownership so the
 # named volume inherits writable permissions on first use.
 RUN mkdir -p /out/data-dir && chown 65532:65532 /out/data-dir
@@ -41,6 +47,7 @@ RUN apk add --no-cache ca-certificates && \
 COPY --from=litestream /usr/local/bin/litestream /usr/local/bin/litestream
 COPY --from=mc /usr/bin/mc /usr/local/bin/mc
 COPY --from=build /out/ssh-farm /app/ssh-farm
+COPY --from=build /out/restore-check /app/restore-check
 COPY --from=build --chown=65532:65532 /out/data-dir /var/lib/farm
 COPY etc/litestream.yml /etc/litestream.yml
 COPY entrypoint.sh /entrypoint.sh
@@ -49,9 +56,17 @@ RUN chmod 755 /entrypoint.sh
 # The app's own default port is 22; inside the container it listens on an
 # unprivileged port instead and the operator maps host 22 to it, so the
 # process never needs root or CAP_NET_BIND_SERVICE.
+#
+# HOME: the nonroot user has no /home/nonroot (and can't create one — /home
+# is root-owned), but `mc` writes its config there even when every alias
+# comes from an MC_HOST_* env var, so without this every `mc` call in
+# entrypoint.sh fails with "Unable to save new mc config" — silently, since
+# entrypoint.sh redirects mc's stderr to /dev/null. /tmp is already
+# world-writable in the base image.
 ENV FARM_LISTEN_PORT=2222 \
     FARM_HOST_KEY_PATH=/var/lib/farm/ssh_host_key \
-    FARM_DB_PATH=/var/lib/farm/farm.db
+    FARM_DB_PATH=/var/lib/farm/farm.db \
+    HOME=/tmp
 
 EXPOSE 2222
 

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -636,5 +638,123 @@ func TestLeaderboardSnapshotOrdersByCoinsThenActivityThenFingerprint(t *testing.
 		if rows[i].Fingerprint != w {
 			t.Fatalf("row %d = %s, want %s (order: %+v)", i, rows[i].Fingerprint, w, rows)
 		}
+	}
+}
+
+func TestIntegrityCheckPassesOnAFreshDatabase(t *testing.T) {
+	st := openTest(t)
+	if err := st.TouchAccount(context.Background(), "SHA256:k", "key", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.IntegrityCheck(context.Background()); err != nil {
+		t.Fatalf("IntegrityCheck on a healthy database: %v", err)
+	}
+}
+
+// TestIntegrityCheckCatchesCorruption is the durability drills' negative
+// case (docs/tests/02): a restore that produces a corrupted file must be
+// caught, not silently served. Corrupting a live *sql.DB in-process isn't
+// reliable (the driver may cache pages), so this closes the store and
+// scrambles the last page directly on disk, then reopens — mangling only a
+// leaf page's cell data (rather than the header or early schema pages)
+// leaves Open able to connect, matching a real torn/truncated restore, and
+// lets integrity_check itself be the thing that catches it.
+func TestIntegrityCheckCatchesCorruption(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "corrupt.db")
+	ctx := context.Background()
+
+	st, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.TouchAccount(ctx, "SHA256:k", "key", 1); err != nil {
+		t.Fatal(err)
+	}
+	// Enough rows to spill past the schema pages into leaf data pages this
+	// test can corrupt without touching sqlite_master itself.
+	for i := 0; i < 50; i++ {
+		fp := fmt.Sprintf("SHA256:many%02d", i)
+		if err := st.TouchAccount(ctx, fp, "key", 1); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := st.LoadOrCreateSave(ctx, fp, "farm", 1, freshPayload(strings.Repeat("x", 200), 100, "Northfield")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var pageSize, pageCount int
+	if err := st.db.QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.db.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount); err != nil {
+		t.Fatal(err)
+	}
+	// WAL mode keeps recent writes in a separate -wal file; checkpoint first
+	// so the corruption below actually lands in data the main file holds.
+	if _, err := st.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pageCount < 3 {
+		t.Fatalf("only %d pages, need more to corrupt a leaf page safely", pageCount)
+	}
+	lastPageStart := (pageCount - 1) * pageSize
+	for i := lastPageStart + 20; i < lastPageStart+100 && i < len(b); i++ {
+		b[i] ^= 0xFF
+	}
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	st2, err := Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open refused to reopen a page-level-corrupted database: %v (test needs a milder corruption)", err)
+	}
+	defer st2.Close()
+	if err := st2.IntegrityCheck(ctx); err == nil {
+		t.Fatal("IntegrityCheck = nil on a deliberately corrupted database, want an error")
+	}
+}
+
+func TestAllSavesReturnsEveryRowIncludingState(t *testing.T) {
+	st := openTest(t)
+	ctx := context.Background()
+
+	if err := st.TouchAccount(ctx, "SHA256:a", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:a", "farm", 1, freshPayload("blob-a", 100, "Alpha")); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.TouchAccount(ctx, "SHA256:b", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:b", "farm", 1, freshPayload("blob-b", 200, "Bravo")); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := st.AllSaves(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	byFP := map[string]SaveRow{}
+	for _, r := range rows {
+		byFP[r.Fingerprint] = r
+	}
+	if string(byFP["SHA256:a"].State) != "blob-a" || byFP["SHA256:a"].Coins != 100 {
+		t.Fatalf("SHA256:a row wrong: %+v", byFP["SHA256:a"])
+	}
+	if string(byFP["SHA256:b"].State) != "blob-b" || byFP["SHA256:b"].Coins != 200 {
+		t.Fatalf("SHA256:b row wrong: %+v", byFP["SHA256:b"])
 	}
 }

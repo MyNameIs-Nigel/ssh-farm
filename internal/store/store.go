@@ -280,6 +280,49 @@ func (st *Store) ListSlots(ctx context.Context, fingerprint string) ([]string, e
 	return slots, rows.Err()
 }
 
+// IntegrityCheck runs SQLite's own consistency check (PRAGMA
+// integrity_check) and reports the first problem found, if any. Used by the
+// durability drills (scripts/restore-drill, docs/tests/02) after a restore,
+// to catch corruption a WAL-frame replay could in principle leave behind —
+// it says nothing about the *content* of any save, only that the file
+// itself decodes as a well-formed SQLite database.
+func (st *Store) IntegrityCheck(ctx context.Context) error {
+	var result string
+	if err := st.db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result); err != nil {
+		return fmt.Errorf("store: integrity check: %w", err)
+	}
+	if result != "ok" {
+		return fmt.Errorf("store: integrity check failed: %s", result)
+	}
+	return nil
+}
+
+// AllSaves returns every save row, blob included — unlike NeedingBackfill,
+// with no filter. This exists for the durability drills' decode-every-save
+// pass (scripts/restore-drill, docs/tests/02): the store still does not
+// decode the blob itself (see the package doc), it only hands the caller
+// every row so it can.
+func (st *Store) AllSaves(ctx context.Context) ([]SaveRow, error) {
+	rows, err := st.db.QueryContext(ctx, `
+		SELECT fingerprint, slot, created_at, last_active, state, state_version, coins, farm_name, name_locked
+		FROM saves`)
+	if err != nil {
+		return nil, fmt.Errorf("store: all saves: %w", err)
+	}
+	defer rows.Close()
+	var out []SaveRow
+	for rows.Next() {
+		var r SaveRow
+		var nameLocked int
+		if err := rows.Scan(&r.Fingerprint, &r.Slot, &r.CreatedAt, &r.LastActive, &r.State, &r.StateVersion, &r.Coins, &r.FarmName, &nameLocked); err != nil {
+			return nil, fmt.Errorf("store: all saves: %w", err)
+		}
+		r.NameLocked = nameLocked != 0
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // NeedingBackfill returns every save whose denormalized columns look
 // un-populated (coins = 0 AND farm_name = ”): the set the boot-time
 // reconcile pass and import-v1 need to backfill by decoding the blob. A
