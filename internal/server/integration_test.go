@@ -1,8 +1,8 @@
 package server
 
 import (
-	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,7 +103,16 @@ func TestProxiedOfflineCatchUp(t *testing.T) {
 	}
 	_ = st.Close()
 
-	client2, err := gossh.Dial("tcp", addr, cfg)
+	// readScreen's write-then-close-then-ReadAll pattern (a longer sleep
+	// than its default, since this screen follows a catch-up computation
+	// rather than a bare attach), not a live read-loop: an SSH channel
+	// Read() has no deadline of its own, so a wall-clock check between
+	// reads doesn't bound a single blocking Read() call — under -race's
+	// much heavier scheduling overhead (first real run here; -race needs
+	// CGO, unavailable in the sandbox this was written in) a stuck Read()
+	// let this test run 50+ seconds past its nominal 8s budget before
+	// finally failing.
+	client2, err := gossh.Dial("tcp", addr, clientConfig(t, user, proxySigner))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,17 +132,11 @@ func TestProxiedOfflineCatchUp(t *testing.T) {
 	if err := sess2.Shell(); err != nil {
 		t.Fatal(err)
 	}
-
-	deadline := time.Now().Add(8 * time.Second)
-	var buf bytes.Buffer
-	for time.Now().Before(deadline) {
-		b := make([]byte, 4096)
-		n, _ := stdout.Read(b)
-		buf.Write(b[:n])
-		if strings.Contains(stripANSI(buf.String()), "Welcome back") {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
+	time.Sleep(2 * time.Second)
+	_ = sess2.Close()
+	b, _ := io.ReadAll(stdout)
+	screen := stripANSI(string(b))
+	if !strings.Contains(screen, "Welcome back") {
+		t.Fatalf("expected away summary after proxied reconnect, got:\n%s", screen)
 	}
-	t.Fatalf("expected away summary after proxied reconnect, got:\n%s", stripANSI(buf.String()))
 }
