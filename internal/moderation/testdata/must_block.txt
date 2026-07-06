@@ -1,0 +1,37 @@
+# Corpus: names that MUST be blocked by the moderation pipeline.
+#
+# Placeholder-token convention: every "banned" word here is a synthetic
+# stand-in, never a real slur or profanity. This corpus is checked against
+# the test-only denylist built by denylist_test.go's testDenylist helper —
+# "badterm" (slur tier, substring match, zero tolerance) and "meanie"
+# (profanity tier, whole-word match) — never the real embedded
+# data/moderation/denylist.toml. Extend this file freely with new evasion
+# patterns of these same two placeholder words; never paste a real slur
+# here or anywhere else in this repo's git history.
+#
+# Blank lines and lines starting with # are ignored.
+
+# --- slur tier ("badterm", substring match: zero tolerance, every evasion
+#     class below must still be caught) ---
+BADTERM
+MYBADTERMFARM
+BAD TERM
+BAD-TERM
+BAD_TERM
+B4DT3RM
+BADDDTERM
+BAAADTERM
+B-A-D-T-E-R-M
+B4D-T3RM
+MYB4D-TERMFARM
+BADTERMBADTERM
+xXBadTermXx
+b__a-d t3rm
+
+# --- profanity tier ("meanie", whole-word match only — evasions that break
+#     tokenization, e.g. inserted separators, are a must_allow case instead,
+#     see denylist_test.go's Scunthorpe tests) ---
+MEANIE
+M3ANI3
+YOU ARE A MEANIE
+SUPER MEANIE FARM

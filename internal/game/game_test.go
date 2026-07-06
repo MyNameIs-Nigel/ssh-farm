@@ -261,3 +261,87 @@ func TestIntentsValidateAgainstAuthoritativeState(t *testing.T) {
 		t.Fatal("refused intents must not change state")
 	}
 }
+
+func TestRenameFarmAppliesModerationAndRateLimit(t *testing.T) {
+	m, _ := testManager(t, PolicyTakeover, time.Hour)
+	res := mustAttach(t, m, ident("SHA256:k1", "farm"), 1000)
+	defer res.Session.Detach()
+
+	snap, err := res.Session.RenameFarm(context.Background(), 1000, "Sunny Hollow")
+	if err != nil {
+		t.Fatalf("expected a clean name to be accepted, got %v", err)
+	}
+	if snap.State.FarmName != "SUNNY HOLLOW" {
+		t.Fatalf("FarmName = %q, want %q", snap.State.FarmName, "SUNNY HOLLOW")
+	}
+
+	// A second attempt inside the 60s cooldown is refused, and the name is
+	// left unchanged.
+	_, err = res.Session.RenameFarm(context.Background(), 1030, "Northfield")
+	if err != ErrNameRateLimited {
+		t.Fatalf("expected ErrNameRateLimited, got %v", err)
+	}
+	snap, _, advErr := res.Session.Advance(1031)
+	if advErr != nil {
+		t.Fatal(advErr)
+	}
+	if snap.State.FarmName != "SUNNY HOLLOW" {
+		t.Fatal("a rate-limited attempt must not change the stored name")
+	}
+
+	// Past the cooldown, a denylisted name is refused generically and the
+	// name is still unchanged.
+	_, err = res.Session.RenameFarm(context.Background(), 1091, "FUCK")
+	if err != ErrNameDenied {
+		t.Fatalf("expected ErrNameDenied, got %v", err)
+	}
+	snap, _, advErr = res.Session.Advance(1092)
+	if advErr != nil {
+		t.Fatal(advErr)
+	}
+	if snap.State.FarmName != "SUNNY HOLLOW" {
+		t.Fatal("a denied attempt must not change the stored name")
+	}
+}
+
+func TestRenameFarmRespectsOperatorLock(t *testing.T) {
+	m, path := testManager(t, PolicyTakeover, time.Hour)
+	id := ident("SHA256:locked", "farm")
+	res := mustAttach(t, m, id, 1000)
+
+	st2, err := store.Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st2.Close()
+	if err := st2.LockName(context.Background(), id.Fingerprint, id.Slot, true); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = res.Session.RenameFarm(context.Background(), 1000, "Sunny Hollow")
+	if err != ErrNameLocked {
+		t.Fatalf("expected ErrNameLocked, got %v", err)
+	}
+	res.Session.Detach()
+}
+
+func TestRenameFarmCounterSurvivesReconnect(t *testing.T) {
+	m, path := testManager(t, PolicyTakeover, time.Hour)
+	id := ident("SHA256:reconnect", "farm")
+
+	res := mustAttach(t, m, id, 1000)
+	if _, err := res.Session.RenameFarm(context.Background(), 1000, "Sunny Hollow"); err != nil {
+		t.Fatal(err)
+	}
+	res.Session.Detach()
+
+	// Reopen against the same database (simulating a process restart) and
+	// reconnect within the cooldown: the rate limit must still apply.
+	m2 := reopenManager(t, path, PolicyTakeover, time.Hour)
+	res2 := mustAttach(t, m2, id, 1010)
+	defer res2.Session.Detach()
+	_, err := res2.Session.RenameFarm(context.Background(), 1010, "Northfield")
+	if err != ErrNameRateLimited {
+		t.Fatalf("expected ErrNameRateLimited after reconnect within cooldown, got %v", err)
+	}
+}

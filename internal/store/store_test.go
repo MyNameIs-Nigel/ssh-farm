@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -442,5 +444,317 @@ func TestImportHelpers(t *testing.T) {
 	}
 	if row.NameLocked {
 		t.Fatal("LockName(false) should clear the flag")
+	}
+}
+
+func TestGateRenameAllowsThenRateLimitsWithinCooldown(t *testing.T) {
+	st := openTest(t)
+	ctx := context.Background()
+	if err := st.TouchAccount(ctx, "SHA256:r", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:r", "farm", 1, freshPayload("blob", 0, "")); err != nil {
+		t.Fatal(err)
+	}
+
+	gate, err := st.GateRename(ctx, "SHA256:r", "farm", 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameAllowed {
+		t.Fatalf("first attempt gate = %v, want RenameAllowed", gate)
+	}
+
+	// A second attempt 30s later (inside the 60s cooldown) is refused.
+	gate, err = st.GateRename(ctx, "SHA256:r", "farm", 1030)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameRateLimited {
+		t.Fatalf("second attempt (30s later) gate = %v, want RenameRateLimited", gate)
+	}
+
+	// Past the cooldown, a third attempt is allowed again.
+	gate, err = st.GateRename(ctx, "SHA256:r", "farm", 1061)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameAllowed {
+		t.Fatalf("third attempt (61s later) gate = %v, want RenameAllowed", gate)
+	}
+}
+
+func TestGateRenameEnforcesDailyLimitAndRollsOverWindow(t *testing.T) {
+	st := openTest(t)
+	ctx := context.Background()
+	if err := st.TouchAccount(ctx, "SHA256:d", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:d", "farm", 1, freshPayload("blob", 0, "")); err != nil {
+		t.Fatal(err)
+	}
+
+	now := int64(0)
+	for i := 0; i < renameDailyLimit; i++ {
+		now += renameCooldownSeconds + 1
+		gate, err := st.GateRename(ctx, "SHA256:d", "farm", now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gate != RenameAllowed {
+			t.Fatalf("attempt %d gate = %v, want RenameAllowed", i+1, gate)
+		}
+	}
+
+	// The 11th attempt, still within the day window, is refused even
+	// though the per-minute cooldown has elapsed.
+	now += renameCooldownSeconds + 1
+	gate, err := st.GateRename(ctx, "SHA256:d", "farm", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameRateLimited {
+		t.Fatalf("11th same-day attempt gate = %v, want RenameRateLimited", gate)
+	}
+
+	// A day later the window rolls over and the budget resets.
+	now += renameDayWindowSeconds
+	gate, err = st.GateRename(ctx, "SHA256:d", "farm", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameAllowed {
+		t.Fatalf("first attempt of the new day gate = %v, want RenameAllowed", gate)
+	}
+}
+
+func TestGateRenameLockedBeatsEverythingAndCostsNothing(t *testing.T) {
+	st := openTest(t)
+	ctx := context.Background()
+	if err := st.TouchAccount(ctx, "SHA256:l", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:l", "farm", 1, freshPayload("blob", 0, "")); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.LockName(ctx, "SHA256:l", "farm", true); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 3; i++ {
+		gate, err := st.GateRename(ctx, "SHA256:l", "farm", int64(1000+i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gate != RenameLocked {
+			t.Fatalf("attempt %d gate = %v, want RenameLocked", i+1, gate)
+		}
+	}
+
+	// Unlocking restores normal rate-limited behavior with a fresh budget
+	// (a locked attempt never consumed any).
+	if err := st.LockName(ctx, "SHA256:l", "farm", false); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := st.GateRename(ctx, "SHA256:l", "farm", 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameAllowed {
+		t.Fatalf("first attempt after unlock gate = %v, want RenameAllowed", gate)
+	}
+}
+
+func TestGateRenameCountersSurviveReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gate-reopen.db")
+	ctx := context.Background()
+
+	st, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.TouchAccount(ctx, "SHA256:p", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:p", "farm", 1, freshPayload("blob", 0, "")); err != nil {
+		t.Fatal(err)
+	}
+	if gate, err := st.GateRename(ctx, "SHA256:p", "farm", 1000); err != nil || gate != RenameAllowed {
+		t.Fatalf("gate = %v, err = %v, want RenameAllowed", gate, err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	st2, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st2.Close()
+	// A restart-and-reconnect within the cooldown must still be refused:
+	// the counters are read from disk, not process memory.
+	gate, err := st2.GateRename(ctx, "SHA256:p", "farm", 1010)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate != RenameRateLimited {
+		t.Fatalf("gate after reopen = %v, want RenameRateLimited (counters must survive save/load)", gate)
+	}
+}
+
+func TestLeaderboardSnapshotOrdersByCoinsThenActivityThenFingerprint(t *testing.T) {
+	st := openTest(t)
+	ctx := context.Background()
+
+	seed := func(fp string, coins, lastActive int64, name string) {
+		t.Helper()
+		if err := st.TouchAccount(ctx, fp, "k", 1); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := st.LoadOrCreateSave(ctx, fp, "farm", 1, freshPayload("blob", coins, name)); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.PersistSave(ctx, fp, "farm", []byte("blob"), 4, lastActive, coins, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Two saves tie on coins (100): "SHA256:b" reached it first
+	// (lastActive=5) so it must rank above "SHA256:a" (lastActive=9).
+	seed("SHA256:a", 100, 9, "Tie A")
+	seed("SHA256:b", 100, 5, "Tie B")
+	seed("SHA256:z", 500, 1, "Leader")
+	seed("SHA256:c", 0, 1, "")
+
+	rows, err := st.LeaderboardSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 4 {
+		t.Fatalf("got %d rows, want 4", len(rows))
+	}
+	want := []string{"SHA256:z", "SHA256:b", "SHA256:a", "SHA256:c"}
+	for i, w := range want {
+		if rows[i].Fingerprint != w {
+			t.Fatalf("row %d = %s, want %s (order: %+v)", i, rows[i].Fingerprint, w, rows)
+		}
+	}
+}
+
+func TestIntegrityCheckPassesOnAFreshDatabase(t *testing.T) {
+	st := openTest(t)
+	if err := st.TouchAccount(context.Background(), "SHA256:k", "key", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.IntegrityCheck(context.Background()); err != nil {
+		t.Fatalf("IntegrityCheck on a healthy database: %v", err)
+	}
+}
+
+// TestIntegrityCheckCatchesCorruption is the durability drills' negative
+// case (docs/tests/02): a restore that produces a corrupted file must be
+// caught, not silently served. Corrupting a live *sql.DB in-process isn't
+// reliable (the driver may cache pages), so this closes the store and
+// scrambles the last page directly on disk, then reopens — mangling only a
+// leaf page's cell data (rather than the header or early schema pages)
+// leaves Open able to connect, matching a real torn/truncated restore, and
+// lets integrity_check itself be the thing that catches it.
+func TestIntegrityCheckCatchesCorruption(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "corrupt.db")
+	ctx := context.Background()
+
+	st, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.TouchAccount(ctx, "SHA256:k", "key", 1); err != nil {
+		t.Fatal(err)
+	}
+	// Enough rows to spill past the schema pages into leaf data pages this
+	// test can corrupt without touching sqlite_master itself.
+	for i := 0; i < 50; i++ {
+		fp := fmt.Sprintf("SHA256:many%02d", i)
+		if err := st.TouchAccount(ctx, fp, "key", 1); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := st.LoadOrCreateSave(ctx, fp, "farm", 1, freshPayload(strings.Repeat("x", 200), 100, "Northfield")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var pageSize, pageCount int
+	if err := st.db.QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.db.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount); err != nil {
+		t.Fatal(err)
+	}
+	// WAL mode keeps recent writes in a separate -wal file; checkpoint first
+	// so the corruption below actually lands in data the main file holds.
+	if _, err := st.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pageCount < 3 {
+		t.Fatalf("only %d pages, need more to corrupt a leaf page safely", pageCount)
+	}
+	lastPageStart := (pageCount - 1) * pageSize
+	for i := lastPageStart + 20; i < lastPageStart+100 && i < len(b); i++ {
+		b[i] ^= 0xFF
+	}
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	st2, err := Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open refused to reopen a page-level-corrupted database: %v (test needs a milder corruption)", err)
+	}
+	defer st2.Close()
+	if err := st2.IntegrityCheck(ctx); err == nil {
+		t.Fatal("IntegrityCheck = nil on a deliberately corrupted database, want an error")
+	}
+}
+
+func TestAllSavesReturnsEveryRowIncludingState(t *testing.T) {
+	st := openTest(t)
+	ctx := context.Background()
+
+	if err := st.TouchAccount(ctx, "SHA256:a", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:a", "farm", 1, freshPayload("blob-a", 100, "Alpha")); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.TouchAccount(ctx, "SHA256:b", "k", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:b", "farm", 1, freshPayload("blob-b", 200, "Bravo")); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := st.AllSaves(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	byFP := map[string]SaveRow{}
+	for _, r := range rows {
+		byFP[r.Fingerprint] = r
+	}
+	if string(byFP["SHA256:a"].State) != "blob-a" || byFP["SHA256:a"].Coins != 100 {
+		t.Fatalf("SHA256:a row wrong: %+v", byFP["SHA256:a"])
+	}
+	if string(byFP["SHA256:b"].State) != "blob-b" || byFP["SHA256:b"].Coins != 200 {
+		t.Fatalf("SHA256:b row wrong: %+v", byFP["SHA256:b"])
 	}
 }

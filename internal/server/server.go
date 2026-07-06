@@ -18,8 +18,10 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/config"
+	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
+	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	"github.com/mynameis-nigel/ssh-farm/internal/tui"
 )
 
@@ -35,6 +37,7 @@ type sessionState struct {
 type SaveManager interface {
 	Attach(ctx context.Context, id identity.SessionIdentity, publicKey string, now int64, kick func(reason string)) (game.AttachResult, error)
 	Shutdown(ctx context.Context) error
+	Content() *content.Content
 }
 
 // Server wraps the Wish SSH server and related middleware.
@@ -44,10 +47,13 @@ type Server struct {
 	ssh      *ssh.Server
 	games    SaveManager
 	identity *identity.Resolver
+	board    *leaderboard.Engine
 }
 
 // New constructs and configures the SSH server over the given save manager.
-func New(cfg config.Config, logger *slog.Logger, games SaveManager, resolver *identity.Resolver) (*Server, error) {
+// board is gameplay/02's leaderboard engine, shared read-only across every
+// session's tui/02 board screen.
+func New(cfg config.Config, logger *slog.Logger, games SaveManager, resolver *identity.Resolver, board *leaderboard.Engine) (*Server, error) {
 	if err := ensureHostKeyDir(cfg.HostKeyPath); err != nil {
 		return nil, err
 	}
@@ -59,7 +65,7 @@ func New(cfg config.Config, logger *slog.Logger, games SaveManager, resolver *id
 		cfg.RateLimitMaxEntries,
 	)
 
-	srv := &Server{cfg: cfg, logger: logger, games: games, identity: resolver}
+	srv := &Server{cfg: cfg, logger: logger, games: games, identity: resolver, board: board}
 
 	s, err := wish.NewServer(
 		wish.WithAddress(cfg.ListenAddr()),
@@ -152,7 +158,8 @@ func (srv *Server) teaHandler(s ssh.Session) (tui.Model, []tui.ProgramOption) {
 	// keeps the transport busy, so a connection-level idle timer would
 	// never fire. Only key presses count as activity.
 	idleSecs := int64(srv.cfg.IdleTimeout / time.Second)
-	return tui.NewPlaceholder(state.id, width, height, idleSecs), nil
+	now := time.Now().Unix()
+	return tui.NewGame(state.id, state.res, srv.games.Content(), srv.board, width, height, now, idleSecs), nil
 }
 
 // ListenAndServe starts accepting SSH connections.

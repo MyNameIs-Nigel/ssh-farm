@@ -5,5 +5,5 @@ package data
 
 import "embed"
 
-//go:embed *.toml
+//go:embed *.toml moderation/*.toml
 var FS embed.FS

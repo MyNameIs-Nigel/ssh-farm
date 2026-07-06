@@ -280,6 +280,49 @@ func (st *Store) ListSlots(ctx context.Context, fingerprint string) ([]string, e
 	return slots, rows.Err()
 }
 
+// IntegrityCheck runs SQLite's own consistency check (PRAGMA
+// integrity_check) and reports the first problem found, if any. Used by the
+// durability drills (scripts/restore-drill, docs/tests/02) after a restore,
+// to catch corruption a WAL-frame replay could in principle leave behind —
+// it says nothing about the *content* of any save, only that the file
+// itself decodes as a well-formed SQLite database.
+func (st *Store) IntegrityCheck(ctx context.Context) error {
+	var result string
+	if err := st.db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result); err != nil {
+		return fmt.Errorf("store: integrity check: %w", err)
+	}
+	if result != "ok" {
+		return fmt.Errorf("store: integrity check failed: %s", result)
+	}
+	return nil
+}
+
+// AllSaves returns every save row, blob included — unlike NeedingBackfill,
+// with no filter. This exists for the durability drills' decode-every-save
+// pass (scripts/restore-drill, docs/tests/02): the store still does not
+// decode the blob itself (see the package doc), it only hands the caller
+// every row so it can.
+func (st *Store) AllSaves(ctx context.Context) ([]SaveRow, error) {
+	rows, err := st.db.QueryContext(ctx, `
+		SELECT fingerprint, slot, created_at, last_active, state, state_version, coins, farm_name, name_locked
+		FROM saves`)
+	if err != nil {
+		return nil, fmt.Errorf("store: all saves: %w", err)
+	}
+	defer rows.Close()
+	var out []SaveRow
+	for rows.Next() {
+		var r SaveRow
+		var nameLocked int
+		if err := rows.Scan(&r.Fingerprint, &r.Slot, &r.CreatedAt, &r.LastActive, &r.State, &r.StateVersion, &r.Coins, &r.FarmName, &nameLocked); err != nil {
+			return nil, fmt.Errorf("store: all saves: %w", err)
+		}
+		r.NameLocked = nameLocked != 0
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // NeedingBackfill returns every save whose denormalized columns look
 // un-populated (coins = 0 AND farm_name = ”): the set the boot-time
 // reconcile pass and import-v1 need to backfill by decoding the blob. A
@@ -385,6 +428,129 @@ func (st *Store) InsertSave(ctx context.Context, fingerprint, slot string, state
 		return fmt.Errorf("store: insert save: row already exists for this key/slot")
 	}
 	return nil
+}
+
+// RenameGate is the outcome of GateRename: whether a rename attempt may
+// proceed, and if not, why — so the action layer (internal/game) can
+// return the right sentinel error without a second query.
+type RenameGate int
+
+const (
+	// RenameAllowed means the attempt was recorded and may proceed to
+	// content moderation.
+	RenameAllowed RenameGate = iota
+	// RenameLocked means an operator has locked this save's name
+	// (docs/runbooks/moderation.md); no attempt is recorded.
+	RenameLocked
+	// RenameRateLimited means the save's abuse-friction budget (1/minute,
+	// 10/day) is exhausted; no attempt is recorded.
+	RenameRateLimited
+)
+
+const (
+	renameCooldownSeconds  = 60
+	renameDayWindowSeconds = 86400
+	renameDailyLimit       = 10
+)
+
+// GateRename checks and, if allowed, atomically consumes one unit of
+// gameplay/03's rename abuse-friction budget for (fingerprint, slot) at
+// now. An operator lock (name_locked) always wins and costs nothing to
+// check. Otherwise the budget is consumed for every attempt that clears
+// the gate — regardless of what the caller does with it next, since
+// content moderation runs after this and a denied name must not be free to
+// retry — so a rate-limited or content-denied attempt looks identical from
+// the outside (no oracle on why a given attempt failed).
+//
+// This lives in Store rather than internal/sim (whose diff from v1 is
+// frozen) or internal/moderation (which stays a pure function over
+// strings, with no per-save state): a check-and-increment against one row
+// is exactly the kind of thing a transaction is for.
+func (st *Store) GateRename(ctx context.Context, fingerprint, slot string, now int64) (RenameGate, error) {
+	if err := validateKeys(fingerprint, slot); err != nil {
+		return RenameRateLimited, err
+	}
+	tx, err := st.db.BeginTx(ctx, nil)
+	if err != nil {
+		return RenameRateLimited, fmt.Errorf("store: gate rename: begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after a successful Commit
+
+	var locked int
+	var lastAt, dayStart int64
+	var dayCount int
+	err = tx.QueryRowContext(ctx, `
+		SELECT name_locked, rename_last_at, rename_day_start, rename_day_count
+		FROM saves WHERE fingerprint = ? AND slot = ?`,
+		fingerprint, slot).Scan(&locked, &lastAt, &dayStart, &dayCount)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return RenameRateLimited, fmt.Errorf("store: gate rename: no row for this key/slot")
+		}
+		return RenameRateLimited, fmt.Errorf("store: gate rename: %w", err)
+	}
+	if locked != 0 {
+		return RenameLocked, nil
+	}
+
+	if lastAt != 0 && now < lastAt+renameCooldownSeconds {
+		return RenameRateLimited, nil
+	}
+	if now >= dayStart+renameDayWindowSeconds {
+		dayStart = now
+		dayCount = 0
+	}
+	if dayCount >= renameDailyLimit {
+		return RenameRateLimited, nil
+	}
+	dayCount++
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE saves SET rename_last_at = ?, rename_day_start = ?, rename_day_count = ?
+		WHERE fingerprint = ? AND slot = ?`,
+		now, dayStart, dayCount, fingerprint, slot); err != nil {
+		return RenameRateLimited, fmt.Errorf("store: gate rename: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return RenameRateLimited, fmt.Errorf("store: gate rename: commit: %w", err)
+	}
+	return RenameAllowed, nil
+}
+
+// LeaderboardRow is one save's denormalized board data (gameplay/02): only
+// the columns the leaderboard is allowed to read, never the blob.
+type LeaderboardRow struct {
+	Fingerprint string
+	Slot        string
+	Coins       int64
+	FarmName    string
+	UpdatedAt   int64 // last_active: when this row's coins were last confirmed accurate
+}
+
+// LeaderboardSnapshot returns every save's denormalized board columns,
+// ordered coins DESC, last_active ASC, fingerprint ASC — gameplay/02's
+// competition-ranking tie-break ("first to the money shows first"). The
+// leaderboard engine is the only intended caller; it holds the result in
+// memory and rebuilds on its own TTL rather than querying per request (see
+// docs/gameplay/02 "Caching").
+func (st *Store) LeaderboardSnapshot(ctx context.Context) ([]LeaderboardRow, error) {
+	rows, err := st.db.QueryContext(ctx, `
+		SELECT fingerprint, slot, coins, farm_name, last_active
+		FROM saves
+		ORDER BY coins DESC, last_active ASC, fingerprint ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("store: leaderboard snapshot: %w", err)
+	}
+	defer rows.Close()
+	var out []LeaderboardRow
+	for rows.Next() {
+		var r LeaderboardRow
+		if err := rows.Scan(&r.Fingerprint, &r.Slot, &r.Coins, &r.FarmName, &r.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("store: leaderboard snapshot: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 func validateKeys(fingerprint, slot string) error {

@@ -40,6 +40,17 @@ var migrations = []string{
 	ALTER TABLE saves ADD COLUMN farm_name TEXT NOT NULL DEFAULT '';
 	ALTER TABLE saves ADD COLUMN name_locked INTEGER NOT NULL DEFAULT 0;
 	CREATE INDEX idx_saves_coins ON saves (coins DESC);`,
+
+	// v3 (gameplay/03): rename abuse-friction counters. These live in their
+	// own columns rather than the state blob because internal/sim's diff
+	// from v1 is contractually frozen to the Coins/FarmName/SetFarmName
+	// accessors gameplay/01 added (see docs/gameplay/01's acceptance
+	// criteria) — this is moderation bookkeeping, not gameplay state. Zero
+	// defaults are exactly correct for every existing row: "never renamed"
+	// is what an empty history means.
+	`ALTER TABLE saves ADD COLUMN rename_last_at INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE saves ADD COLUMN rename_day_start INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE saves ADD COLUMN rename_day_count INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (st *Store) migrate(ctx context.Context) error {
