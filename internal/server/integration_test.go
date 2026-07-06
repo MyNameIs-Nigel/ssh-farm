@@ -69,6 +69,17 @@ func TestProxiedOfflineCatchUp(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	_ = sess1.Close()
 	_ = client1.Close()
+	// Closing the client only tears down the local socket; the server's
+	// own disconnect handling (Session.Detach -> manager.detach ->
+	// stopActorLocked, which evicts this save's in-memory actor from
+	// Manager.actors) runs asynchronously relative to that. Manager.Attach
+	// only re-reads from the store when it creates a *new* actor -- if the
+	// old one is still registered when the second session below attaches,
+	// it reuses that stale in-memory state and never sees the direct DB
+	// write just below, silently skipping the away-summary. Usually fast
+	// enough to lose this race under normal execution; -race's much
+	// heavier scheduling overhead made it easy to win instead.
+	time.Sleep(500 * time.Millisecond)
 
 	st, err := store.Open(context.Background(), dbPath)
 	if err != nil {
