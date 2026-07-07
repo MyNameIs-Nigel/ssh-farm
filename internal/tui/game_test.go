@@ -179,18 +179,13 @@ func TestReplantWarningGatesFirstUseThenReplants(t *testing.T) {
 		t.Fatalf("setup plant failed: %+v", g.snap.State.Plots[0])
 	}
 
-	// First r press shows the warning and locks it for the countdown.
+	// First r press shows the warning.
 	g = press(t, g, "r")
 	if g.overlay != ovReplantWarn {
 		t.Fatalf("first r should open the replant warning, overlay = %v", g.overlay)
 	}
-	g = press(t, g, "enter") // too soon: stays open
-	if g.overlay != ovReplantWarn {
-		t.Fatal("warning must stay locked until the countdown elapses")
-	}
 
-	// After the countdown a key dismisses it and records the acknowledgement.
-	g, _ = tick(t, g, base+replantWarnSeconds)
+	// Any key immediately dismisses it and records the acknowledgement.
 	g = press(t, g, "enter")
 	if g.overlay != ovNone || !g.snap.State.ReplantWarned {
 		t.Fatalf("warning should close and arm replant, overlay %v warned %v", g.overlay, g.snap.State.ReplantWarned)

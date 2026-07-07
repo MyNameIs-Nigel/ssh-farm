@@ -81,8 +81,11 @@ func (g *Game) handleMouseWheel(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 func (g *Game) dismissOverlay() (tea.Model, tea.Cmd) {
 	switch g.overlay {
 	case ovPicker:
+		g.overlay = ovNone
 		g.pickerAutoSow = false
-	case ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovAway, ovReplantWarn:
+	case ovReplantWarn:
+		return g.ackReplantWarning()
+	case ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovAway:
 		g.overlay = ovNone
 	}
 	return g, nil
@@ -91,6 +94,8 @@ func (g *Game) dismissOverlay() (tea.Model, tea.Cmd) {
 func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 	id := box.ID
 	switch {
+	case id == "overlay:close":
+		return g.dismissOverlay()
 	case strings.HasPrefix(id, "nav:"):
 		if scr, ok := box.Data.(screen); ok && g.overlay == ovNone {
 			g.scr = scr
@@ -179,9 +184,7 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 	case id == "away:dismiss":
 		g.overlay = ovNone
 	case id == "replant:dismiss":
-		if g.now-g.replantWarnAt >= replantWarnSeconds {
-			return g.pressKey("enter")
-		}
+		return g.ackReplantWarning()
 	case id == "upgrade:auto-harvest":
 		return g.pressKey("1")
 	case id == "upgrade:auto-sow":

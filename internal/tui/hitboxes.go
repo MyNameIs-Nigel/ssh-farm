@@ -9,8 +9,11 @@ func (g *Game) registerHitboxes() {
 		return
 	}
 	g.layout = g.computeLayout()
-	g.registerNavHits()
+	// Background must register before nav so the "[x] Close" hit (added by
+	// registerNavHits while an overlay is open) isn't shadowed by the
+	// full-canvas background box — last-added wins on overlap.
 	g.registerOverlayBG()
+	g.registerNavHits()
 
 	switch g.overlay {
 	case ovNone:
@@ -61,7 +64,14 @@ func (g *Game) registerOverlayBG() {
 }
 
 func (g *Game) registerNavHits() {
+	if g.overlay == ovKicked {
+		return
+	}
 	if g.overlay != ovNone {
+		tabsW := lipgloss.Width(g.viewNav())
+		closeText := styleNavOn.Render("[x] Close")
+		closeW := lipgloss.Width(closeText)
+		g.addHit(g.layout.navX+tabsW+2, g.layout.navY, closeW, 1, "overlay:close", nil)
 		return
 	}
 	labels := []struct {

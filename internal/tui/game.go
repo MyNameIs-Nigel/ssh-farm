@@ -93,10 +93,6 @@ const (
 // tutorialPages is the number of pages in the new-player tutorial.
 const tutorialPages = 4
 
-// replantWarnSeconds is how long the first-time replant warning stays locked
-// before the player can dismiss it.
-const replantWarnSeconds = 3
-
 type notice struct {
 	text    string
 	expires int64
@@ -136,10 +132,9 @@ type Game struct {
 	lbNextRefresh int64
 	lbScroll      int
 
-	tutorialPage  int
-	tutorialSkip  bool
-	configIdx     int
-	replantWarnAt int64
+	tutorialPage int
+	tutorialSkip bool
+	configIdx    int
 
 	notices    []notice
 	away       sim.Events
@@ -462,7 +457,6 @@ func (g *Game) handleFarmKey(key string) (tea.Model, tea.Cmd) {
 func (g *Game) handleReplant() (tea.Model, tea.Cmd) {
 	if !g.snap.State.ReplantWarned {
 		g.overlay = ovReplantWarn
-		g.replantWarnAt = g.now
 		return g, nil
 	}
 	g.doReplantAll()
@@ -496,17 +490,19 @@ func (g *Game) doReplantAll() {
 	g.addNotice(msg)
 }
 
-func (g *Game) handleReplantWarnKey(key string) (tea.Model, tea.Cmd) {
-	// The prompt is locked for a few seconds so the explanation gets read.
-	if g.now-g.replantWarnAt < replantWarnSeconds {
-		return g, nil
-	}
+// ackReplantWarning acknowledges the one-time replant warning and returns to
+// the farm — triggered by any key press or any click while it's showing.
+func (g *Game) ackReplantWarning() (tea.Model, tea.Cmd) {
 	if snap, err := g.sess.AckReplantWarning(g.now); err == nil {
 		g.snap = snap
 	}
 	g.overlay = ovNone
 	g.addNotice("Replant ready — press r to replant every plot.")
 	return g, nil
+}
+
+func (g *Game) handleReplantWarnKey(key string) (tea.Model, tea.Cmd) {
+	return g.ackReplantWarning()
 }
 
 func (g *Game) handleTutorialKey(key string) (tea.Model, tea.Cmd) {
