@@ -12,7 +12,7 @@
 package version
 
 // Version is the game's current release. Idle Farmer v2 is in beta.
-const Version = "2.0.1"
+const Version = "2.1.0"
 
 // Channel is the human-readable release channel derived from Version's
 // leading component.
