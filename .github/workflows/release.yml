@@ -42,32 +42,18 @@ jobs:
 
   deploy:
     needs: publish
-    runs-on: ubuntu-latest
+    # Runs directly on the play.ssharcade.dev EC2 host (self-hosted runner
+    # installed there, see ssh-arcadelobby/deploy/README.md) instead of
+    # dialing out over SSH: the host's real sshd (port 9922) is locked to
+    # one dev IP, and GitHub-hosted runners use ephemeral IPs from a huge,
+    # ever-changing range that will never match that allowlist. Running the
+    # job on the box itself means no inbound port has to be opened for CI,
+    # and no GHCR login is needed either — packages are public.
+    runs-on: [self-hosted, production]
     environment: production
     steps:
-      # This repo is private, so the image is private too — the host needs
-      # a one-time `docker login ghcr.io` with a read:packages-scoped PAT
-      # before `docker compose pull farm` will work non-interactively (see
-      # ssh-arcadelobby/deploy/README.md). Same skip-cleanly pattern as the
-      # router's own release.yml: until DEPLOY_HOST is set for the
-      # production environment, this job succeeds as a no-op rather than
-      # failing loudly on every merge.
-      - name: Check deploy is configured
-        id: check
+      - name: Deploy farm
         run: |
-          if [ -z "${{ vars.DEPLOY_HOST }}" ]; then
-            echo "::notice::DEPLOY_HOST not set for the production environment — skipping deploy. See ssh-arcadelobby/deploy/README.md."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.check.outputs.configured == 'true'
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ vars.DEPLOY_HOST }}
-          username: deploy
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            cd /srv/ssharcade
-            docker compose pull farm
-            docker compose up -d farm
+          cd /srv/ssharcade
+          docker compose pull farm
+          docker compose up -d farm
