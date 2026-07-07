@@ -66,6 +66,17 @@ func TestLeaderboardShowsNewRankAfterReconnect(t *testing.T) {
 		t.Fatalf("expected YOU: #2/2 (behind the seeded leader), got:\n%s", first)
 	}
 
+	// connectAndOpenBoard closing its client only tears down the local
+	// socket; the server's own disconnect handling (Session.Detach ->
+	// manager.detach -> actor.persist("disconnect")) runs asynchronously
+	// relative to that. If it lands after the direct write just below, it
+	// flushes the actor's stale (lower) in-memory coin balance right back
+	// over it, silently undoing the write this test depends on. Usually
+	// fast enough to lose this race under normal execution; -race's much
+	// heavier scheduling overhead made it easy to win instead (see the
+	// identical fix in TestProxiedOfflineCatchUp).
+	time.Sleep(500 * time.Millisecond)
+
 	// Earn coins: write directly through the store, the same durable path
 	// the game actor's autosave/detach flush uses.
 	st, err = store.Open(context.Background(), dbPath)
