@@ -16,6 +16,7 @@ import (
 	applog "github.com/mynameis-nigel/ssh-farm/internal/log"
 	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 	"github.com/mynameis-nigel/ssh-farm/internal/store"
+	"github.com/mynameis-nigel/ssh-farm/internal/version"
 )
 
 type fixture struct {
@@ -318,6 +319,24 @@ func TestHelpGameplayPage(t *testing.T) {
 		if !strings.Contains(body, ev.Name) {
 			t.Fatalf("gameplay help body: expected event %q, got:\n%s", ev.Name, body)
 		}
+	}
+}
+
+func TestHelpShowsGameVersion(t *testing.T) {
+	f := newFixture(t)
+	base := time.Now().Unix()
+	g := f.newGame(t, base)
+	g = dismissIntro(t, g)
+	g, _ = tick(t, g, base)
+	g = press(t, g, "?")
+
+	want := "Idle Farmer v" + version.Version + " (" + version.Channel + ")"
+	if !strings.Contains(view(g), want) {
+		t.Fatalf("help screen: expected %q, got:\n%s", want, view(g))
+	}
+	g = press(t, g, "right") // version stays visible on the Gameplay page too
+	if !strings.Contains(view(g), want) {
+		t.Fatalf("gameplay help page: expected %q, got:\n%s", want, view(g))
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/sim"
+	"github.com/mynameis-nigel/ssh-farm/internal/version"
 )
 
 var (
@@ -844,7 +845,8 @@ func (g *Game) helpTabs() string {
 		gameplay = styleNavOn.Render(gameplay)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, controls, " ", gameplay) +
-		"\n" + styleHint.Render("  ← → switch pages · esc/q back to farm")
+		"\n" + styleHint.Render("  ← → switch pages · esc/q back to farm · Idle Farmer v"+
+		version.Version+" ("+version.Channel+")")
 }
 
 func (g *Game) viewHelpControls() string {
