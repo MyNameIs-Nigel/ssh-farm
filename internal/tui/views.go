@@ -170,6 +170,19 @@ func (g *Game) dailyHeadline() string {
 	return strings.ToUpper(sanitizeText(g.content.Headlines[idx].Text))
 }
 
+// navRowContent is what renders on the nav strip's row: the screen tabs
+// alone when no overlay is open, or the (dimmed, unclickable) tabs plus a
+// clickable "[x] Close" affordance while one is — mouse users otherwise have
+// no visible way to dismiss a menu without the keyboard. ovKicked keeps the
+// plain tabs since the session is already ending.
+func (g *Game) navRowContent() string {
+	tabs := g.viewNav()
+	if g.overlay != ovNone && g.overlay != ovKicked {
+		return tabs + "  " + styleNavOn.Render("[x] Close")
+	}
+	return tabs
+}
+
 func (g *Game) viewNav() string {
 	labels := []struct {
 		s    screen
@@ -224,11 +237,7 @@ func (g *Game) viewFooter() string {
 	case g.overlay == ovConfig:
 		hints = "↑/↓ select · enter toggle · esc/q close"
 	case g.overlay == ovReplantWarn:
-		if left := replantWarnSeconds - (g.now - g.replantWarnAt); left > 0 {
-			hints = "please read… (" + itoa(int(left)) + "s)"
-		} else {
-			hints = "press any key to continue"
-		}
+		hints = "press any key to continue"
 	case g.overlay == ovTutorial:
 		hints = "s toggle skip · enter continue · ←/→ pages"
 	case g.overlay == ovAway:
@@ -1087,13 +1096,6 @@ func (g *Game) viewConfig() string {
 }
 
 func (g *Game) viewReplantWarn() string {
-	left := replantWarnSeconds - (g.now - g.replantWarnAt)
-	var foot string
-	if left > 0 {
-		foot = styleHint.Render("You can close this in " + itoa(int(left)) + "s…")
-	} else {
-		foot = styleReady.Render("Press any key to close.")
-	}
 	text := styleSection.Render("About “r — replant all” 🌱") + "\n\n" +
 		styleValue.Render("Replant fills every empty plot with the crop it last grew (or your\n"+
 			"last-planted crop for fresh plots). It spends coins automatically,\n"+
@@ -1101,7 +1103,7 @@ func (g *Game) viewReplantWarn() string {
 			"If you can't afford every plot, it plants as many as it can and\n"+
 			"tells you how many it skipped — just like a normal short purchase.\n\n"+
 			"Plots that are still growing are left untouched.") + "\n\n" +
-		foot
+		styleReady.Render("Press any key to close.")
 	return styleBox.Render(text)
 }
 

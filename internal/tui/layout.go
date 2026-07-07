@@ -62,7 +62,7 @@ func (g *Game) composeCanvas(body string, centerBody bool) string {
 
 	top := strings.Join([]string{
 		g.viewHeader(),
-		lipgloss.PlaceHorizontal(cw, lipgloss.Center, g.viewNav()),
+		lipgloss.PlaceHorizontal(cw, lipgloss.Center, g.navRowContent()),
 		"",
 	}, "\n")
 
