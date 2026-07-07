@@ -3,13 +3,16 @@
 // The whole ssharcade fleet shares one scheme, <channel>.<major>.<minor>:
 // the leading number is the release channel (1 = alpha, 2 = beta), the
 // second is the major release, and the third is the minor patch/hotfix.
-// Keep this in sync with the `version` key of this game's entry in
-// ssh-arcadelobby's games.toml — the lobby menu renders that key, the help
-// screen renders this constant, and players see both.
+// internal/server wires this into the wish server's Version option, which
+// becomes the literal SSH version-exchange banner — the arcade router's
+// health-check prober reads it live from there on every probe cycle, so
+// bumping this constant is the only place a release needs to change; no
+// games.toml edit required. The help screen also renders this constant
+// directly.
 package version
 
 // Version is the game's current release. Idle Farmer v2 is in beta.
-const Version = "2.0.0"
+const Version = "2.0.1"
 
 // Channel is the human-readable release channel derived from Version's
 // leading component.

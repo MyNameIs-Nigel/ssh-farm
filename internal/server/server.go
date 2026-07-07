@@ -23,6 +23,7 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
 	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	"github.com/mynameis-nigel/ssh-farm/internal/tui"
+	"github.com/mynameis-nigel/ssh-farm/internal/version"
 )
 
 // sessionKey carries per-connection game state through the ssh.Context.
@@ -71,6 +72,7 @@ func New(cfg config.Config, logger *slog.Logger, games SaveManager, resolver *id
 		wish.WithAddress(cfg.ListenAddr()),
 		wish.WithHostKeyPath(cfg.HostKeyPath),
 		wish.WithIdleTimeout(cfg.IdleTimeout),
+		withVersion(version.Version),
 		wish.WithPublicKeyAuth(func(_ ssh.Context, key ssh.PublicKey) bool {
 			return key != nil
 		}),
@@ -92,6 +94,18 @@ func New(cfg config.Config, logger *slog.Logger, games SaveManager, resolver *id
 
 	srv.ssh = s
 	return srv, nil
+}
+
+// withVersion embeds the fleet version in the SSH version-exchange banner
+// (renders on the wire as e.g. "SSH-2.0-2.0.0"), so the arcade router's
+// health-check prober can read it live on every probe cycle instead of a
+// hand-maintained games.toml field — see
+// ../../ssh-arcadelobby/docs/03-games-registry-and-health.md.
+func withVersion(v string) ssh.Option {
+	return func(srv *ssh.Server) error {
+		srv.Version = v
+		return nil
+	}
 }
 
 // attachSave resolves the session's identity, opens its save through the

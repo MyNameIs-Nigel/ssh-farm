@@ -1,11 +1,13 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +24,7 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	applog "github.com/mynameis-nigel/ssh-farm/internal/log"
 	"github.com/mynameis-nigel/ssh-farm/internal/store"
+	"github.com/mynameis-nigel/ssh-farm/internal/version"
 )
 
 func testServer(t *testing.T, mutate func(*config.Config)) (*Server, string) {
@@ -100,6 +103,32 @@ func clientConfig(t *testing.T, user string, signer gossh.Signer) *gossh.ClientC
 		Auth:            []gossh.AuthMethod{gossh.PublicKeys(signer)},
 		HostKeyCallback: gossh.InsecureIgnoreHostKey(), //nolint:gosec // test only
 		Timeout:         5 * time.Second,
+	}
+}
+
+// TestServerVersionBanner: the raw SSH version-exchange banner embeds this
+// game's fleet version so the arcade router's health-check prober can read
+// it live (see ../../ssh-arcadelobby/docs/03-games-registry-and-health.md)
+// instead of a hand-maintained games.toml field. A raw TCP dial (not
+// gossh.Dial, which performs a full handshake) reads the literal bytes the
+// prober itself reads.
+func TestServerVersionBanner(t *testing.T) {
+	_, addr := testServer(t, nil)
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+
+	line, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "SSH-2.0-" + version.Version
+	if !strings.HasPrefix(strings.TrimRight(line, "\r\n"), want) {
+		t.Fatalf("banner = %q, want prefix %q", line, want)
 	}
 }
 
