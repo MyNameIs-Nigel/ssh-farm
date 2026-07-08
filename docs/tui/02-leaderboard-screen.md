@@ -24,15 +24,15 @@ actually catch.
 ```
 ┌◇ LEADERBOARD — RICHEST FARMS ────────── YOU: #13/261 ┐
 │                                                      │
-│   #1  GOLDEN MEADOWS ·x9J2k ↻12          ◈ 1,204,551 │
-│   #2  POTATO EMPIRE ·mQ04z ↻9              ◈ 981,300 │
-│   #3  CLOVER & SONS ·77aBc ↻9              ◈ 954,110 │
+│   #1  GOLDEN MEADOWS ·x9J2k ↻ 12         ◈ 1,204,551 │
+│   #2  POTATO EMPIRE ·mQ04z ↻ 9             ◈ 981,300 │
+│   #3  CLOVER & SONS ·77aBc ↻ 9             ◈ 954,110 │
 │   …top 10…                                           │
 │  ────────────────────────────────────────────────    │
-│  #11  WINDMILL ACRES ·ff21x ↻2             ◈ 84,900  │
-│  #12  MAPLE HOLLOW ·b8k2N ↻2               ◈ 84,551  │
-│ ▸#13  SUNNY HOLLOW ·k3v9Q ↻1  ← YOU        ◈ 84,210  │
-│  #14  BARLEYCORN ·z0q4T ↻1                 ◈ 83,995  │
+│  #11  WINDMILL ACRES ·ff21x ↻ 2            ◈ 84,900  │
+│  #12  MAPLE HOLLOW ·b8k2N ↻ 2              ◈ 84,551  │
+│ ▸#13  SUNNY HOLLOW ·k3v9Q ↻ 1  ← YOU       ◈ 84,210  │
+│  #14  BARLEYCORN ·z0q4T ↻ 1                ◈ 83,995  │
 │  …                                                   │
 │                                                      │
 │  updated 12s ago                                     │
@@ -47,7 +47,7 @@ actually catch.
   `▸` + highlight + `← YOU`.
 - Rows: rank (right-aligned, ties share numbers per gameplay/02), name in
   primary text, suffix in dim (`·k3v9Q` — always shown, it's the
-  anti-impersonation signal), rebirth count (`↻12`), coins right-aligned
+  anti-impersonation signal), rebirth count (`↻ 12`), coins right-aligned
   with the ◈ glyph — **lifetime coin earnings** (gameplay/02), not the
   farm's current spendable balance. Top 3 ranks may take the
   gold/cyan/violet accent treatment — tasteful, not a rainbow.

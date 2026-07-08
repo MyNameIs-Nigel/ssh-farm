@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	"github.com/mynameis-nigel/ssh-farm/internal/store"
@@ -104,11 +105,37 @@ func TestBoardShowsRebirthCountAlongsideCoins(t *testing.T) {
 	g = press(t, g, "7")
 
 	out := view(g)
-	if !strings.Contains(out, "↻12") {
-		t.Fatalf("expected the top farm's rebirth count (↻12) on the board, got:\n%s", out)
+	if !strings.Contains(out, "↻ 12") {
+		t.Fatalf("expected the top farm's rebirth count (↻ 12) on the board, got:\n%s", out)
 	}
-	if !strings.Contains(out, "↻0") {
-		t.Fatalf("expected a zero rebirth count (↻0) rendered too, got:\n%s", out)
+	if !strings.Contains(out, "↻ 0") {
+		t.Fatalf("expected a zero rebirth count (↻ 0) rendered too, got:\n%s", out)
+	}
+}
+
+func TestBoardRowLineKeepsRebirthCountSeparatedFromCoins(t *testing.T) {
+	g := &Game{}
+	row := leaderboard.Row{
+		Rank:        123,
+		DisplayName: "TWENTY CHARACTER NAME",
+		Suffix:      "wX9zK",
+		Coins:       9_876_543_210,
+		Rebirths:    1_234,
+		IsYou:       true,
+	}
+
+	line := g.boardRowLine(row, 52, 3)
+	plain := stripAnsi(line)
+	if w := lipgloss.Width(plain); w != 52 {
+		t.Fatalf("line width = %d, want 52:\n%q", w, plain)
+	}
+	for _, want := range []string{"#123", "·wX9zK", "↻ 1,234", "← YOU", "◈ 9,876,543,210"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("expected %q to survive truncation, got:\n%q", want, plain)
+		}
+	}
+	if strings.Index(plain, "↻ 1,234") > strings.Index(plain, "◈ 9,876,543,210") {
+		t.Fatalf("rebirth count rendered after coins:\n%q", plain)
 	}
 }
 
