@@ -12,12 +12,12 @@
 // sole writer of its save's row while active.
 //
 // The saves table additionally carries denormalized coins/farm_name/
-// name_locked columns for the leaderboard (gameplay/02) and moderation
-// (gameplay/03). The JSON state blob stays the source of truth; the store's
-// job is only to keep the columns and the blob from ever disagreeing —
-// every write goes through one statement inside one transaction. Decoding
-// the blob is the caller's job (internal/game), since the state's shape is
-// owned by internal/sim, not this package.
+// name_locked/lifetime_earnings/rebirths columns for the leaderboard
+// (gameplay/02) and moderation (gameplay/03). The JSON state blob stays the
+// source of truth; the store's job is only to keep the columns and the blob
+// from ever disagreeing — every write goes through one statement inside one
+// transaction. Decoding the blob is the caller's job (internal/game), since
+// the state's shape is owned by internal/sim, not this package.
 package store
 
 import (
@@ -47,15 +47,17 @@ type Store struct {
 
 // SaveRow is one persisted save.
 type SaveRow struct {
-	Fingerprint  string
-	Slot         string
-	CreatedAt    int64
-	LastActive   int64
-	State        []byte
-	StateVersion int
-	Coins        int64
-	FarmName     string
-	NameLocked   bool
+	Fingerprint      string
+	Slot             string
+	CreatedAt        int64
+	LastActive       int64
+	State            []byte
+	StateVersion     int
+	Coins            int64
+	LifetimeEarnings int64
+	Rebirths         int64
+	FarmName         string
+	NameLocked       bool
 }
 
 // FreshSave is what LoadOrCreateSave's fresh() callback returns to seed a
@@ -63,10 +65,12 @@ type SaveRow struct {
 // columns, extracted up front so a new farm never shows as a zero-coin
 // ghost on the board before its first autosave.
 type FreshSave struct {
-	State    []byte
-	Version  int
-	Coins    int64
-	FarmName string
+	State            []byte
+	Version          int
+	Coins            int64
+	LifetimeEarnings int64
+	Rebirths         int64
+	FarmName         string
 }
 
 // Open opens (creating if needed) the database at path, applies pending
@@ -159,10 +163,10 @@ func (st *Store) LoadOrCreateSave(ctx context.Context, fingerprint, slot string,
 		return SaveRow{}, false, fmt.Errorf("store: build fresh save: %w", err)
 	}
 	res, err := st.db.ExecContext(ctx, `
-		INSERT INTO saves (fingerprint, slot, created_at, last_active, state, state_version, coins, farm_name)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO saves (fingerprint, slot, created_at, last_active, state, state_version, coins, lifetime_earnings, rebirths, farm_name)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (fingerprint, slot) DO NOTHING`,
-		fingerprint, slot, now, now, fs.State, fs.Version, fs.Coins, fs.FarmName)
+		fingerprint, slot, now, now, fs.State, fs.Version, fs.Coins, fs.LifetimeEarnings, fs.Rebirths, fs.FarmName)
 	if err != nil {
 		return SaveRow{}, false, fmt.Errorf("store: create save: %w", err)
 	}
@@ -182,10 +186,10 @@ func (st *Store) loadSave(ctx context.Context, fingerprint, slot string) (SaveRo
 	row := SaveRow{Fingerprint: fingerprint, Slot: slot}
 	var nameLocked int
 	err := st.db.QueryRowContext(ctx, `
-		SELECT created_at, last_active, state, state_version, coins, farm_name, name_locked
+		SELECT created_at, last_active, state, state_version, coins, lifetime_earnings, rebirths, farm_name, name_locked
 		FROM saves WHERE fingerprint = ? AND slot = ?`,
 		fingerprint, slot).
-		Scan(&row.CreatedAt, &row.LastActive, &row.State, &row.StateVersion, &row.Coins, &row.FarmName, &nameLocked)
+		Scan(&row.CreatedAt, &row.LastActive, &row.State, &row.StateVersion, &row.Coins, &row.LifetimeEarnings, &row.Rebirths, &row.FarmName, &nameLocked)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return SaveRow{}, err
@@ -201,7 +205,7 @@ func (st *Store) loadSave(ctx context.Context, fingerprint, slot string) (SaveRo
 // the board can never disagree, because they are never written separately.
 // It never creates rows: persisting a save that was deleted out from under
 // us is an error, not a resurrection.
-func (st *Store) PersistSave(ctx context.Context, fingerprint, slot string, state []byte, stateVersion int, lastActive int64, coins int64, farmName string) error {
+func (st *Store) PersistSave(ctx context.Context, fingerprint, slot string, state []byte, stateVersion int, lastActive int64, coins, lifetimeEarnings, rebirths int64, farmName string) error {
 	if err := validateKeys(fingerprint, slot); err != nil {
 		return err
 	}
@@ -212,9 +216,9 @@ func (st *Store) PersistSave(ctx context.Context, fingerprint, slot string, stat
 	defer tx.Rollback() //nolint:errcheck // no-op after a successful Commit
 
 	res, err := tx.ExecContext(ctx, `
-		UPDATE saves SET state = ?, state_version = ?, last_active = ?, coins = ?, farm_name = ?
+		UPDATE saves SET state = ?, state_version = ?, last_active = ?, coins = ?, lifetime_earnings = ?, rebirths = ?, farm_name = ?
 		WHERE fingerprint = ? AND slot = ?`,
-		state, stateVersion, lastActive, coins, farmName, fingerprint, slot)
+		state, stateVersion, lastActive, coins, lifetimeEarnings, rebirths, farmName, fingerprint, slot)
 	if err != nil {
 		return fmt.Errorf("store: persist save: %w", err)
 	}
@@ -304,7 +308,7 @@ func (st *Store) IntegrityCheck(ctx context.Context) error {
 // every row so it can.
 func (st *Store) AllSaves(ctx context.Context) ([]SaveRow, error) {
 	rows, err := st.db.QueryContext(ctx, `
-		SELECT fingerprint, slot, created_at, last_active, state, state_version, coins, farm_name, name_locked
+		SELECT fingerprint, slot, created_at, last_active, state, state_version, coins, lifetime_earnings, rebirths, farm_name, name_locked
 		FROM saves`)
 	if err != nil {
 		return nil, fmt.Errorf("store: all saves: %w", err)
@@ -314,7 +318,7 @@ func (st *Store) AllSaves(ctx context.Context) ([]SaveRow, error) {
 	for rows.Next() {
 		var r SaveRow
 		var nameLocked int
-		if err := rows.Scan(&r.Fingerprint, &r.Slot, &r.CreatedAt, &r.LastActive, &r.State, &r.StateVersion, &r.Coins, &r.FarmName, &nameLocked); err != nil {
+		if err := rows.Scan(&r.Fingerprint, &r.Slot, &r.CreatedAt, &r.LastActive, &r.State, &r.StateVersion, &r.Coins, &r.LifetimeEarnings, &r.Rebirths, &r.FarmName, &nameLocked); err != nil {
 			return nil, fmt.Errorf("store: all saves: %w", err)
 		}
 		r.NameLocked = nameLocked != 0
@@ -328,10 +332,13 @@ func (st *Store) AllSaves(ctx context.Context) ([]SaveRow, error) {
 // reconcile pass and import-v1 need to backfill by decoding the blob. A
 // save that legitimately has zero coins and no name (a genuinely fresh,
 // unnamed farm) is backfilled as a harmless no-op — its columns are already
-// correct.
+// correct. lifetime_earnings/rebirths ride along with coins/farm_name in
+// this same set: any row still un-populated on coins/farm_name is, by
+// construction, also still at migration 004's zero defaults for the newer
+// columns (see BackfillDenormalized).
 func (st *Store) NeedingBackfill(ctx context.Context) ([]SaveRow, error) {
 	rows, err := st.db.QueryContext(ctx, `
-		SELECT fingerprint, slot, created_at, last_active, state, state_version, coins, farm_name, name_locked
+		SELECT fingerprint, slot, created_at, last_active, state, state_version, coins, lifetime_earnings, rebirths, farm_name, name_locked
 		FROM saves WHERE coins = 0 AND farm_name = ''`)
 	if err != nil {
 		return nil, fmt.Errorf("store: needing backfill: %w", err)
@@ -341,7 +348,7 @@ func (st *Store) NeedingBackfill(ctx context.Context) ([]SaveRow, error) {
 	for rows.Next() {
 		var r SaveRow
 		var nameLocked int
-		if err := rows.Scan(&r.Fingerprint, &r.Slot, &r.CreatedAt, &r.LastActive, &r.State, &r.StateVersion, &r.Coins, &r.FarmName, &nameLocked); err != nil {
+		if err := rows.Scan(&r.Fingerprint, &r.Slot, &r.CreatedAt, &r.LastActive, &r.State, &r.StateVersion, &r.Coins, &r.LifetimeEarnings, &r.Rebirths, &r.FarmName, &nameLocked); err != nil {
 			return nil, fmt.Errorf("store: needing backfill: %w", err)
 		}
 		r.NameLocked = nameLocked != 0
@@ -350,17 +357,17 @@ func (st *Store) NeedingBackfill(ctx context.Context) ([]SaveRow, error) {
 	return out, rows.Err()
 }
 
-// BackfillDenormalized sets a save's coins/farm_name columns without
-// touching the blob or last_active — used by the reconcile pass and
-// import-v1, which both derive these values by decoding the blob
-// themselves (store treats the blob as opaque bytes).
-func (st *Store) BackfillDenormalized(ctx context.Context, fingerprint, slot string, coins int64, farmName string) error {
+// BackfillDenormalized sets a save's coins/lifetime_earnings/rebirths/
+// farm_name columns without touching the blob or last_active — used by the
+// reconcile pass and import-v1, which both derive these values by decoding
+// the blob themselves (store treats the blob as opaque bytes).
+func (st *Store) BackfillDenormalized(ctx context.Context, fingerprint, slot string, coins, lifetimeEarnings, rebirths int64, farmName string) error {
 	if err := validateKeys(fingerprint, slot); err != nil {
 		return err
 	}
 	res, err := st.db.ExecContext(ctx, `
-		UPDATE saves SET coins = ?, farm_name = ? WHERE fingerprint = ? AND slot = ?`,
-		coins, farmName, fingerprint, slot)
+		UPDATE saves SET coins = ?, lifetime_earnings = ?, rebirths = ?, farm_name = ? WHERE fingerprint = ? AND slot = ?`,
+		coins, lifetimeEarnings, rebirths, farmName, fingerprint, slot)
 	if err != nil {
 		return fmt.Errorf("store: backfill: %w", err)
 	}
@@ -404,7 +411,7 @@ func (st *Store) HasSave(ctx context.Context, fingerprint, slot string) (bool, e
 // its denormalized values in hand — there's no "fresh" payload to build).
 // It fails if the row already exists; import-v1's collision check runs
 // first, but this is a second line of defense.
-func (st *Store) InsertSave(ctx context.Context, fingerprint, slot string, state []byte, stateVersion int, createdAt, lastActive int64, coins int64, farmName string, nameLocked bool) error {
+func (st *Store) InsertSave(ctx context.Context, fingerprint, slot string, state []byte, stateVersion int, createdAt, lastActive int64, coins, lifetimeEarnings, rebirths int64, farmName string, nameLocked bool) error {
 	if err := validateKeys(fingerprint, slot); err != nil {
 		return err
 	}
@@ -413,10 +420,10 @@ func (st *Store) InsertSave(ctx context.Context, fingerprint, slot string, state
 		locked = 1
 	}
 	res, err := st.db.ExecContext(ctx, `
-		INSERT INTO saves (fingerprint, slot, created_at, last_active, state, state_version, coins, farm_name, name_locked)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO saves (fingerprint, slot, created_at, last_active, state, state_version, coins, lifetime_earnings, rebirths, farm_name, name_locked)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (fingerprint, slot) DO NOTHING`,
-		fingerprint, slot, createdAt, lastActive, state, stateVersion, coins, farmName, locked)
+		fingerprint, slot, createdAt, lastActive, state, stateVersion, coins, lifetimeEarnings, rebirths, farmName, locked)
 	if err != nil {
 		return fmt.Errorf("store: insert save: %w", err)
 	}
@@ -522,22 +529,26 @@ func (st *Store) GateRename(ctx context.Context, fingerprint, slot string, now i
 type LeaderboardRow struct {
 	Fingerprint string
 	Slot        string
-	Coins       int64
-	FarmName    string
-	UpdatedAt   int64 // last_active: when this row's coins were last confirmed accurate
+	// Coins is the amount ranked and displayed on the board: lifetime coin
+	// earnings (the lifetime_earnings column), which only ever grows —
+	// never the save's current spendable balance, which rebirth resets.
+	Coins     int64
+	Rebirths  int64
+	FarmName  string
+	UpdatedAt int64 // last_active: when this row was last confirmed accurate
 }
 
 // LeaderboardSnapshot returns every save's denormalized board columns,
-// ordered coins DESC, last_active ASC, fingerprint ASC — gameplay/02's
-// competition-ranking tie-break ("first to the money shows first"). The
-// leaderboard engine is the only intended caller; it holds the result in
-// memory and rebuilds on its own TTL rather than querying per request (see
-// docs/gameplay/02 "Caching").
+// ordered by lifetime coin earnings DESC, last_active ASC, fingerprint ASC
+// — gameplay/02's competition-ranking tie-break ("first to the money shows
+// first"). The leaderboard engine is the only intended caller; it holds the
+// result in memory and rebuilds on its own TTL rather than querying per
+// request (see docs/gameplay/02 "Caching").
 func (st *Store) LeaderboardSnapshot(ctx context.Context) ([]LeaderboardRow, error) {
 	rows, err := st.db.QueryContext(ctx, `
-		SELECT fingerprint, slot, coins, farm_name, last_active
+		SELECT fingerprint, slot, lifetime_earnings, rebirths, farm_name, last_active
 		FROM saves
-		ORDER BY coins DESC, last_active ASC, fingerprint ASC`)
+		ORDER BY lifetime_earnings DESC, last_active ASC, fingerprint ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("store: leaderboard snapshot: %w", err)
 	}
@@ -545,7 +556,7 @@ func (st *Store) LeaderboardSnapshot(ctx context.Context) ([]LeaderboardRow, err
 	var out []LeaderboardRow
 	for rows.Next() {
 		var r LeaderboardRow
-		if err := rows.Scan(&r.Fingerprint, &r.Slot, &r.Coins, &r.FarmName, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.Fingerprint, &r.Slot, &r.Coins, &r.Rebirths, &r.FarmName, &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("store: leaderboard snapshot: %w", err)
 		}
 		out = append(out, r)

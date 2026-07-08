@@ -62,6 +62,14 @@ func row(fp string, coins, updatedAt int64, name string) store.LeaderboardRow {
 	return store.LeaderboardRow{Fingerprint: fp, Slot: "farm", Coins: coins, FarmName: name, UpdatedAt: updatedAt}
 }
 
+// rowWithRebirths is row plus an explicit rebirth count, for the tests that
+// specifically care about that field.
+func rowWithRebirths(fp string, coins, updatedAt int64, name string, rebirths int64) store.LeaderboardRow {
+	r := row(fp, coins, updatedAt, name)
+	r.Rebirths = rebirths
+	return r
+}
+
 // ref is shorthand for a SaveRef into the default "farm" slot used by row().
 func ref(fp string) SaveRef { return SaveRef{Fingerprint: fp, Slot: "farm"} }
 
@@ -369,6 +377,35 @@ func TestCacheHonorsTTLWithInjectedClock(t *testing.T) {
 	}
 }
 
+// TestRebirthsFlowThroughToTopAndYou proves each row's rebirth count
+// survives the engine's ranking/filtering pipeline unchanged, both in Top
+// and in You — the source-side counterpart to tui's board rendering test.
+func TestRebirthsFlowThroughToTopAndYou(t *testing.T) {
+	clock := newFakeClock()
+	src := &fakeSource{rows: []store.LeaderboardRow{
+		rowWithRebirths("A", 500, clock.now().Unix(), "A", 7),
+		rowWithRebirths("B", 400, clock.now().Unix(), "B", 0),
+	}}
+	eng := New(src, time.Minute, 0, 1, clock.now)
+
+	board, err := eng.Get(context.Background(), ref("B"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(board.Top) != 2 {
+		t.Fatalf("len(Top) = %d, want 2", len(board.Top))
+	}
+	if board.Top[0].Rebirths != 7 {
+		t.Fatalf("Top[0].Rebirths = %d, want 7", board.Top[0].Rebirths)
+	}
+	if board.Top[1].Rebirths != 0 {
+		t.Fatalf("Top[1].Rebirths = %d, want 0", board.Top[1].Rebirths)
+	}
+	if board.You == nil || board.You.Rebirths != 0 {
+		t.Fatalf("You.Rebirths = %+v, want 0", board.You)
+	}
+}
+
 func TestDeniedNameIsMaskedAtRenderTimeNotEmpty(t *testing.T) {
 	// "moderation" content is loaded from the real embedded denylist, so
 	// this test only asserts the *shape* of the masking (a non-empty,
@@ -425,13 +462,13 @@ func TestSaveFlushMovesBoardAfterRebuild(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 
-	seed := func(fp string, coins int64, name string) {
+	seed := func(fp string, lifetimeCoins int64, name string) {
 		t.Helper()
 		if err := st.TouchAccount(ctx, fp, "k", 1); err != nil {
 			t.Fatal(err)
 		}
 		if _, _, err := st.LoadOrCreateSave(ctx, fp, "farm", 1, func() (store.FreshSave, error) {
-			return store.FreshSave{State: []byte("blob"), Version: 2, Coins: coins, FarmName: name}, nil
+			return store.FreshSave{State: []byte("blob"), Version: 2, Coins: lifetimeCoins, LifetimeEarnings: lifetimeCoins, FarmName: name}, nil
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -450,8 +487,10 @@ func TestSaveFlushMovesBoardAfterRebuild(t *testing.T) {
 		t.Fatalf("initial rank = %+v, want rank 2", board.You)
 	}
 
-	// Simulate the actor's autosave flush overtaking Bravo.
-	if err := st.PersistSave(ctx, "SHA256:a", "farm", []byte("blob"), 4, clock.now().Unix(), 1_000, "Alpha"); err != nil {
+	// Simulate the actor's autosave flush overtaking Bravo on lifetime
+	// coins (the ranked metric), even though a lower "current balance"
+	// (2nd PersistSave coins arg) demonstrates rank does not follow it.
+	if err := st.PersistSave(ctx, "SHA256:a", "farm", []byte("blob"), 4, clock.now().Unix(), 1, 1_000, 3, "Alpha"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -470,6 +509,9 @@ func TestSaveFlushMovesBoardAfterRebuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	if board.You.Rank != 1 {
-		t.Fatalf("rank after flush + rebuild = %d, want 1", board.You.Rank)
+		t.Fatalf("rank after flush + rebuild = %d, want 1 (lifetime coins overtook Bravo despite a low current balance)", board.You.Rank)
+	}
+	if board.You.Rebirths != 3 {
+		t.Fatalf("You.Rebirths after flush + rebuild = %d, want 3", board.You.Rebirths)
 	}
 }

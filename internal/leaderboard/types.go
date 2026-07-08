@@ -1,13 +1,13 @@
-// Package leaderboard ranks every farm by coin balance and answers the
-// three questions the board UI needs: where am I ("#13/261"), who's on top
-// (the top list), and who's near me (a window around my rank). See
-// docs/gameplay/02-leaderboard-engine.md.
+// Package leaderboard ranks every farm by lifetime coin earnings and
+// answers the three questions the board UI needs: where am I ("#13/261"),
+// who's on top (the top list), and who's near me (a window around my
+// rank). See docs/gameplay/02-leaderboard-engine.md.
 //
-// All reads come from the store's denormalized coins/farm_name columns —
-// never from decoding the state blob, never from sim state (see
-// internal/store's package doc: the actor writes those columns in the same
-// transaction as the blob, so they can never disagree with it, just lag it
-// by at most one autosave interval).
+// All reads come from the store's denormalized lifetime_earnings/rebirths/
+// farm_name columns — never from decoding the state blob, never from sim
+// state (see internal/store's package doc: the actor writes those columns
+// in the same transaction as the blob, so they can never disagree with it,
+// just lag it by at most one autosave interval).
 package leaderboard
 
 // SaveRef identifies one save for lookup in a Board — the same
@@ -31,7 +31,12 @@ type Row struct {
 	// Suffix is the 5-character fingerprint suffix, always shown alongside
 	// DisplayName to disambiguate same-named farms.
 	Suffix string
-	Coins  int64
+	// Coins is lifetime coin earnings, not the save's current spendable
+	// balance (rebirth resets the balance but never this figure) — the
+	// metric the board ranks and displays.
+	Coins int64
+	// Rebirths is the save's permanent rebirth count, shown alongside Coins.
+	Rebirths int64
 	// IsYou marks the row matching the SaveRef passed to Get.
 	IsYou bool
 }

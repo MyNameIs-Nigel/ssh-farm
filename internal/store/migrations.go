@@ -51,6 +51,22 @@ var migrations = []string{
 	`ALTER TABLE saves ADD COLUMN rename_last_at INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE saves ADD COLUMN rename_day_start INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE saves ADD COLUMN rename_day_count INTEGER NOT NULL DEFAULT 0;`,
+
+	// v4: the leaderboard now ranks and displays lifetime coin earnings and
+	// rebirth count instead of the current spendable balance (gameplay/02's
+	// "cross-game or lifetime-earnings boards" TODO). Unlike v2's
+	// coins/farm_name (which needed a Go-side boot-time reconcile pass for
+	// legacy rows), every row reaching this migration already carries a
+	// valid-JSON state blob written by this same package, so the backfill
+	// runs inline here via json_extract — json_valid guards a still
+	// undecodable blob to 0 rather than aborting the migration (mirrors
+	// ReconcileDenormalized's per-row tolerance, see internal/game/reconcile.go).
+	`ALTER TABLE saves ADD COLUMN lifetime_earnings INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE saves ADD COLUMN rebirths INTEGER NOT NULL DEFAULT 0;
+	UPDATE saves SET
+		lifetime_earnings = CASE WHEN json_valid(state) THEN COALESCE(json_extract(state, '$.lifetime_earnings'), 0) ELSE 0 END,
+		rebirths = CASE WHEN json_valid(state) THEN COALESCE(json_extract(state, '$.rebirths'), 0) ELSE 0 END;
+	CREATE INDEX idx_saves_lifetime_earnings ON saves (lifetime_earnings DESC);`,
 }
 
 func (st *Store) migrate(ctx context.Context) error {

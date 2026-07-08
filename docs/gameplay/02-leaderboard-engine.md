@@ -6,16 +6,18 @@ tui/02
 
 ## Goal
 
-Rank every farm in the world by coins and answer three questions fast and
-consistently: *where am I* (`#13/261`), *who's on top* (the list), and
-*who's near me* (the window). All reads come from the denormalized store
-columns — never from decoding blobs, never from sim state.
+Rank every farm in the world by lifetime coin earnings and answer three
+questions fast and consistently: *where am I* (`#13/261`), *who's on top*
+(the list), and *who's near me* (the window). All reads come from the
+denormalized store columns — never from decoding blobs, never from sim
+state.
 
 ## References
 
 | Source | Role |
 | --- | --- |
 | framework/02 migration 002 | `coins`, `farm_name`, `name_locked` columns + `idx_saves_coins` |
+| migration 004 | `lifetime_earnings`, `rebirths` columns + `idx_saves_lifetime_earnings` — the board's ranked metric moved here from `coins` (current balance) |
 | gameplay/03 | render-time name filtering + suffix format |
 | tui/02 | the consumer |
 
@@ -37,20 +39,30 @@ columns — never from decoding blobs, never from sim state.
 
 ### Ranking rules
 
-- **Metric**: current coin balance (see gameplay/01's note — rebirth
-  resets are intended).
-- **Rank** = `1 + COUNT(saves WHERE coins > mine)` — standard competition
-  ranking ("1224"): ties share a rank, next rank skips. Deterministic
-  display order for ties: `coins DESC, updated_at ASC, fingerprint ASC`
-  (first to the money shows first).
+- **Metric**: lifetime coin earnings (`lifetime_earnings`) — monotonically
+  increasing, unlike the current spendable balance, which rebirth resets
+  (see gameplay/01's note). This was originally scoped as a "cross-game or
+  lifetime-earnings boards" TODO (below); it shipped as the board's primary
+  metric once rebirth made "current balance" a poor proxy for a farm's
+  overall progress — a farm mid-rebirth-reset would otherwise vanish from
+  the board despite having earned more than anyone.
+- **Rank** = `1 + COUNT(saves WHERE lifetime_earnings > mine)` — standard
+  competition ranking ("1224"): ties share a rank, next rank skips.
+  Deterministic display order for ties: `lifetime_earnings DESC,
+  updated_at ASC, fingerprint ASC` (first to the money shows first).
+- **Rebirths**: each row also carries the save's permanent rebirth count
+  (`rebirths`), shown alongside the coin total — informational, not part
+  of the sort key.
 - **Population**: every save counts, **per save** (a player with two slots
   legitimately has two farms on the board — each shows its own name +
   suffix). Two filters, both from `balance.toml`-style config
   (`FARM_LEADERBOARD_*` env or content file — pick one, document):
   - activity window: `updated_at > now − 90d` (dormant farms age off the
     board; keeps `#/total` meaningful as years pass);
-  - floor: `coins ≥ 1` (a brand-new empty farm isn't "ranked last", it's
-    unranked — the UI shows `UNRANKED — earn your first coin`).
+  - floor: `lifetime_earnings ≥ 1` (a brand-new farm isn't "ranked last",
+    it's unranked — the UI shows `UNRANKED — earn your first coin` — even
+    though it may already hold a nonzero starting balance, since that
+    balance was granted, not earned).
 
 ### Engine API (consumed by tui/02)
 
@@ -59,7 +71,8 @@ type Row struct {
     Rank        int
     DisplayName string // moderated name; empty → "FARM ·suffix" fallback (gameplay/03)
     Suffix      string // 5-char fingerprint suffix, always shown
-    Coins       int64
+    Coins       int64  // lifetime coin earnings, not current balance
+    Rebirths    int64
     IsYou       bool
 }
 type Board struct {
@@ -110,4 +123,5 @@ Get(ctx, you SaveRef) (Board, error)
 ## Out of scope
 
 - Screen rendering → tui/02. Name rules/filter → gameplay/03.
-- Cross-game or lifetime-earnings boards → TODOs.
+- Cross-game boards → TODO (lifetime-earnings-per-save is now in scope, see
+  "Ranking rules" above).

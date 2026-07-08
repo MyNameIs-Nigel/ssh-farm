@@ -25,11 +25,12 @@ import (
 // board screen (key "7", tui/02) to confirm the new rank is shown.
 //
 // A second, pre-seeded "leader" farm gives the scenario a rank to actually
-// move across: a fresh farm starts with some baseline coin balance (an
-// implementation detail of internal/sim this test doesn't depend on
-// exactly), so the leader is seeded far above any plausible starting
-// balance — "ranker" starts behind it (#2/2) and overtakes it (#1/2) once
-// its coins are bumped, rather than asserting an exact starting rank.
+// move across: a fresh farm starts with zero lifetime earnings (the board's
+// ranked metric, gameplay/02 — distinct from its starting spendable
+// balance), so it starts UNRANKED, below the coin floor — a fresh save has
+// a starting balance but hasn't "earned" anything yet. "ranker" only enters
+// the board (#1/2, ahead of the leader) once its lifetime earnings are
+// bumped past the leader's seeded total.
 func TestLeaderboardShowsNewRankAfterReconnect(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "farm.db")
@@ -52,18 +53,18 @@ func TestLeaderboardShowsNewRankAfterReconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, _, err := st.LoadOrCreateSave(context.Background(), "SHA256:leader", "leader", time.Now().Unix(), func() (store.FreshSave, error) {
-		return store.FreshSave{State: []byte("blob"), Version: 1, Coins: 1_000_000, FarmName: "Leader"}, nil
+		return store.FreshSave{State: []byte("blob"), Version: 1, Coins: 1_000_000, LifetimeEarnings: 1_000_000, FarmName: "Leader"}, nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	_ = st.Close()
 
 	// First connection: attach (creating the "ranker" save) and open the
-	// board. Whatever its starting balance, it must sit behind the
-	// pre-seeded leader.
+	// board. A fresh save has zero lifetime earnings, below the coin floor,
+	// so it starts unranked regardless of its starting spendable balance.
 	first := connectAndOpenBoard(t, addr, "ranker", signer)
-	if !strings.Contains(first, "YOU: #2/2") {
-		t.Fatalf("expected YOU: #2/2 (behind the seeded leader), got:\n%s", first)
+	if !strings.Contains(first, "YOU: UNRANKED") {
+		t.Fatalf("expected YOU: UNRANKED (zero lifetime earnings), got:\n%s", first)
 	}
 
 	// connectAndOpenBoard closing its client only tears down the local
@@ -77,8 +78,8 @@ func TestLeaderboardShowsNewRankAfterReconnect(t *testing.T) {
 	// identical fix in TestProxiedOfflineCatchUp).
 	time.Sleep(500 * time.Millisecond)
 
-	// Earn coins: write directly through the store, the same durable path
-	// the game actor's autosave/detach flush uses.
+	// Earn lifetime coins: write directly through the store, the same
+	// durable path the game actor's autosave/detach flush uses.
 	st, err = store.Open(context.Background(), dbPath)
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +92,7 @@ func TestLeaderboardShowsNewRankAfterReconnect(t *testing.T) {
 	if err != nil || created {
 		t.Fatalf("load save: created=%v err=%v", created, err)
 	}
-	if err := st.PersistSave(context.Background(), fp, "ranker", row.State, row.StateVersion, time.Now().Unix(), 2_000_000, "Sunny Hollow"); err != nil {
+	if err := st.PersistSave(context.Background(), fp, "ranker", row.State, row.StateVersion, time.Now().Unix(), 2_000_000, 2_000_000, 0, "Sunny Hollow"); err != nil {
 		t.Fatal(err)
 	}
 	_ = st.Close()

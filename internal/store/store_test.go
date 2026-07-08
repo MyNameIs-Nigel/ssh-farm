@@ -95,7 +95,7 @@ func TestSaveLifecycleAndOwnershipIsolation(t *testing.T) {
 	}
 
 	// Mutate A's save; B's must be untouched, and reload returns the new state.
-	if err := st.PersistSave(ctx, "SHA256:keyA", "farm", []byte("stateA2"), 2, 30, 500, "Sunny Hollow"); err != nil {
+	if err := st.PersistSave(ctx, "SHA256:keyA", "farm", []byte("stateA2"), 2, 30, 500, 500, 0, "Sunny Hollow"); err != nil {
 		t.Fatal(err)
 	}
 	rowA2, created, err := st.LoadOrCreateSave(ctx, "SHA256:keyA", "farm", 40, freshPayload("WRONG", 0, ""))
@@ -135,7 +135,7 @@ func TestSaveLifecycleAndOwnershipIsolation(t *testing.T) {
 
 func TestPersistRequiresExistingRow(t *testing.T) {
 	st := openTest(t)
-	err := st.PersistSave(context.Background(), "SHA256:ghost", "farm", []byte("x"), 2, 1, 0, "")
+	err := st.PersistSave(context.Background(), "SHA256:ghost", "farm", []byte("x"), 2, 1, 0, 0, 0, "")
 	if err == nil {
 		t.Fatal("persisting a nonexistent save must fail, not create rows")
 	}
@@ -150,7 +150,7 @@ func TestHostileSlotAndFingerprintRejected(t *testing.T) {
 		if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:k", slot, 1, freshPayload("x", 0, "")); !errors.Is(err, ErrInvalidKey) {
 			t.Fatalf("slot %q: expected ErrInvalidKey, got %v", slot, err)
 		}
-		if err := st.PersistSave(ctx, "SHA256:k", slot, []byte("x"), 2, 1, 0, ""); !errors.Is(err, ErrInvalidKey) {
+		if err := st.PersistSave(ctx, "SHA256:k", slot, []byte("x"), 2, 1, 0, 0, 0, ""); !errors.Is(err, ErrInvalidKey) {
 			t.Fatalf("persist slot %q: expected ErrInvalidKey, got %v", slot, err)
 		}
 	}
@@ -174,7 +174,7 @@ func TestStateSurvivesReopen(t *testing.T) {
 	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:k", "farm", 1, freshPayload("before", 0, "")); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.PersistSave(ctx, "SHA256:k", "farm", []byte("after"), 2, 99, 200, "Northfield"); err != nil {
+	if err := st.PersistSave(ctx, "SHA256:k", "farm", []byte("after"), 2, 99, 200, 300, 1, "Northfield"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Close(); err != nil {
@@ -195,6 +195,9 @@ func TestStateSurvivesReopen(t *testing.T) {
 	}
 	if row.Coins != 200 || row.FarmName != "Northfield" {
 		t.Fatalf("denormalized columns lost across restart: coins=%d name=%q", row.Coins, row.FarmName)
+	}
+	if row.LifetimeEarnings != 300 || row.Rebirths != 1 {
+		t.Fatalf("lifetime_earnings/rebirths lost across restart: lifetime=%d rebirths=%d", row.LifetimeEarnings, row.Rebirths)
 	}
 }
 
@@ -252,6 +255,13 @@ func TestMigrationUpgradesV1Database(t *testing.T) {
 		t.Fatalf("migration 002 should default new columns to zero values, got coins=%d name=%q locked=%v",
 			row.Coins, row.FarmName, row.NameLocked)
 	}
+	// The v1-shape blob ("v1state") is not valid JSON, so migration 004's
+	// inline json_extract backfill must fall back to zero rather than
+	// aborting the whole migration (see migrations.go's json_valid guard).
+	if row.LifetimeEarnings != 0 || row.Rebirths != 0 {
+		t.Fatalf("migration 004 should default an undecodable blob's new columns to zero, got lifetime=%d rebirths=%d",
+			row.LifetimeEarnings, row.Rebirths)
+	}
 
 	// Re-opening is idempotent: no migration reruns, no errors.
 	if err := st.Close(); err != nil {
@@ -262,6 +272,62 @@ func TestMigrationUpgradesV1Database(t *testing.T) {
 		t.Fatalf("reopen after migration failed: %v", err)
 	}
 	_ = st2.Close()
+}
+
+// TestMigrationBackfillsLifetimeEarningsAndRebirthsFromBlob proves migration
+// 004's inline json_extract backfill (unlike v2's coins/farm_name, there is
+// no Go-side boot-time reconcile pass for these columns — see migrations.go)
+// picks up real values already sitting in an existing row's JSON state blob
+// when upgrading a pre-004 database, rather than leaving them stuck at the
+// new columns' zero default.
+func TestMigrationBackfillsLifetimeEarningsAndRebirthsFromBlob(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pre-v4.db")
+	ctx := context.Background()
+
+	db, err := sql.Open("sqlite", "file:"+url.PathEscape(path)+"?_pragma=journal_mode(WAL)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range migrations[:3] { // v1-v3: everything before the lifetime-coins columns
+		if _, err := db.Exec(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec("PRAGMA user_version = 3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		"INSERT INTO accounts (fingerprint, public_key, first_seen, last_seen) VALUES ('SHA256:veteran', 'k', 1, 1)"); err != nil {
+		t.Fatal(err)
+	}
+	blob := `{"version":4,"coins":10,"lifetime_earnings":4200,"rebirths":6,"farm_name":"Veteran Farm"}`
+	if _, err := db.Exec(
+		`INSERT INTO saves (fingerprint, slot, created_at, last_active, state, state_version, coins, farm_name)
+		 VALUES ('SHA256:veteran', 'farm', 1, 2, ?, 4, 10, 'Veteran Farm')`,
+		blob); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := Open(ctx, path)
+	if err != nil {
+		t.Fatalf("migrating a pre-004 database failed: %v", err)
+	}
+	defer st.Close()
+
+	row, created, err := st.LoadOrCreateSave(ctx, "SHA256:veteran", "farm", 100, freshPayload("WRONG", 0, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created {
+		t.Fatal("migration destroyed an existing save")
+	}
+	if row.LifetimeEarnings != 4200 || row.Rebirths != 6 {
+		t.Fatalf("migration 004 should backfill from the blob, got lifetime=%d rebirths=%d", row.LifetimeEarnings, row.Rebirths)
+	}
 }
 
 func TestNewerSchemaRefused(t *testing.T) {
@@ -294,6 +360,18 @@ func TestCoinsIndexExists(t *testing.T) {
 	}
 }
 
+// TestLifetimeEarningsIndexExists proves migration 004 leaves an index
+// LeaderboardSnapshot's new lifetime_earnings ordering can rely on.
+func TestLifetimeEarningsIndexExists(t *testing.T) {
+	st := openTest(t)
+	var name string
+	err := st.db.QueryRow(
+		"SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_saves_lifetime_earnings'").Scan(&name)
+	if err != nil {
+		t.Fatalf("idx_saves_lifetime_earnings missing: %v", err)
+	}
+}
+
 // TestPersistSaveIsAtomic proves the blob and its denormalized columns can
 // never disagree: a transaction that fails to commit leaves both the old
 // blob and the old columns in place, never a partial update of one but not
@@ -317,9 +395,9 @@ func TestPersistSaveIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE saves SET state = ?, state_version = ?, last_active = ?, coins = ?, farm_name = ?
+		UPDATE saves SET state = ?, state_version = ?, last_active = ?, coins = ?, lifetime_earnings = ?, rebirths = ?, farm_name = ?
 		WHERE fingerprint = ? AND slot = ?`,
-		[]byte("new-blob"), 3, 999, 9999, "Hijacked", "SHA256:k", "farm"); err != nil {
+		[]byte("new-blob"), 3, 999, 9999, 9999, 1, "Hijacked", "SHA256:k", "farm"); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Rollback(); err != nil {
@@ -334,9 +412,12 @@ func TestPersistSaveIsAtomic(t *testing.T) {
 		t.Fatalf("rollback left a partial update: state=%s coins=%d name=%q",
 			row.State, row.Coins, row.FarmName)
 	}
+	if row.LifetimeEarnings != 0 || row.Rebirths != 0 {
+		t.Fatalf("rollback left a partial update on the new columns: lifetime=%d rebirths=%d", row.LifetimeEarnings, row.Rebirths)
+	}
 
 	// The real PersistSave, run to completion, updates everything together.
-	if err := st.PersistSave(ctx, "SHA256:k", "farm", []byte("new-blob"), 3, 999, 9999, "New Name"); err != nil {
+	if err := st.PersistSave(ctx, "SHA256:k", "farm", []byte("new-blob"), 3, 999, 9999, 9999, 1, "New Name"); err != nil {
 		t.Fatal(err)
 	}
 	row, _, err = st.LoadOrCreateSave(ctx, "SHA256:k", "farm", 1, freshPayload("WRONG", 0, ""))
@@ -346,6 +427,9 @@ func TestPersistSaveIsAtomic(t *testing.T) {
 	if string(row.State) != "new-blob" || row.Coins != 9999 || row.FarmName != "New Name" {
 		t.Fatalf("committed persist did not apply both blob and columns: state=%s coins=%d name=%q",
 			row.State, row.Coins, row.FarmName)
+	}
+	if row.LifetimeEarnings != 9999 || row.Rebirths != 1 {
+		t.Fatalf("committed persist did not apply lifetime_earnings/rebirths: lifetime=%d rebirths=%d", row.LifetimeEarnings, row.Rebirths)
 	}
 }
 
@@ -376,7 +460,7 @@ func TestNeedingBackfillAndBackfillDenormalized(t *testing.T) {
 		t.Fatalf("needing backfill = %+v, want exactly SHA256:a's row", pending)
 	}
 
-	if err := st.BackfillDenormalized(ctx, "SHA256:a", "farm", 77, "Backfilled"); err != nil {
+	if err := st.BackfillDenormalized(ctx, "SHA256:a", "farm", 77, 88, 9, "Backfilled"); err != nil {
 		t.Fatal(err)
 	}
 	pending, err = st.NeedingBackfill(ctx)
@@ -393,6 +477,9 @@ func TestNeedingBackfillAndBackfillDenormalized(t *testing.T) {
 	}
 	if row.Coins != 77 || row.FarmName != "Backfilled" || string(row.State) != "blobA" {
 		t.Fatalf("backfill should only touch denormalized columns, got %+v", row)
+	}
+	if row.LifetimeEarnings != 88 || row.Rebirths != 9 {
+		t.Fatalf("backfill did not set lifetime_earnings/rebirths, got %+v", row)
 	}
 }
 
@@ -412,7 +499,7 @@ func TestImportHelpers(t *testing.T) {
 	if err := st.TouchAccount(ctx, "SHA256:x", "k", 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.InsertSave(ctx, "SHA256:x", "farm", []byte("imported"), 4, 5, 6, 100, "Imported Farm", true); err != nil {
+	if err := st.InsertSave(ctx, "SHA256:x", "farm", []byte("imported"), 4, 5, 6, 100, 150, 3, "Imported Farm", true); err != nil {
 		t.Fatal(err)
 	}
 	n, err = st.CountSaves(ctx)
@@ -423,13 +510,16 @@ func TestImportHelpers(t *testing.T) {
 	if err != nil || !has {
 		t.Fatalf("has = %v, err = %v, want true", has, err)
 	}
-	if err := st.InsertSave(ctx, "SHA256:x", "farm", []byte("dup"), 4, 5, 6, 1, "", false); err == nil {
+	if err := st.InsertSave(ctx, "SHA256:x", "farm", []byte("dup"), 4, 5, 6, 1, 1, 0, "", false); err == nil {
 		t.Fatal("expected collision error inserting over an existing row")
 	}
 
 	row, _, err := st.LoadOrCreateSave(ctx, "SHA256:x", "farm", 1, freshPayload("WRONG", 0, ""))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if row.LifetimeEarnings != 150 || row.Rebirths != 3 {
+		t.Fatalf("imported row's lifetime_earnings/rebirths = %d/%d, want 150/3", row.LifetimeEarnings, row.Rebirths)
 	}
 	if !row.NameLocked {
 		t.Fatal("imported row should carry name_locked=true")
@@ -602,11 +692,11 @@ func TestGateRenameCountersSurviveReopen(t *testing.T) {
 	}
 }
 
-func TestLeaderboardSnapshotOrdersByCoinsThenActivityThenFingerprint(t *testing.T) {
+func TestLeaderboardSnapshotOrdersByLifetimeCoinsThenActivityThenFingerprint(t *testing.T) {
 	st := openTest(t)
 	ctx := context.Background()
 
-	seed := func(fp string, coins, lastActive int64, name string) {
+	seed := func(fp string, coins, lifetimeCoins, rebirths, lastActive int64, name string) {
 		t.Helper()
 		if err := st.TouchAccount(ctx, fp, "k", 1); err != nil {
 			t.Fatal(err)
@@ -614,30 +704,51 @@ func TestLeaderboardSnapshotOrdersByCoinsThenActivityThenFingerprint(t *testing.
 		if _, _, err := st.LoadOrCreateSave(ctx, fp, "farm", 1, freshPayload("blob", coins, name)); err != nil {
 			t.Fatal(err)
 		}
-		if err := st.PersistSave(ctx, fp, "farm", []byte("blob"), 4, lastActive, coins, name); err != nil {
+		if err := st.PersistSave(ctx, fp, "farm", []byte("blob"), 4, lastActive, coins, lifetimeCoins, rebirths, name); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	// Two saves tie on coins (100): "SHA256:b" reached it first
+	// Two saves tie on lifetime coins (100): "SHA256:b" reached it first
 	// (lastActive=5) so it must rank above "SHA256:a" (lastActive=9).
-	seed("SHA256:a", 100, 9, "Tie A")
-	seed("SHA256:b", 100, 5, "Tie B")
-	seed("SHA256:z", 500, 1, "Leader")
-	seed("SHA256:c", 0, 1, "")
+	seed("SHA256:a", 100, 100, 0, 9, "Tie A")
+	seed("SHA256:b", 100, 100, 1, 5, "Tie B")
+	// A low current balance (10) must not matter: lifetime coins (500) is
+	// what ranks this save first.
+	seed("SHA256:z", 10, 500, 2, 1, "Leader")
+	seed("SHA256:c", 0, 0, 0, 1, "")
+	// Conversely, a big current balance (9,000, higher than every other
+	// row) must not help: this save has spent almost everything it ever
+	// earned, so its lifetime total (50) ranks it above only the zero row.
+	seed("SHA256:spender", 9_000, 50, 9, 1, "Big Spender")
 
 	rows, err := st.LeaderboardSnapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 4 {
-		t.Fatalf("got %d rows, want 4", len(rows))
+	if len(rows) != 5 {
+		t.Fatalf("got %d rows, want 5", len(rows))
 	}
-	want := []string{"SHA256:z", "SHA256:b", "SHA256:a", "SHA256:c"}
+	want := []string{"SHA256:z", "SHA256:b", "SHA256:a", "SHA256:spender", "SHA256:c"}
 	for i, w := range want {
 		if rows[i].Fingerprint != w {
 			t.Fatalf("row %d = %s, want %s (order: %+v)", i, rows[i].Fingerprint, w, rows)
 		}
+	}
+	if rows[0].Coins != 500 {
+		t.Fatalf("leader's board Coins = %d, want 500 (lifetime earnings, not the 10 current balance)", rows[0].Coins)
+	}
+	var spender LeaderboardRow
+	for _, r := range rows {
+		if r.Fingerprint == "SHA256:spender" {
+			spender = r
+		}
+	}
+	if spender.Coins != 50 {
+		t.Fatalf("big spender's board Coins = %d, want 50 (lifetime earnings, not the 9000 current balance)", spender.Coins)
+	}
+	if spender.Rebirths != 9 {
+		t.Fatalf("big spender's Rebirths = %d, want 9", spender.Rebirths)
 	}
 }
 
