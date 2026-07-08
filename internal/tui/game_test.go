@@ -419,7 +419,7 @@ func TestRebirthPreviewConfirmAndReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.st.PersistSave(context.Background(), f.id.Fingerprint, f.id.Slot, payload, st.Version, base, st.Coins, st.FarmName); err != nil {
+	if err := f.st.PersistSave(context.Background(), f.id.Fingerprint, f.id.Slot, payload, st.Version, base, st.Coins, st.LifetimeEarnings, st.Rebirths, st.FarmName); err != nil {
 		t.Fatal(err)
 	}
 

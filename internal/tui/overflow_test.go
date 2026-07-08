@@ -70,12 +70,12 @@ func TestScreenBodiesFitContentWidth(t *testing.T) {
 var errBoardUnavailable = errors.New("board fixture: store unavailable")
 
 // wideBoardFixture stresses boardRowLine's alignSides layout with the
-// longest names moderation.MaxNameLen allows and the biggest coin totals
-// money() formats, top-3 accent styling, and a full Top+window with You
-// outside Top so the divider renders too.
+// longest names moderation.MaxNameLen allows, the biggest coin totals
+// money() formats, a three-digit rebirth count, top-3 accent styling, and a
+// full Top+window with You outside Top so the divider renders too.
 func wideBoardFixture() leaderboard.Board {
 	row := func(rank int, name string, coins int64, isYou bool) leaderboard.Row {
-		return leaderboard.Row{Rank: rank, DisplayName: name, Suffix: "wX9zK", Coins: coins, IsYou: isYou}
+		return leaderboard.Row{Rank: rank, DisplayName: name, Suffix: "wX9zK", Coins: coins, Rebirths: 999, IsYou: isYou}
 	}
 	top := make([]leaderboard.Row, 10)
 	for i := range top {

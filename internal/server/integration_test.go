@@ -109,7 +109,7 @@ func TestProxiedOfflineCatchUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.PersistSave(context.Background(), fp, "catchup", payload, state.Version, back, state.Coins, state.FarmName); err != nil {
+	if err := st.PersistSave(context.Background(), fp, "catchup", payload, state.Version, back, state.Coins, state.LifetimeEarnings, state.Rebirths, state.FarmName); err != nil {
 		t.Fatal(err)
 	}
 	_ = st.Close()

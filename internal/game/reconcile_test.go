@@ -25,14 +25,16 @@ func TestReconcileDenormalizedBackfillsAndIsIdempotent(t *testing.T) {
 	}
 	logger := applog.New("error", "text")
 
-	// Build a real state with non-default coins/name, but insert it with
-	// zeroed denormalized columns — simulating a migration-002 upgrade or a
-	// pre-reconcile import-v1 write.
+	// Build a real state with non-default coins/name/lifetime earnings/
+	// rebirths, but insert it with zeroed denormalized columns — simulating
+	// a migration-002 upgrade or a pre-reconcile import-v1 write.
 	state := sim.New(c, 1, 1000)
 	if err := sim.SetFarmName(state, "Reconciled Acres"); err != nil {
 		t.Fatal(err)
 	}
 	state.Coins = 555
+	state.LifetimeEarnings = 4321
+	state.Rebirths = 2
 	payload, err := state.Encode()
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +42,7 @@ func TestReconcileDenormalizedBackfillsAndIsIdempotent(t *testing.T) {
 	if err := st.TouchAccount(ctx, "SHA256:reconcile", "k", 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.InsertSave(ctx, "SHA256:reconcile", "farm", payload, state.Version, 1, 1, 0, "", false); err != nil {
+	if err := st.InsertSave(ctx, "SHA256:reconcile", "farm", payload, state.Version, 1, 1, 0, 0, 0, "", false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -65,6 +67,9 @@ func TestReconcileDenormalizedBackfillsAndIsIdempotent(t *testing.T) {
 	}
 	if row.Coins != 555 || row.FarmName != "Reconciled Acres" {
 		t.Fatalf("reconcile did not backfill correctly: coins=%d name=%q", row.Coins, row.FarmName)
+	}
+	if row.LifetimeEarnings != 4321 || row.Rebirths != 2 {
+		t.Fatalf("reconcile did not backfill lifetime_earnings/rebirths: lifetime=%d rebirths=%d", row.LifetimeEarnings, row.Rebirths)
 	}
 
 	// Idempotent: nothing left pending, and a second run is a clean no-op.
@@ -93,7 +98,7 @@ func TestReconcileDenormalizedSkipsUndecodableBlobsWithoutFailing(t *testing.T) 
 	if err := st.TouchAccount(ctx, "SHA256:garbage", "k", 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.InsertSave(ctx, "SHA256:garbage", "farm", []byte("not json"), 2, 1, 1, 0, "", false); err != nil {
+	if err := st.InsertSave(ctx, "SHA256:garbage", "farm", []byte("not json"), 2, 1, 1, 0, 0, 0, "", false); err != nil {
 		t.Fatal(err)
 	}
 

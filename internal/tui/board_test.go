@@ -45,6 +45,14 @@ func boardRow(fp, name string, coins int64) store.LeaderboardRow {
 	return store.LeaderboardRow{Fingerprint: fp, Slot: "farm", Coins: coins, FarmName: name, UpdatedAt: time.Now().Unix()}
 }
 
+// boardRowWithRebirths is boardRow plus an explicit rebirth count, for the
+// tests that specifically care about that field.
+func boardRowWithRebirths(fp, name string, coins, rebirths int64) store.LeaderboardRow {
+	r := boardRow(fp, name, coins)
+	r.Rebirths = rebirths
+	return r
+}
+
 // newBoardGame wires a fresh Game to a leaderboard engine reading from src
 // (a long TTL, since these tests drive the game-level refresh throttle
 // directly rather than the engine's own caching — see engine_test.go for
@@ -79,6 +87,28 @@ func TestBoardEntryTriggersOneGetAndShowsRank(t *testing.T) {
 	}
 	if !strings.Contains(out, "TOP FARM") || !strings.Contains(out, "OTHER FARM") {
 		t.Fatalf("expected both farms listed, got:\n%s", out)
+	}
+}
+
+// TestBoardShowsRebirthCountAlongsideCoins is the direct regression for
+// gameplay/02's lifetime-coins-and-rebirths enhancement: each row's rebirth
+// count must render on the board next to its coin total.
+func TestBoardShowsRebirthCountAlongsideCoins(t *testing.T) {
+	f := newFixture(t)
+	base := time.Now().Unix()
+	src := &fakeBoardSource{rows: []store.LeaderboardRow{
+		boardRowWithRebirths(f.id.Fingerprint, "TOP FARM", 500, 12),
+		boardRowWithRebirths("SHA256:other", "OTHER FARM", 100, 0),
+	}}
+	g := f.newBoardGame(t, base, src, 0, 0)
+	g = press(t, g, "7")
+
+	out := view(g)
+	if !strings.Contains(out, "↻12") {
+		t.Fatalf("expected the top farm's rebirth count (↻12) on the board, got:\n%s", out)
+	}
+	if !strings.Contains(out, "↻0") {
+		t.Fatalf("expected a zero rebirth count (↻0) rendered too, got:\n%s", out)
 	}
 }
 

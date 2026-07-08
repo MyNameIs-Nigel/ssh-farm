@@ -127,6 +127,58 @@ func TestImportV1HappyPath(t *testing.T) {
 	}
 }
 
+// TestImportV1CarriesLifetimeEarningsAndRebirths proves the leaderboard's
+// lifetime-coins-and-rebirths fields ride along with coins/farm_name
+// through the import path, not just a freshly-created save's actor writes.
+func TestImportV1CarriesLifetimeEarningsAndRebirths(t *testing.T) {
+	c := testContent(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "v1.db")
+	dst := filepath.Join(dir, "v2.db")
+
+	st := sim.New(c, 1, 1000)
+	if err := sim.SetFarmName(st, "Veteran Farm"); err != nil {
+		t.Fatal(err)
+	}
+	st.Coins = 10
+	st.LifetimeEarnings = 987_654
+	st.Rebirths = 5
+	payload, err := st.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buildV1DB(t, src,
+		[]v1Account{{Fingerprint: "SHA256:a", PublicKey: "ka", FirstSeen: 10, LastSeen: 20}},
+		[]v1Save{{Fingerprint: "SHA256:a", Slot: "farm", CreatedAt: 10, LastActive: 20,
+			State: payload, StateVersion: 2}},
+	)
+
+	if err := doImportV1(context.Background(), discardLogger(), src, dst, false, false); err != nil {
+		t.Fatalf("import failed: %v", err)
+	}
+
+	dstStore, err := store.Open(context.Background(), dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dstStore.Close()
+
+	rows, err := dstStore.LeaderboardSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d leaderboard rows, want 1", len(rows))
+	}
+	if rows[0].Coins != 987_654 {
+		t.Fatalf("imported row's board coins (lifetime earnings) = %d, want 987654", rows[0].Coins)
+	}
+	if rows[0].Rebirths != 5 {
+		t.Fatalf("imported row's rebirths = %d, want 5", rows[0].Rebirths)
+	}
+}
+
 func TestImportV1FailsWhenSaveHasNoMatchingAccount(t *testing.T) {
 	c := testContent(t)
 	dir := t.TempDir()
@@ -194,7 +246,7 @@ func TestImportV1RefusesNonEmptyDestinationWithoutMerge(t *testing.T) {
 	if err := st.TouchAccount(context.Background(), "SHA256:existing", "k", 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.InsertSave(context.Background(), "SHA256:existing", "farm", []byte("{}"), 2, 1, 1, 0, "", false); err != nil {
+	if err := st.InsertSave(context.Background(), "SHA256:existing", "farm", []byte("{}"), 2, 1, 1, 0, 0, 0, "", false); err != nil {
 		t.Fatal(err)
 	}
 	st.Close()
@@ -230,7 +282,7 @@ func TestImportV1AbortsOnCollisionWithoutPartialWrites(t *testing.T) {
 	if err := st.TouchAccount(context.Background(), "SHA256:existing", "k2", 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.InsertSave(context.Background(), "SHA256:existing", "farm", []byte("{}"), 2, 1, 1, 0, "", false); err != nil {
+	if err := st.InsertSave(context.Background(), "SHA256:existing", "farm", []byte("{}"), 2, 1, 1, 0, 0, 0, "", false); err != nil {
 		t.Fatal(err)
 	}
 	st.Close()

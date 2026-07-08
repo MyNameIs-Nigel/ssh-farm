@@ -203,7 +203,7 @@ func doImportV1(ctx context.Context, logger *slog.Logger, from, dest string, dry
 				"fingerprint", truncateFingerprint(d.sv.Fingerprint), "slot", d.sv.Slot)
 		}
 		if err := dst.InsertSave(ctx, d.sv.Fingerprint, d.sv.Slot, d.sv.State, d.sv.StateVersion,
-			d.sv.CreatedAt, d.sv.LastActive, d.state.Coins, d.name, d.locked); err != nil {
+			d.sv.CreatedAt, d.sv.LastActive, d.state.Coins, d.state.LifetimeEarnings, d.state.Rebirths, d.name, d.locked); err != nil {
 			return fmt.Errorf("insert save %s/%s: %w", truncateFingerprint(d.sv.Fingerprint), d.sv.Slot, err)
 		}
 		imported++

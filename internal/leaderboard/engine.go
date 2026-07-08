@@ -132,7 +132,7 @@ func (e *Engine) snapshot(ctx context.Context) ([]rankedRow, int64, error) {
 
 // rebuild reads every save's board columns and returns them ranked,
 // already restricted to gameplay/02's population filters (activity
-// window + coin floor). Input rows are assumed sorted
+// window + lifetime-coin floor). Input rows are assumed sorted
 // coins DESC, last_active ASC, fingerprint ASC (Store.LeaderboardSnapshot's
 // contract) — filtering a sorted slice preserves that order, so ranking is
 // a single linear pass.
@@ -163,8 +163,8 @@ func (e *Engine) rebuild(ctx context.Context) ([]rankedRow, error) {
 	ranked := make([]rankedRow, len(filtered))
 	rank := 1
 	for i, r := range filtered {
-		// Standard "1224" competition ranking: a strictly-lower coin
-		// balance than the row immediately before starts a new rank at
+		// Standard "1224" competition ranking: strictly-lower lifetime
+		// coins than the row immediately before starts a new rank at
 		// this position; a tie inherits the same rank (skipping the
 		// intervening values entirely, since nothing has that rank).
 		if i > 0 && r.Coins < filtered[i-1].Coins {
@@ -251,6 +251,7 @@ func toRow(r rankedRow, you SaveRef) Row {
 		DisplayName: name,
 		Suffix:      moderation.Suffix(r.Fingerprint),
 		Coins:       r.Coins,
+		Rebirths:    r.Rebirths,
 		IsYou:       isYou(r, you),
 	}
 }

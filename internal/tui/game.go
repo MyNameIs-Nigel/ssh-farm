@@ -864,9 +864,11 @@ func (g *Game) boardLines(cw int) []boardLine {
 // row (rendered highlighted exactly once — Row.IsYou is only ever true for
 // the one row matching your fingerprint+slot, even amid coin ties), the
 // suffix always shown next to the name (gameplay/03's anti-impersonation
-// signal), and a tasteful gold/cyan/violet accent on the top 3 ranks.
-// rankWidth right-aligns the rank number to the widest rank in the current
-// Top+Window so "#1" and "#10" don't stagger the name column.
+// signal), the rebirth count ("↻N"), and a tasteful gold/cyan/violet accent
+// on the top 3 ranks. The right-aligned amount is lifetime coin earnings,
+// not the save's current spendable balance. rankWidth right-aligns the rank
+// number to the widest rank in the current Top+Window so "#1" and "#10"
+// don't stagger the name column.
 func (g *Game) boardRowLine(r leaderboard.Row, cw, rankWidth int) string {
 	name := r.DisplayName
 	if name == "" {
@@ -880,7 +882,7 @@ func (g *Game) boardRowLine(r leaderboard.Row, cw, rankWidth int) string {
 	if pad := rankWidth - len(rank); pad > 0 {
 		rank = strings.Repeat(" ", pad) + rank
 	}
-	left := marker + "#" + rank + "  " + sanitizeText(name) + " ·" + r.Suffix
+	left := marker + "#" + rank + "  " + sanitizeText(name) + " ·" + r.Suffix + " ↻" + money(r.Rebirths)
 	if r.IsYou {
 		left += "  ← YOU"
 	}

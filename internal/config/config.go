@@ -33,7 +33,7 @@ type Config struct {
 	// the board at all, independent of the in-process cache TTL.
 	LeaderboardTTL            time.Duration // FARM_LEADERBOARD_TTL: max snapshot staleness
 	LeaderboardActivityWindow time.Duration // FARM_LEADERBOARD_ACTIVITY_DAYS: dormant-farm cutoff
-	LeaderboardMinCoins       int64         // FARM_LEADERBOARD_MIN_COINS: unranked-below-this floor
+	LeaderboardMinCoins       int64         // FARM_LEADERBOARD_MIN_COINS: unranked-below-this lifetime-coin floor
 }
 
 // Load reads configuration from the environment with documented defaults.
