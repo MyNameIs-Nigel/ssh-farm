@@ -150,12 +150,16 @@ func (g *Game) registerPickerHits() {
 	g.addHit(boxX+boxW-12, boxY+boxH-2, 10, 1, "picker:cancel", nil)
 }
 
+// registerMarketHits mirrors viewMarket's line layout exactly (section
+// headers, blank separators, one row per item) so a click always lands on
+// what's actually drawn there.
 func (g *Game) registerMarketHits() {
-	items := g.marketItems()
-	y := g.layout.bodyY + 1
-	for i := range items {
-		g.addHit(g.layout.cx, y, g.layout.cw, 2, "market:"+itoa(i), i)
-		y += 2
+	y := g.layout.bodyY
+	for _, l := range g.marketLines() {
+		if l.idx >= 0 {
+			g.addHit(g.layout.cx, y, g.layout.cw, 1, "market:"+itoa(l.idx), l.idx)
+		}
+		y++
 	}
 }
 
@@ -178,10 +182,12 @@ func (g *Game) registerStarShopHits() {
 	if g.snap.State.Rebirths < 1 {
 		return
 	}
-	y := g.layout.bodyY + 1
-	for i := range g.content.Upgrades {
-		g.addHit(g.layout.cx, y, g.layout.cw, 2, "shop:"+itoa(i), i)
-		y += 2
+	y := g.layout.bodyY
+	for _, l := range g.starShopLines() {
+		if l.idx >= 0 {
+			g.addHit(g.layout.cx, y, g.layout.cw, 1, "shop:"+itoa(l.idx), l.idx)
+		}
+		y++
 	}
 }
 

@@ -1219,6 +1219,159 @@ func (g *Game) marketItems() []marketItem {
 	return items
 }
 
+// marketLine is one rendered line of the Market screen, paired with its source
+// item index (when selectable) so hitboxes can mirror the renderer exactly.
+type marketLine struct {
+	text string
+	idx  int // marketItems index; -1 for section headers and blank lines
+}
+
+const noMarketItem = -1
+
+// marketLines lays out the Market screen body in the same order viewMarket
+// draws it — section headers, blank separators, and one row per item.
+func (g *Game) marketLines() []marketLine {
+	st := g.snap.State
+	items := g.marketItems()
+	var lines []marketLine
+
+	lines = append(lines, marketLine{text: styleSection.Render("Multipliers (this run)"), idx: noMarketItem})
+	for i, it := range items {
+		if it.kind != "multiplier" {
+			continue
+		}
+		lines = append(lines, marketLine{text: g.marketItemRow(i, it, st), idx: i})
+	}
+
+	lines = append(lines, marketLine{idx: noMarketItem})
+	lines = append(lines, marketLine{text: styleSection.Render("Hardier Strains"), idx: noMarketItem})
+	for i, it := range items {
+		if it.kind != "strain" {
+			continue
+		}
+		lines = append(lines, marketLine{text: g.marketItemRow(i, it, st), idx: i})
+	}
+
+	if g.content.Scarecrow.Cost > 0 {
+		lines = append(lines, marketLine{idx: noMarketItem})
+		lines = append(lines, marketLine{text: styleSection.Render("Helpers (this run)"), idx: noMarketItem})
+		for i, it := range items {
+			if it.kind != "scarecrow" {
+				continue
+			}
+			lines = append(lines, marketLine{text: g.marketItemRow(i, it, st), idx: i})
+		}
+	}
+
+	lines = append(lines, marketLine{idx: noMarketItem})
+	lines = append(lines, marketLine{text: styleSection.Render("Zones"), idx: noMarketItem})
+	for i, it := range items {
+		if it.kind != "zone" {
+			continue
+		}
+		lines = append(lines, marketLine{text: g.marketItemRow(i, it, st), idx: i})
+	}
+
+	return lines
+}
+
+func (g *Game) marketItemRow(i int, it marketItem, st *sim.State) string {
+	marker := "  "
+	if i == g.marketIdx {
+		marker = styleSelected.Render("▸ ")
+	}
+	switch it.kind {
+	case "multiplier", "strain":
+		line := sanitizeText(it.name) + " Lv" + itoa(it.level) + "/" + itoa(it.maxLvl) + " — " + sanitizeText(it.desc)
+		switch {
+		case it.level >= it.maxLvl:
+			return marker + styleReady.Render("✓ "+line+"  maxed")
+		case it.kind == "strain" && it.locked:
+			return marker + styleLocked.Render(line + "  🔒")
+		case st.Coins < it.cost:
+			return marker + styleLocked.Render(line + "  " + money(it.cost) + "c")
+		default:
+			return marker + styleValue.Render(line + "  " + money(it.cost) + "c")
+		}
+	case "scarecrow":
+		line := sanitizeText(it.name) + " — " + sanitizeText(it.desc)
+		switch {
+		case it.owned:
+			return marker + styleReady.Render("✓ " + line + "  owned")
+		case st.Coins < it.cost:
+			return marker + styleLocked.Render(line + "  " + money(it.cost) + "c")
+		default:
+			return marker + styleValue.Render(line + "  " + money(it.cost) + "c")
+		}
+	case "zone":
+		line := sanitizeText(it.name) + " — " + money(it.cost) + "c · " + sanitizeText(it.desc)
+		switch {
+		case it.owned:
+			return marker + styleReady.Render("✓ " + line)
+		case it.locked:
+			return marker + styleLocked.Render(line + "  🔒 " + g.gateText(it.gate))
+		case st.Coins < it.cost:
+			return marker + styleLocked.Render(line + "  (can't afford)")
+		default:
+			return marker + styleValue.Render(line)
+		}
+	}
+	return ""
+}
+
+// starShopLine is one rendered line of the Star Shop screen, paired with its
+// upgrade index when the row is selectable.
+type starShopLine struct {
+	text string
+	idx  int // content.Upgrades index; -1 for headers, stats, and blank lines
+}
+
+const noShopItem = -1
+
+func (g *Game) starShopLines() []starShopLine {
+	st := g.snap.State
+	if st.Rebirths < 1 {
+		hint := centerWrap(g.contentWidth(), "The cosmos keeps its deeper rewards for those who begin anew.")
+		return []starShopLine{
+			{text: styleSection.Render("StarShop"), idx: noShopItem},
+			{idx: noShopItem},
+			{text: styleLocked.Render("  🔒 Rebirth once to discover what lies beyond."), idx: noShopItem},
+			{idx: noShopItem},
+			{text: styleHint.Render(hint), idx: noShopItem},
+		}
+	}
+
+	var lines []starShopLine
+	lines = append(lines, starShopLine{text: styleSection.Render("StarShop — " + g.starseedLabel()), idx: noShopItem})
+	lines = append(lines, starShopLine{idx: noShopItem})
+	lines = append(lines, starShopLine{text: "  Balance: " + styleValue.Render("✦ "+money(st.PrestigeCurrency)), idx: noShopItem})
+	lines = append(lines, starShopLine{text: "  Rebirths: " + styleValue.Render(money(st.Rebirths)), idx: noShopItem})
+	lines = append(lines, starShopLine{idx: noShopItem})
+	lines = append(lines, starShopLine{text: styleSection.Render("Lifetime upgrades"), idx: noShopItem})
+
+	lineWidth := g.contentWidth() - 2
+	for i, u := range g.content.Upgrades {
+		marker := "  "
+		if i == g.progressIdx {
+			marker = styleSelected.Render("▸ ")
+		}
+		level := st.UpgradeLevel(u.ID)
+		cost := st.UpgradeCost(&g.content.Upgrades[i])
+		line := sanitizeText(u.Name) + " (Lv " + itoa(level) + "/" + itoa(u.MaxLevel) + ") — " + sanitizeText(u.Description)
+		var row string
+		switch {
+		case cost < 0:
+			row = marker + styleReady.Render(alignSides("✓ "+line, "maxed", lineWidth))
+		case st.PrestigeCurrency < cost:
+			row = marker + styleLocked.Render(alignSides(line, "✦ "+money(cost), lineWidth))
+		default:
+			row = marker + styleValue.Render(alignSides(line, "✦ "+money(cost), lineWidth))
+		}
+		lines = append(lines, starShopLine{text: row, idx: i})
+	}
+	return lines
+}
+
 func itoa(n int) string {
 	return money(int64(n))
 }

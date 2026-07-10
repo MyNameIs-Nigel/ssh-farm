@@ -529,102 +529,15 @@ func (g *Game) gateText(u content.Unlock) string {
 }
 
 func (g *Game) viewMarket() string {
-	st := g.snap.State
-	var b strings.Builder
-
-	b.WriteString(styleSection.Render("Multipliers (this run)") + "\n")
 	items := g.marketItems()
 	if g.marketIdx >= len(items) && len(items) > 0 {
 		g.marketIdx = len(items) - 1
 	}
-	idx := 0
-	for i, it := range items {
-		if it.kind != "multiplier" {
-			continue
-		}
-		marker := "  "
-		if i == g.marketIdx {
-			marker = styleSelected.Render("▸ ")
-		}
-		line := sanitizeText(it.name) + " Lv" + itoa(it.level) + "/" + itoa(it.maxLvl) + " — " + sanitizeText(it.desc)
-		switch {
-		case it.level >= it.maxLvl:
-			b.WriteString(marker + styleReady.Render("✓ "+line+"  maxed") + "\n")
-		case st.Coins < it.cost:
-			b.WriteString(marker + styleLocked.Render(line+"  "+money(it.cost)+"c") + "\n")
-		default:
-			b.WriteString(marker + styleValue.Render(line+"  "+money(it.cost)+"c") + "\n")
-		}
-		idx++
-		_ = idx
+	parts := make([]string, len(g.marketLines()))
+	for i, l := range g.marketLines() {
+		parts[i] = l.text
 	}
-
-	b.WriteString("\n" + styleSection.Render("Hardier Strains") + "\n")
-	for i, it := range items {
-		if it.kind != "strain" {
-			continue
-		}
-		marker := "  "
-		if i == g.marketIdx {
-			marker = styleSelected.Render("▸ ")
-		}
-		line := sanitizeText(it.name) + " Lv" + itoa(it.level) + "/" + itoa(it.maxLvl) + " — " + sanitizeText(it.desc)
-		switch {
-		case it.level >= it.maxLvl:
-			b.WriteString(marker + styleReady.Render("✓ "+line+"  maxed") + "\n")
-		case it.locked:
-			b.WriteString(marker + styleLocked.Render(line+"  🔒") + "\n")
-		case st.Coins < it.cost:
-			b.WriteString(marker + styleLocked.Render(line+"  "+money(it.cost)+"c") + "\n")
-		default:
-			b.WriteString(marker + styleValue.Render(line+"  "+money(it.cost)+"c") + "\n")
-		}
-	}
-
-	if g.content.Scarecrow.Cost > 0 {
-		b.WriteString("\n" + styleSection.Render("Helpers (this run)") + "\n")
-		for i, it := range items {
-			if it.kind != "scarecrow" {
-				continue
-			}
-			marker := "  "
-			if i == g.marketIdx {
-				marker = styleSelected.Render("▸ ")
-			}
-			line := sanitizeText(it.name) + " — " + sanitizeText(it.desc)
-			switch {
-			case it.owned:
-				b.WriteString(marker + styleReady.Render("✓ "+line+"  owned") + "\n")
-			case st.Coins < it.cost:
-				b.WriteString(marker + styleLocked.Render(line+"  "+money(it.cost)+"c") + "\n")
-			default:
-				b.WriteString(marker + styleValue.Render(line+"  "+money(it.cost)+"c") + "\n")
-			}
-		}
-	}
-
-	b.WriteString("\n" + styleSection.Render("Zones") + "\n")
-	for i, it := range items {
-		if it.kind != "zone" {
-			continue
-		}
-		marker := "  "
-		if i == g.marketIdx {
-			marker = styleSelected.Render("▸ ")
-		}
-		line := sanitizeText(it.name) + " — " + money(it.cost) + "c · " + sanitizeText(it.desc)
-		switch {
-		case it.owned:
-			b.WriteString(marker + styleReady.Render("✓ "+line) + "\n")
-		case it.locked:
-			b.WriteString(marker + styleLocked.Render(line+"  🔒 "+g.gateText(it.gate)) + "\n")
-		case st.Coins < it.cost:
-			b.WriteString(marker + styleLocked.Render(line+"  (can't afford)") + "\n")
-		default:
-			b.WriteString(marker + styleValue.Render(line) + "\n")
-		}
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return strings.TrimRight(strings.Join(parts, "\n"), "\n")
 }
 
 func (g *Game) viewLand() string {
@@ -690,41 +603,11 @@ func (g *Game) viewRebirth() string {
 }
 
 func (g *Game) viewStarShop() string {
-	st := g.snap.State
-	if st.Rebirths < 1 {
-		hint := centerWrap(g.contentWidth(), "The cosmos keeps its deeper rewards for those who begin anew.")
-		return styleSection.Render("StarShop") + "\n\n" +
-			styleLocked.Render("  🔒 Rebirth once to discover what lies beyond.") + "\n\n" +
-			styleHint.Render(hint)
+	parts := make([]string, len(g.starShopLines()))
+	for i, l := range g.starShopLines() {
+		parts[i] = l.text
 	}
-	var b strings.Builder
-	b.WriteString(styleSection.Render("StarShop — "+g.starseedLabel()) + "\n\n")
-	b.WriteString("  Balance: " + styleValue.Render("✦ "+money(st.PrestigeCurrency)) + "\n")
-	b.WriteString("  Rebirths: " + styleValue.Render(money(st.Rebirths)) + "\n\n")
-
-	b.WriteString(styleSection.Render("Lifetime upgrades") + "\n")
-	lineWidth := g.contentWidth() - 2 // marker is two columns
-	for i, u := range g.content.Upgrades {
-		marker := "  "
-		if i == g.progressIdx {
-			marker = styleSelected.Render("▸ ")
-		}
-		level := st.UpgradeLevel(u.ID)
-		cost := st.UpgradeCost(&g.content.Upgrades[i])
-		line := sanitizeText(u.Name) + " (Lv " + itoa(level) + "/" + itoa(u.MaxLevel) + ") — " + sanitizeText(u.Description)
-		switch {
-		case cost < 0:
-			row := alignSides("✓ "+line, "maxed", lineWidth)
-			b.WriteString(marker + styleReady.Render(row) + "\n")
-		case st.PrestigeCurrency < cost:
-			row := alignSides(line, "✦ "+money(cost), lineWidth)
-			b.WriteString(marker + styleLocked.Render(row) + "\n")
-		default:
-			row := alignSides(line, "✦ "+money(cost), lineWidth)
-			b.WriteString(marker + styleValue.Render(row) + "\n")
-		}
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return strings.TrimRight(strings.Join(parts, "\n"), "\n")
 }
 
 func (g *Game) viewRebirthConfirm() string {
