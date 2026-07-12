@@ -430,7 +430,7 @@ func (g *Game) handleFarmKey(key string) (tea.Model, tea.Cmd) {
 		switch {
 		case plot.Crop == "":
 			g.pickerAutoSow = false
-			g.pickerIdx = 0
+			g.pickerIdx = g.pickerIndexFor(st.LastCrop)
 			g.overlay = ovPicker
 		case st.PlotReady(g.content, g.cursor, g.now):
 			g.doHarvest(g.cursor)
@@ -572,15 +572,19 @@ func (g *Game) toggleConfig(idx int) {
 // cursor on the crop the plot currently replants.
 func (g *Game) openAutoSowPicker(plot sim.Plot) {
 	g.pickerAutoSow = true
-	g.pickerIdx = 0
-	queued := plot.SowCrop()
+	g.pickerIdx = g.pickerIndexFor(plot.SowCrop())
+	g.overlay = ovPicker
+}
+
+// pickerIndexFor returns the visible-crop index for cropID, falling back to
+// the first crop when there is no remembered or currently visible crop.
+func (g *Game) pickerIndexFor(cropID string) int {
 	for i, crop := range g.visibleCrops() {
-		if crop.ID == queued {
-			g.pickerIdx = i
-			break
+		if crop.ID == cropID {
+			return i
 		}
 	}
-	g.overlay = ovPicker
+	return 0
 }
 
 func (g *Game) handlePickerKey(key string) (tea.Model, tea.Cmd) {

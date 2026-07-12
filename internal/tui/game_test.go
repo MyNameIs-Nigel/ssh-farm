@@ -166,6 +166,28 @@ func TestOnboardingThenPlantAndHarvest(t *testing.T) {
 	}
 }
 
+func TestPlantPickerStartsAtLastPlantedCrop(t *testing.T) {
+	f := newFixture(t)
+	base := time.Now().Unix()
+	g := dismissIntro(t, f.newGame(t, base))
+
+	// Carrot is the second initially available crop. Plant it in plot 1.
+	g = press(t, g, "enter", "down", "enter")
+	if got := g.snap.State.LastCrop; got != "carrot" {
+		t.Fatalf("last planted crop = %q, want carrot", got)
+	}
+
+	// Opening the picker on the next empty plot should remember carrot rather
+	// than resetting to the first catalog entry (turnip).
+	g = press(t, g, "right", "enter")
+	if g.overlay != ovPicker {
+		t.Fatalf("overlay = %v, want crop picker", g.overlay)
+	}
+	if g.pickerIdx != 1 {
+		t.Fatalf("picker index = %d, want carrot index 1", g.pickerIdx)
+	}
+}
+
 func TestReplantWarningGatesFirstUseThenReplants(t *testing.T) {
 	f := newFixture(t)
 	base := time.Now().Unix()
