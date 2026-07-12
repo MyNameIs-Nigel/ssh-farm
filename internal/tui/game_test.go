@@ -166,6 +166,27 @@ func TestOnboardingThenPlantAndHarvest(t *testing.T) {
 	}
 }
 
+func TestPlantPickerStartsAtLastPlantedCrop(t *testing.T) {
+	f := newFixture(t)
+	base := time.Now().Unix()
+	g := dismissIntro(t, f.newGame(t, base))
+
+	// Pumpkin is the second initially available crop in this fixture. The sim
+	// owns recording the last planted crop; this UI test verifies its picker
+	// uses that persisted value.
+	g.snap.State.LastCrop = "pumpkin"
+
+	// Opening the picker on an empty plot should remember pumpkin rather
+	// than resetting to the first catalog entry (turnip).
+	g = press(t, g, "enter")
+	if g.overlay != ovPicker {
+		t.Fatalf("overlay = %v, want crop picker", g.overlay)
+	}
+	if g.pickerIdx != 1 {
+		t.Fatalf("picker index = %d, want pumpkin index 1", g.pickerIdx)
+	}
+}
+
 func TestReplantWarningGatesFirstUseThenReplants(t *testing.T) {
 	f := newFixture(t)
 	base := time.Now().Unix()
