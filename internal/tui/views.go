@@ -11,32 +11,8 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/version"
 )
 
-var (
-	styleTitle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("114"))
-	styleHeader   = lipgloss.NewStyle().Foreground(lipgloss.Color("180"))
-	styleNavOn    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229")).Background(lipgloss.Color("22")).Padding(0, 1)
-	styleNavOff   = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Padding(0, 1)
-	styleNavLock  = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Padding(0, 1)
-	styleHint     = lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Italic(true)
-	styleNotice   = lipgloss.NewStyle().Foreground(lipgloss.Color("222"))
-	styleReady    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("120"))
-	styleGrowing  = lipgloss.NewStyle().Foreground(lipgloss.Color("108"))
-	styleEmpty    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	styleLocked   = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	styleSelected = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229"))
-	styleValue    = lipgloss.NewStyle().Foreground(lipgloss.Color("222"))
-	styleSection  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("151"))
-	styleBox      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("65")).Padding(1, 2)
-	stylePlotCard = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1).Width(20)
-	stylePlotSel  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("114")).Padding(0, 1).Width(20)
-	styleBanner   = lipgloss.NewStyle().Foreground(lipgloss.Color("222")).Italic(true)
-	styleEvent    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229")).Background(lipgloss.Color("54")).Padding(0, 1)
-
-	// tui/02: tasteful (not rainbow) top-3 accents for the leaderboard.
-	styleBoardGold   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("220"))
-	styleBoardSilver = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("152"))
-	styleBoardBronze = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("183"))
-)
+// All styling now lives in internal/tui/theme: a per-frame Theme carries a
+// background on every style, which the old package-level vars could not.
 
 func (g *Game) View() tea.View {
 	g.hits.Reset()
@@ -97,16 +73,17 @@ func (g *Game) screenBody() string {
 }
 
 func (g *Game) viewHeader() string {
+	th := g.theme()
 	st := g.snap.State
 	title := "🌾 ssh-farm"
 	if st.FarmName != "" {
 		title = "🌾 " + sanitizeText(st.FarmName)
 	}
-	left := styleTitle.Render(title) + styleHeader.Render("  ·  "+sanitizeText(g.id.Slot))
-	left += styleHint.Render("  " + moonGlyph(st, g.content) + " " + st.MoonPhaseName(g.content))
-	right := styleValue.Render("⛀ " + money(st.Coins) + " coins")
+	left := th.Title.Render(title) + th.Header.Render("  ·  "+sanitizeText(g.id.Slot))
+	left += th.Hint.Render("  " + moonGlyph(st, g.content) + " " + st.MoonPhaseName(g.content))
+	right := th.Value.Render("⛀ " + money(st.Coins) + " coins")
 	if st.Rebirths > 0 || st.PrestigeCurrency > 0 {
-		right += styleHeader.Render("  ✦ " + money(st.PrestigeCurrency) + " " + g.starseedLabel())
+		right += th.Header.Render("  ✦ " + money(st.PrestigeCurrency) + " " + g.starseedLabel())
 	}
 	gap := g.contentWidth() - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
@@ -114,9 +91,14 @@ func (g *Game) viewHeader() string {
 	}
 	header := left + strings.Repeat(" ", gap) + right
 
-	banner := g.viewBanner()
-	if banner != "" {
-		header += "\n" + banner
+	// Extra header rows, in priority order. They live here rather than in
+	// composeCanvas because coords.go:computeLayout calls viewHeader and so
+	// picks their height up automatically — a row added to composeCanvas
+	// would silently shift every mouse hitbox below it.
+	for _, row := range []string{g.viewSizeWarning(), g.viewEventBar(), g.viewBanner()} {
+		if row != "" {
+			header += "\n" + row
+		}
 	}
 	return header
 }
@@ -133,22 +115,17 @@ func moonGlyph(st *sim.State, c *content.Content) string {
 }
 
 func (g *Game) viewBanner() string {
+	th := g.theme()
 	st := g.snap.State
 	var parts []string
 	if st.GiftPending {
-		parts = append(parts, styleReady.Render("📦 A parcel waits at the gate — press g"))
-	}
-	if st.EventActive(g.now) {
-		if ev := g.content.EventByID(st.EventID); ev != nil {
-			left := st.EventEndsAt - g.now
-			parts = append(parts, styleEvent.Render("⚡ "+sanitizeText(ev.Name)+" ("+duration(left)+")"))
-		}
+		parts = append(parts, th.Ready.Render("📦 A parcel waits at the gate — press g"))
 	}
 	if len(parts) == 0 {
 		if !g.snap.State.NewsEnabled {
 			return ""
 		}
-		return styleBanner.Render("📰 The Daily Furrow: " + g.dailyHeadline())
+		return th.Banner.Render("📰 The Daily Furrow: " + g.dailyHeadline())
 	}
 	return strings.Join(parts, "  ")
 }
@@ -176,14 +153,16 @@ func (g *Game) dailyHeadline() string {
 // no visible way to dismiss a menu without the keyboard. ovKicked keeps the
 // plain tabs since the session is already ending.
 func (g *Game) navRowContent() string {
+	th := g.theme()
 	tabs := g.viewNav()
 	if g.overlay != ovNone && g.overlay != ovKicked {
-		return tabs + "  " + styleNavOn.Render("[x] Close")
+		return tabs + "  " + th.NavOn.Render("[x] Close")
 	}
 	return tabs
 }
 
 func (g *Game) viewNav() string {
+	th := g.theme()
 	labels := []struct {
 		s    screen
 		text string
@@ -200,28 +179,30 @@ func (g *Game) viewNav() string {
 			text += " 🔒"
 		}
 		if l.s == g.scr && g.overlay == ovNone {
-			parts = append(parts, styleNavOn.Render(text))
+			parts = append(parts, th.NavOn.Render(text))
 		} else if l.lock {
-			parts = append(parts, styleNavLock.Render(text))
+			parts = append(parts, th.NavLock.Render(text))
 		} else {
-			parts = append(parts, styleNavOff.Render(text))
+			parts = append(parts, th.NavOff.Render(text))
 		}
 	}
 	return strings.Join(parts, "")
 }
 
 func (g *Game) viewNotices() string {
+	th := g.theme()
 	if len(g.notices) == 0 {
 		return ""
 	}
 	lines := make([]string, 0, len(g.notices))
 	for _, n := range g.notices {
-		lines = append(lines, styleNotice.Render(truncate(n.text, g.contentWidth()-2)))
+		lines = append(lines, th.Notice.Render(truncate(n.text, g.contentWidth()-2)))
 	}
 	return strings.Join(lines, "\n")
 }
 
 func (g *Game) viewFooter() string {
+	th := g.theme()
 	var hints string
 	switch {
 	case g.overlay == ovPicker && g.pickerAutoSow:
@@ -259,7 +240,7 @@ func (g *Game) viewFooter() string {
 	default:
 		hints = "1-6 screens · tab/shift+tab cycle · g gift · q leave"
 	}
-	return styleHint.Render(truncate(hints, g.contentWidth()-1))
+	return th.Hint.Render(truncate(hints, g.contentWidth()-1))
 }
 
 func (g *Game) farmColumns() int {
@@ -311,6 +292,7 @@ func (g *Game) viewFarm() string {
 // queue differs from the crop currently growing there, so players can see at a
 // glance that the rotation is about to switch. Empty when there's no override.
 func (g *Game) autoSowQueueLabel(plot sim.Plot) string {
+	th := g.theme()
 	if !plot.AutoSow || plot.AutoSowCrop == "" || plot.AutoSowCrop == plot.Crop {
 		return ""
 	}
@@ -318,7 +300,7 @@ func (g *Game) autoSowQueueLabel(plot sim.Plot) string {
 	if crop := g.content.Crop(plot.AutoSowCrop); crop != nil {
 		name = crop.Name
 	}
-	return styleHint.Render(" ↻→" + sanitizeText(name))
+	return th.Hint.Render(" ↻→" + sanitizeText(name))
 }
 
 func (g *Game) plotBadges(plot sim.Plot) string {
@@ -336,6 +318,7 @@ func (g *Game) plotBadges(plot sim.Plot) string {
 }
 
 func (g *Game) plotCard(i int) string {
+	th := g.theme()
 	st := g.snap.State
 	plot := st.Plots[i]
 	title := "Plot " + itoa(i+1)
@@ -346,34 +329,35 @@ func (g *Game) plotCard(i int) string {
 	switch {
 	case plot.Crop == "":
 		if plot.Critter != "" {
-			line1 = styleEmpty.Render("· " + sanitizeText(plot.Critter) + " ·")
-			line2 = styleHint.Render("x to shoo")
+			line1 = th.Empty.Render("· " + sanitizeText(plot.Critter) + " ·")
+			line2 = th.Hint.Render("x to shoo")
 		} else {
-			line1 = styleEmpty.Render("· empty ·")
-			line2 = styleEmpty.Render("enter to plant")
+			line1 = th.Empty.Render("· empty ·")
+			line2 = th.Empty.Render("enter to plant")
 		}
 	case st.PlotReady(g.content, i, g.now):
 		line1 = g.cropName(plot.Crop)
-		line2 = styleReady.Render("✓ ready!")
+		line2 = th.Ready.Render("✓ ready!")
 	default:
 		crop := g.content.Crop(plot.Crop)
 		line1 = g.cropName(plot.Crop)
 		if crop != nil {
 			pct := st.PlotProgressPct(g.content, i, g.now)
 			left := plot.PlantedAt + st.GrowSeconds(g.content, crop) - g.now
-			line2 = styleGrowing.Render(progressBar(pct, 8) + " " + duration(left))
+			line2 = th.Growing.Render(progressBar(pct, 8) + " " + duration(left))
 		} else {
-			line2 = styleLocked.Render("(unknown crop)")
+			line2 = th.Locked.Render("(unknown crop)")
 		}
 	}
-	content := styleSelected.Render(title) + "\n" + line1 + "\n" + line2
+	content := th.Selected.Render(title) + "\n" + line1 + "\n" + line2
 	if i == g.cursor {
-		return stylePlotSel.Render(content)
+		return th.PlotSel.Render(content)
 	}
-	return stylePlotCard.Render(content)
+	return th.PlotCard.Render(content)
 }
 
 func (g *Game) viewFarmCompact() string {
+	th := g.theme()
 	st := g.snap.State
 	maxRows := g.contentHeight() - 9
 	if maxRows < 3 {
@@ -388,27 +372,27 @@ func (g *Game) viewFarmCompact() string {
 		plot := st.Plots[i]
 		marker := "  "
 		if i == g.cursor {
-			marker = styleSelected.Render("▸ ")
+			marker = th.Selected.Render("▸ ")
 		}
 		badges := g.plotBadges(plot)
 		var status string
 		switch {
 		case plot.Crop == "":
 			if plot.Critter != "" {
-				status = styleEmpty.Render(sanitizeText(plot.Critter))
+				status = th.Empty.Render(sanitizeText(plot.Critter))
 			} else {
-				status = styleEmpty.Render("empty")
+				status = th.Empty.Render("empty")
 			}
 		case st.PlotReady(g.content, i, g.now):
-			status = g.cropName(plot.Crop) + " " + styleReady.Render("✓ ready!")
+			status = g.cropName(plot.Crop) + " " + th.Ready.Render("✓ ready!")
 		default:
 			crop := g.content.Crop(plot.Crop)
 			if crop != nil {
 				left := plot.PlantedAt + st.GrowSeconds(g.content, crop) - g.now
 				pct := st.PlotProgressPct(g.content, i, g.now)
-				status = g.cropName(plot.Crop) + " " + styleGrowing.Render(progressBar(pct, 6)+" "+duration(left))
+				status = g.cropName(plot.Crop) + " " + th.Growing.Render(progressBar(pct, 6)+" "+duration(left))
 			} else {
-				status = styleLocked.Render("(unknown crop)")
+				status = th.Locked.Render("(unknown crop)")
 			}
 		}
 		if plot.Crop != "" {
@@ -417,19 +401,21 @@ func (g *Game) viewFarmCompact() string {
 		b.WriteString(marker + itoa(i+1) + badges + ". " + status + "\n")
 	}
 	if start+maxRows < len(st.Plots) {
-		b.WriteString(styleHint.Render("  …" + itoa(len(st.Plots)-start-maxRows) + " more below"))
+		b.WriteString(th.Hint.Render("  …" + itoa(len(st.Plots)-start-maxRows) + " more below"))
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
 
 func (g *Game) cropName(id string) string {
+	th := g.theme()
 	if crop := g.content.Crop(id); crop != nil {
-		return styleValue.Render(sanitizeText(crop.Name))
+		return th.Value.Render(sanitizeText(crop.Name))
 	}
-	return styleLocked.Render(sanitizeText(id))
+	return th.Locked.Render(sanitizeText(id))
 }
 
 func (g *Game) viewPicker() string {
+	th := g.theme()
 	st := g.snap.State
 	crops := g.visibleCrops()
 	var queued string
@@ -438,15 +424,15 @@ func (g *Game) viewPicker() string {
 	}
 	var b strings.Builder
 	if g.pickerAutoSow {
-		b.WriteString(styleSection.Render("Auto-sow crop · plot "+itoa(g.cursor+1)) + "\n")
-		b.WriteString(styleHint.Render("Pick what this plot replants. Seed is paid when it sows.") + "\n\n")
+		b.WriteString(th.Section.Render("Auto-sow crop · plot "+itoa(g.cursor+1)) + "\n")
+		b.WriteString(th.Hint.Render("Pick what this plot replants. Seed is paid when it sows.") + "\n\n")
 	} else {
-		b.WriteString(styleSection.Render("Plant on plot "+itoa(g.cursor+1)) + "\n\n")
+		b.WriteString(th.Section.Render("Plant on plot "+itoa(g.cursor+1)) + "\n\n")
 	}
 	for i, crop := range crops {
 		marker := "  "
 		if i == g.pickerIdx {
-			marker = styleSelected.Render("▸ ")
+			marker = th.Selected.Render("▸ ")
 		}
 		name := sanitizeText(crop.Name)
 		grow := duration(st.GrowSeconds(g.content, &crop))
@@ -458,36 +444,37 @@ func (g *Game) viewPicker() string {
 		}
 		switch {
 		case !st.Unlocked(crop.Unlock):
-			b.WriteString(marker + styleLocked.Render(info+"  🔒") + "\n")
+			b.WriteString(marker + th.Locked.Render(info+"  🔒") + "\n")
 		case g.pickerAutoSow:
 			// Queueing doesn't spend coins now, so affordability is irrelevant
 			// here — only flag the crop currently in the rotation.
 			if crop.ID == queued {
-				b.WriteString(marker + styleReady.Render(info+"  ◀ current") + "\n")
+				b.WriteString(marker + th.Ready.Render(info+"  ◀ current") + "\n")
 			} else {
-				b.WriteString(marker + styleValue.Render(info) + "\n")
+				b.WriteString(marker + th.Value.Render(info) + "\n")
 			}
 		case st.MercyPlantEligible(g.content, crop.ID):
-			b.WriteString(marker + styleReady.Render(info+"  FREE — the land provides") + "\n")
+			b.WriteString(marker + th.Ready.Render(info+"  FREE — the land provides") + "\n")
 		case st.Coins < cost:
-			b.WriteString(marker + styleLocked.Render(info+"  (can't afford)") + "\n")
+			b.WriteString(marker + th.Locked.Render(info+"  (can't afford)") + "\n")
 		default:
-			b.WriteString(marker + styleValue.Render(info) + "\n")
+			b.WriteString(marker + th.Value.Render(info) + "\n")
 		}
 	}
-	return styleBox.Render(strings.TrimRight(b.String(), "\n"))
+	return th.Box.Render(strings.TrimRight(b.String(), "\n"))
 }
 
 func (g *Game) viewUpgrade() string {
+	th := g.theme()
 	st := g.snap.State
 	var b strings.Builder
-	b.WriteString(styleSection.Render("Plot automation") + "\n\n")
+	b.WriteString(th.Section.Render("Plot automation") + "\n\n")
 	hCost := st.PlotAutoHarvestCost(g.content)
 	sCost := g.content.PlotAutomation.AutoSowCost
 	for i, plot := range st.Plots {
 		marker := "  "
 		if i == g.upgradeIdx {
-			marker = styleSelected.Render("▸ ")
+			marker = th.Selected.Render("▸ ")
 		}
 		line := "Plot " + itoa(i+1)
 		if plot.AutoHarvest {
@@ -500,17 +487,18 @@ func (g *Game) viewUpgrade() string {
 		} else if plot.AutoHarvest {
 			line += " — sow " + money(sCost) + "c (2)"
 		}
-		b.WriteString(marker + styleValue.Render(line) + "\n")
+		b.WriteString(marker + th.Value.Render(line) + "\n")
 	}
-	b.WriteString("\n" + styleHint.Render("Auto-sow needs harvester + "+money(g.content.PlotAutomation.AutoSowMinEarnings)+" lifetime coins."))
-	return styleBox.Render(strings.TrimRight(b.String(), "\n"))
+	b.WriteString("\n" + th.Hint.Render("Auto-sow needs harvester + "+money(g.content.PlotAutomation.AutoSowMinEarnings)+" lifetime coins."))
+	return th.Box.Render(strings.TrimRight(b.String(), "\n"))
 }
 
 func (g *Game) viewName() string {
-	text := styleSection.Render("Name your farm") + "\n\n" +
-		styleValue.Render("> "+sanitizeText(g.nameInput)+"_") + "\n\n" +
-		styleHint.Render("Enter to save · esc/q cancel")
-	return styleBox.Render(text)
+	th := g.theme()
+	text := th.Section.Render("Name your farm") + "\n\n" +
+		th.Value.Render("> "+sanitizeText(g.nameInput)+"_") + "\n\n" +
+		th.Hint.Render("Enter to save · esc/q cancel")
+	return th.Box.Render(text)
 }
 
 func (g *Game) gateText(u content.Unlock) string {
@@ -541,21 +529,22 @@ func (g *Game) viewMarket() string {
 }
 
 func (g *Game) viewLand() string {
+	th := g.theme()
 	st := g.snap.State
 	var b strings.Builder
-	b.WriteString(styleSection.Render("Your land") + "\n\n")
-	b.WriteString("  Plots owned: " + styleValue.Render(itoa(len(st.Plots))) + "\n")
+	b.WriteString(th.Section.Render("Your land") + "\n\n")
+	b.WriteString("  Plots owned: " + th.Value.Render(itoa(len(st.Plots))) + "\n")
 	cost := st.NextPlotCost(g.content)
 	if cost < 0 {
-		b.WriteString("  " + styleHint.Render("The farm is as big as it can get — zones add more room.") + "\n")
+		b.WriteString("  " + th.Hint.Render("The farm is as big as it can get — zones add more room.") + "\n")
 	} else {
-		b.WriteString("  Next plot: " + styleValue.Render(money(cost)+" coins") + "\n")
+		b.WriteString("  Next plot: " + th.Value.Render(money(cost)+" coins") + "\n")
 		if st.Coins >= cost {
-			b.WriteString("\n  " + styleReady.Render("Press enter to till new ground.") + "\n")
+			b.WriteString("\n  " + th.Ready.Render("Press enter to till new ground.") + "\n")
 		}
 	}
 
-	b.WriteString("\n" + styleSection.Render("Seed catalog (plant from Farm)") + "\n")
+	b.WriteString("\n" + th.Section.Render("Seed catalog (plant from Farm)") + "\n")
 	for _, crop := range g.visibleCrops() {
 		grow := duration(st.GrowSeconds(g.content, &crop))
 		line := "  " + sanitizeText(crop.Name) + " — " + crop.Archetype + " · " +
@@ -565,39 +554,40 @@ func (g *Game) viewLand() string {
 			line += " · fails to " + money(st.SalvageValue(g.content, &crop)) + "c"
 		}
 		if !st.Unlocked(crop.Unlock) {
-			b.WriteString(styleLocked.Render(line+"  🔒 "+g.gateText(crop.Unlock)) + "\n")
+			b.WriteString(th.Locked.Render(line+"  🔒 "+g.gateText(crop.Unlock)) + "\n")
 		} else {
-			b.WriteString(styleValue.Render(line) + "\n")
+			b.WriteString(th.Value.Render(line) + "\n")
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
 
 func (g *Game) viewRebirth() string {
+	th := g.theme()
 	st := g.snap.State
 	gain := st.PrestigeGain(g.content)
 	var b strings.Builder
-	b.WriteString(styleSection.Render("Rebirth") + "\n\n")
-	b.WriteString("  This run has earned " + styleValue.Render(money(st.RunEarnings)+" coins") + ".\n")
+	b.WriteString(th.Section.Render("Rebirth") + "\n\n")
+	b.WriteString("  This run has earned " + th.Value.Render(money(st.RunEarnings)+" coins") + ".\n")
 	if st.CanRebirth(g.content) {
-		b.WriteString("  Rebirthing now grants " + styleReady.Render("✦ "+money(gain)+" "+g.starseedLabel()) + ".\n")
+		b.WriteString("  Rebirthing now grants " + th.Ready.Render("✦ "+money(gain)+" "+g.starseedLabel()) + ".\n")
 	} else {
-		b.WriteString("  " + styleHint.Render("Earn "+money(g.content.Prestige.MinEarnings)+" coins in one run to unlock rebirth.") + "\n")
+		b.WriteString("  " + th.Hint.Render("Earn "+money(g.content.Prestige.MinEarnings)+" coins in one run to unlock rebirth.") + "\n")
 	}
-	b.WriteString("\n" + styleSection.Render("  Kept: ") + styleValue.Render(g.starseedLabel()+", upgrades, achievements, crop unlocks") + "\n")
-	b.WriteString(styleSection.Render("  Lost: ") + styleValue.Render("coins, plots, crops, multipliers, zones, plot automation") + "\n")
+	b.WriteString("\n" + th.Section.Render("  Kept: ") + th.Value.Render(g.starseedLabel()+", upgrades, achievements, crop unlocks") + "\n")
+	b.WriteString(th.Section.Render("  Lost: ") + th.Value.Render("coins, plots, crops, multipliers, zones, plot automation") + "\n")
 
-	b.WriteString("\n" + styleSection.Render("Next rebirth unlocks") + "\n")
+	b.WriteString("\n" + th.Section.Render("Next rebirth unlocks") + "\n")
 	nextTier := st.Rebirths + 1
 	found := false
 	for _, crop := range g.content.Crops {
 		if crop.Unlock.Kind == "prestige" && crop.Unlock.Value == nextTier {
-			b.WriteString("  " + styleValue.Render("🌱 "+sanitizeText(crop.Name)+" ("+crop.Archetype+")") + "\n")
+			b.WriteString("  " + th.Value.Render("🌱 "+sanitizeText(crop.Name)+" ("+crop.Archetype+")") + "\n")
 			found = true
 		}
 	}
 	if !found {
-		b.WriteString("  " + styleHint.Render("More secrets await deeper cycles…") + "\n")
+		b.WriteString("  " + th.Hint.Render("More secrets await deeper cycles…") + "\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -611,41 +601,46 @@ func (g *Game) viewStarShop() string {
 }
 
 func (g *Game) viewRebirthConfirm() string {
+	th := g.theme()
 	st := g.snap.State
 	gain := st.PrestigeGain(g.content)
-	text := styleSection.Render("Rebirth?") + "\n\n" +
-		"You will gain  " + styleReady.Render("✦ "+money(gain)+" "+g.starseedLabel()) + "\n" +
-		"You will lose  " + styleValue.Render(money(st.Coins)+" coins, "+itoa(len(st.Plots))+" plots, and this run's progress") + "\n\n" +
+	text := th.Section.Render("Rebirth?") + "\n\n" +
+		"You will gain  " + th.Ready.Render("✦ "+money(gain)+" "+g.starseedLabel()) + "\n" +
+		"You will lose  " + th.Value.Render(money(st.Coins)+" coins, "+itoa(len(st.Plots))+" plots, and this run's progress") + "\n\n" +
 		"Your " + g.starseedLabel() + ", upgrades, and achievements stay forever.\n\n" +
-		styleReady.Render("y") + " — yes, begin anew    " + styleHint.Render("n — keep farming")
-	return styleBox.Render(text)
+		th.Ready.Render("y") + " — yes, begin anew    " + th.Hint.Render("n — keep farming")
+	return th.Box.Render(text)
 }
 
 func (g *Game) viewStats() string {
+	th := g.theme()
 	st := g.snap.State
 	var b strings.Builder
-	b.WriteString(styleSection.Render("This farm") + "\n")
+	b.WriteString(th.Section.Render("This farm") + "\n")
 	if st.FarmName != "" {
-		b.WriteString("  Farm name: " + styleValue.Render(sanitizeText(st.FarmName)) + styleHint.Render("  (n to rename)") + "\n")
+		b.WriteString("  Farm name: " + th.Value.Render(sanitizeText(st.FarmName)) + th.Hint.Render("  (n to rename)") + "\n")
 	} else {
-		b.WriteString("  Farm name: " + styleHint.Render("(unnamed — press n)") + "\n")
+		b.WriteString("  Farm name: " + th.Hint.Render("(unnamed — press n)") + "\n")
 	}
-	b.WriteString("  Save slot: " + styleValue.Render(sanitizeText(g.id.Slot)) + "\n")
-	b.WriteString("  Key: " + styleHint.Render(shortFingerprint(g.id.Fingerprint)) + "\n")
-	b.WriteString("  Settings: " + styleValue.Render("lucky finds "+onOff(st.FlavorEnabled)+
-		" · news "+onOff(st.NewsEnabled)+" · critters "+onOff(st.CrittersEnabled)) +
-		styleHint.Render("  (c to configure)") + "\n")
-	b.WriteString("\n" + styleSection.Render("Lifetime") + "\n")
-	b.WriteString("  Earnings: " + styleValue.Render(money(st.LifetimeEarnings)+" coins") + "\n")
-	b.WriteString("  Harvests: " + styleValue.Render(money(st.LifetimeHarvests)) + "\n")
-	b.WriteString("  Rebirths: " + styleValue.Render(money(st.Rebirths)) + "  ·  " + g.starseedLabel() + ": " + styleValue.Render("✦ "+money(st.PrestigeCurrency)) + "\n")
+	b.WriteString("  Save slot: " + th.Value.Render(sanitizeText(g.id.Slot)) + "\n")
+	b.WriteString("  Key: " + th.Hint.Render(shortFingerprint(g.id.Fingerprint)) + "\n")
+	settings := make([]string, 0, 4)
+	for _, r := range g.configRows() {
+		settings = append(settings, strings.ToLower(r.label)+" "+onOff(r.on))
+	}
+	b.WriteString("  Settings: " + th.Value.Render(strings.Join(settings, " · ")) + "\n")
+	b.WriteString("  " + th.Hint.Render("(c to configure)") + "\n")
+	b.WriteString("\n" + th.Section.Render("Lifetime") + "\n")
+	b.WriteString("  Earnings: " + th.Value.Render(money(st.LifetimeEarnings)+" coins") + "\n")
+	b.WriteString("  Harvests: " + th.Value.Render(money(st.LifetimeHarvests)) + "\n")
+	b.WriteString("  Rebirths: " + th.Value.Render(money(st.Rebirths)) + "  ·  " + g.starseedLabel() + ": " + th.Value.Render("✦ "+money(st.PrestigeCurrency)) + "\n")
 
-	b.WriteString("\n" + styleSection.Render("Achievements") + "\n")
+	b.WriteString("\n" + th.Section.Render("Achievements") + "\n")
 	for _, a := range g.content.Achievements {
 		if _, ok := st.Achievements[a.ID]; ok {
-			b.WriteString("  " + styleReady.Render("✓ "+sanitizeText(a.Name)) + styleHint.Render(" — "+sanitizeText(a.Description)) + "\n")
+			b.WriteString("  " + th.Ready.Render("✓ "+sanitizeText(a.Name)) + th.Hint.Render(" — "+sanitizeText(a.Description)) + "\n")
 		} else {
-			b.WriteString("  " + styleLocked.Render("· "+sanitizeText(a.Name)+" — "+sanitizeText(a.Description)) + "\n")
+			b.WriteString("  " + th.Locked.Render("· "+sanitizeText(a.Name)+" — "+sanitizeText(a.Description)) + "\n")
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")
@@ -656,10 +651,11 @@ func (g *Game) viewStats() string {
 // masks nothing (gameplay/03 already re-checked every name). The header
 // line is written before the scrolled region so it never scrolls away.
 func (g *Game) viewBoard() string {
+	th := g.theme()
 	cw := g.contentWidth()
 	header := g.boardHeaderLine(cw)
 	if g.lbErr != nil {
-		return header + "\n\n" + styleLocked.Render(truncate("LEADERBOARD UNAVAILABLE — TRY AGAIN SOON", cw))
+		return header + "\n\n" + th.Locked.Render(truncate("LEADERBOARD UNAVAILABLE — TRY AGAIN SOON", cw))
 	}
 
 	lines := g.boardLines(cw)
@@ -673,15 +669,16 @@ func (g *Game) viewBoard() string {
 		b.WriteString("\n")
 	}
 	if start > 0 || end < len(lines) {
-		b.WriteString(styleHint.Render("  ↑↓ scroll for more"))
+		b.WriteString(th.Hint.Render("  ↑↓ scroll for more"))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(styleHint.Render("updated " + duration(max(g.now-g.lbBoard.AsOf, 0)) + " ago"))
+	b.WriteString(th.Hint.Render("updated " + duration(max(g.now-g.lbBoard.AsOf, 0)) + " ago"))
 	return b.String()
 }
 
 func (g *Game) viewHelp() string {
+	th := g.theme()
 	tabs := g.helpTabs()
 	body := g.viewHelpControls()
 	if g.helpPage == 1 {
@@ -704,7 +701,7 @@ func (g *Game) viewHelp() string {
 	}
 	out := strings.Join(lines[start:end], "\n")
 	if start > 0 || end < len(lines) {
-		out += "\n" + styleHint.Render("  ↑↓ scroll · ← → pages")
+		out += "\n" + th.Hint.Render("  ↑↓ scroll · ← → pages")
 	}
 	return out
 }
@@ -728,27 +725,29 @@ func (g *Game) clampHelpScroll() {
 }
 
 func (g *Game) helpTabs() string {
+	th := g.theme()
 	controls, gameplay := "Controls", "Gameplay"
 	if g.helpPage == 0 {
-		controls = styleNavOn.Render(controls)
-		gameplay = styleNavOff.Render(gameplay)
+		controls = th.NavOn.Render(controls)
+		gameplay = th.NavOff.Render(gameplay)
 	} else {
-		controls = styleNavOff.Render(controls)
-		gameplay = styleNavOn.Render(gameplay)
+		controls = th.NavOff.Render(controls)
+		gameplay = th.NavOn.Render(gameplay)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, controls, " ", gameplay) +
-		"\n" + styleHint.Render("  ← → switch pages · esc/q back to farm · Idle Farmer v"+
+		"\n" + th.Hint.Render("  ← → switch pages · esc/q back to farm · Idle Farmer v"+
 		version.Version+" ("+version.Channel+")")
 }
 
 func (g *Game) viewHelpControls() string {
+	th := g.theme()
 	ss := g.starseedLabel()
-	return styleSection.Render("How it works") + "\n\n" +
-		styleValue.Render("  Plant crops, go live your life, come back and harvest. Crops keep\n"+
+	return th.Section.Render("How it works") + "\n\n" +
+		th.Value.Render("  Plant crops, go live your life, come back and harvest. Crops keep\n"+
 			"  growing while you're away. Earn coins, buy plots and upgrades, and\n"+
 			"  rebirth for "+ss+" — permanent bonuses that make every later run faster.") + "\n\n" +
-		styleSection.Render("Keys") + "\n" +
-		styleValue.Render("  1-6               switch screens\n"+
+		th.Section.Render("Keys") + "\n" +
+		th.Value.Render("  1-6               switch screens\n"+
 			"  ?                 help\n"+
 			"  tab / shift+tab   cycle screens forward / back\n"+
 			"  ←↑↓→              move around the farm\n"+
@@ -763,7 +762,7 @@ func (g *Game) viewHelpControls() string {
 			"  R                 rebirth (rebirth screen, with confirmation)\n"+
 			"  esc / q           close menus and overlays\n"+
 			"  q / ctrl+c        leave the game (progress is saved automatically)") + "\n\n" +
-		styleHint.Render("  Your SSH key is your identity; the username picks the save slot.")
+		th.Hint.Render("  Your SSH key is your identity; the username picks the save slot.")
 }
 
 func (g *Game) helpTextWidth() int {
@@ -771,18 +770,22 @@ func (g *Game) helpTextWidth() int {
 }
 
 func (g *Game) helpBody(text string) string {
-	return styleValue.Render(wrapIndent(g.helpTextWidth(), "  ", text))
+	th := g.theme()
+	return th.Value.Render(wrapIndent(g.helpTextWidth(), "  ", text))
 }
 
 func (g *Game) helpHint(text string) string {
-	return styleHint.Render(wrapIndent(g.helpTextWidth(), "  ", text))
+	th := g.theme()
+	return th.Hint.Render(wrapIndent(g.helpTextWidth(), "  ", text))
 }
 
 func (g *Game) helpSubHint(text string) string {
-	return styleHint.Render(wrapIndent(g.helpTextWidth(), "    ", text))
+	th := g.theme()
+	return th.Hint.Render(wrapIndent(g.helpTextWidth(), "    ", text))
 }
 
 func (g *Game) viewHelpGameplay() string {
+	th := g.theme()
 	c := g.content
 	ss := g.starseedLabel()
 	ec := c.EventsConfig
@@ -793,12 +796,12 @@ func (g *Game) viewHelpGameplay() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(styleSection.Render("Random events") + "\n")
+	b.WriteString(th.Section.Render("Random events") + "\n")
 	b.WriteString(g.helpBody("While online, a banner announces a random event for "+
 		duration(ec.MinDurationSec)+"–"+duration(ec.MaxDurationSec)+
 		". Act before it expires!") + "\n")
 	for _, ev := range c.Events {
-		b.WriteString(styleReady.Render(wrapIndent(g.helpTextWidth(), "  ",
+		b.WriteString(th.Ready.Render(wrapIndent(g.helpTextWidth(), "  ",
 			sanitizeText(ev.Name)+" — "+eventHelpEffect(ev))) + "\n")
 		if action := eventHelpAction(ev); action != "" {
 			b.WriteString(g.helpSubHint(action) + "\n")
@@ -806,13 +809,13 @@ func (g *Game) viewHelpGameplay() string {
 	}
 	b.WriteString(g.helpHint("Stacks with Market upgrades (Merchant's Scale, Fertilizer).") + "\n")
 
-	b.WriteString("\n" + styleSection.Render("Risky crops") + "\n")
+	b.WriteString("\n" + th.Section.Render("Risky crops") + "\n")
 	b.WriteString(g.helpBody("Glimmercorn, Moonberry, and Thunderpod can fail at harvest. "+
 		"A failed harvest pays salvage instead of full sell value. "+
 		"Hardier Strain upgrades (Market tab) raise the salvage floor: "+
 		"Lv 0: 1/8 · Lv 1: 1/4 · Lv 2: 1/2 · Lv 3+: 3/4 of sell value.") + "\n")
 
-	b.WriteString("\n" + styleSection.Render("Rebirth & "+ss) + "\n")
+	b.WriteString("\n" + th.Section.Render("Rebirth & "+ss) + "\n")
 	b.WriteString(g.helpBody("Earn "+money(c.Prestige.MinEarnings)+
 		"+ coins in one run, then rebirth for "+ss+". "+
 		"Gain: isqrt(run earnings ÷ "+money(c.Prestige.Divisor)+
@@ -820,7 +823,7 @@ func (g *Game) viewHelpGameplay() string {
 	b.WriteString(g.helpBody("Kept: "+ss+", permanent upgrades, achievements, crop unlocks. "+
 		"Lost: coins, plots, crops, multipliers, zones, plot automation.") + "\n")
 
-	b.WriteString("\n" + styleSection.Render("Automation") + "\n")
+	b.WriteString("\n" + th.Section.Render("Automation") + "\n")
 	b.WriteString(g.helpBody("Auto-harvest gathers ready crops on that plot each tick. "+
 		"Auto-sow replants a crop after each harvest (per tick) if you can "+
 		"afford the seed. Press enter on a growing auto-sow plot to change which "+
@@ -829,19 +832,19 @@ func (g *Game) viewHelpGameplay() string {
 		" lifetime earnings. Resets on rebirth. "+
 		"Crops keep growing offline; auto plots simulate harvest cycles when you reconnect.") + "\n")
 
-	b.WriteString("\n" + styleSection.Render("Critters & the Scarecrow") + "\n")
+	b.WriteString("\n" + th.Section.Render("Critters & the Scarecrow") + "\n")
 	b.WriteString(g.helpBody("Critters wander onto empty plots now and then (press x to shoo "+
 		"one for a few coins). Buy the Scarecrow in the Market to shoo them "+
 		"automatically and bank the coins. While you're offline it can't chase "+
 		"critters, so it only trickles a small passive income — far less than "+
 		"it earns at your side.") + "\n")
 
-	b.WriteString("\n" + styleSection.Render("Replant all (r)") + "\n")
+	b.WriteString("\n" + th.Section.Render("Replant all (r)") + "\n")
 	b.WriteString(g.helpBody("On the Farm screen, r refills every empty plot with the crop it "+
 		"last grew, spending coins most-expensive-first. If you can't afford "+
 		"them all it plants what it can and tells you the rest fell short.") + "\n")
 
-	b.WriteString("\n" + styleSection.Render("Gift parcels") + "\n")
+	b.WriteString("\n" + th.Section.Render("Gift parcels") + "\n")
 	b.WriteString(g.helpBody("One parcel at a time; arrives about every "+
 		duration(c.Gifts.OnlineIntervalSec)+" online or "+
 		duration(c.Gifts.OfflineIntervalSec)+" away. Press g to redeem. "+
@@ -849,11 +852,11 @@ func (g *Game) viewHelpGameplay() string {
 		", scaled by run earnings). After your first rebirth, "+
 		money(c.Gifts.StarseedChancePct)+"% chance of "+ss+" instead.") + "\n")
 
-	b.WriteString("\n" + styleSection.Render("Mercy plant") + "\n")
+	b.WriteString("\n" + th.Section.Render("Mercy plant") + "\n")
 	b.WriteString(g.helpBody("Broke with empty plots? The cheapest unlocked seed plants "+
 		"for FREE — \"the land provides\".") + "\n")
 
-	b.WriteString("\n" + styleSection.Render("Golden harvest & moon") + "\n")
+	b.WriteString("\n" + th.Section.Render("Golden harvest & moon") + "\n")
 	b.WriteString(g.helpBody("Any harvest has a "+money(gh.ChancePct)+
 		"% chance to pay "+money(goldenMult)+"×. "+
 		"Moon phases cycle every "+money(c.Moon.CycleDays)+
@@ -923,6 +926,7 @@ func (g *Game) tutorialContent(page int) (string, string) {
 }
 
 func (g *Game) viewTutorial() string {
+	th := g.theme()
 	if g.tutorialPage < 0 {
 		g.tutorialPage = 0
 	}
@@ -931,72 +935,74 @@ func (g *Game) viewTutorial() string {
 	}
 	title, body := g.tutorialContent(g.tutorialPage)
 
-	box := styleSection.Render("Tutorial · " + itoa(g.tutorialPage+1) + "/" + itoa(tutorialPages))
+	box := th.Section.Render("Tutorial · " + itoa(g.tutorialPage+1) + "/" + itoa(tutorialPages))
 	check := "[ ]"
 	if g.tutorialSkip {
-		check = styleReady.Render("[x]")
+		check = th.Ready.Render("[x]")
 	}
 	cont := "Continue ▸"
 	if g.tutorialSkip || g.tutorialPage == tutorialPages-1 {
 		cont = "Continue to farm ▸"
 	}
-	controls := check + " Skip" + "      " + styleReady.Render(cont)
+	controls := check + " Skip" + "      " + th.Ready.Render(cont)
 
-	text := styleTitle.Render(title) + "\n\n" +
-		styleValue.Render(body) + "\n\n" +
-		box + "  " + styleHint.Render("s to skip · enter to continue") + "\n" +
+	text := th.Title.Render(title) + "\n\n" +
+		th.Value.Render(body) + "\n\n" +
+		box + "  " + th.Hint.Render("s to skip · enter to continue") + "\n" +
 		controls
-	return styleBox.Render(text)
+	return th.Box.Render(text)
 }
 
 func (g *Game) viewConfig() string {
-	st := g.snap.State
-	rows := []struct {
-		label string
-		on    bool
-		hint  string
-	}{
-		{"Lucky finds", st.FlavorEnabled, "rare coin discoveries when harvesting"},
-		{"News headlines", st.NewsEnabled, "the Daily Furrow ticker at the top"},
-		{"Critter visits", st.CrittersEnabled, "cosmetic critters on empty plots"},
-	}
+	th := g.theme()
+	rows := g.configRows()
+	// Overlays are clipped to contentWidth-4 before centring, and the box
+	// itself costs 2 border + 4 padding cells.
+	limit := g.contentWidth() - 10
 	var b strings.Builder
-	b.WriteString(styleSection.Render("Settings") + "\n\n")
+	b.WriteString(th.Section.Render("Settings") + "\n\n")
 	for i, r := range rows {
 		marker := "  "
 		if i == g.configIdx {
-			marker = styleSelected.Render("▸ ")
+			marker = th.Selected.Render("▸ ")
 		}
 		box := "[ ]"
 		if r.on {
-			box = styleReady.Render("[x]")
+			box = th.Ready.Render("[x]")
 		}
-		b.WriteString(marker + box + " " + styleValue.Render(r.label) +
-			styleHint.Render("  — "+r.hint) + "\n")
+		line := marker + box + " " + th.Value.Render(r.label) +
+			th.Hint.Render("  — "+r.hint)
+		if w := lipgloss.Width(line); w > limit {
+			// Drop the hint rather than let the frame clip the label.
+			line = marker + box + " " + th.Value.Render(truncate(r.label, limit-6))
+		}
+		b.WriteString(line + "\n")
 	}
-	b.WriteString("\n" + styleHint.Render("Settings are saved per farm. Lucky finds also live here."))
-	return styleBox.Render(strings.TrimRight(b.String(), "\n"))
+	b.WriteString("\n" + th.Hint.Render("Settings are saved per farm. Lucky finds also live here."))
+	return th.Box.Render(strings.TrimRight(b.String(), "\n"))
 }
 
 func (g *Game) viewReplantWarn() string {
-	text := styleSection.Render("About “r — replant all” 🌱") + "\n\n" +
-		styleValue.Render("Replant fills every empty plot with the crop it last grew (or your\n"+
+	th := g.theme()
+	text := th.Section.Render("About “r — replant all” 🌱") + "\n\n" +
+		th.Value.Render("Replant fills every empty plot with the crop it last grew (or your\n"+
 			"last-planted crop for fresh plots). It spends coins automatically,\n"+
 			"buying the most expensive seeds first.\n\n"+
 			"If you can't afford every plot, it plants as many as it can and\n"+
 			"tells you how many it skipped — just like a normal short purchase.\n\n"+
 			"Plots that are still growing are left untouched.") + "\n\n" +
-		styleReady.Render("Press any key to close.")
-	return styleBox.Render(text)
+		th.Ready.Render("Press any key to close.")
+	return th.Box.Render(text)
 }
 
 func (g *Game) viewAway() string {
+	th := g.theme()
 	ev := g.away
 	var b strings.Builder
-	b.WriteString(styleTitle.Render("Welcome back! 🌾") + "\n\n")
-	b.WriteString(styleValue.Render("You were away "+duration(ev.Elapsed)+".") + "\n")
+	b.WriteString(th.Title.Render("Welcome back! 🌾") + "\n\n")
+	b.WriteString(th.Value.Render("You were away "+duration(ev.Elapsed)+".") + "\n")
 	for _, v := range ev.AwayVignettes {
-		b.WriteString(styleHint.Render("  "+sanitizeText(v)) + "\n")
+		b.WriteString(th.Hint.Render("  "+sanitizeText(v)) + "\n")
 	}
 	wrote := len(ev.AwayVignettes) > 0
 	for id, n := range ev.Matured {
@@ -1004,15 +1010,15 @@ func (g *Game) viewAway() string {
 		if crop := g.content.Crop(id); crop != nil {
 			name = crop.Name
 		}
-		b.WriteString(styleReady.Render("  🌱 "+itoa(n)+"× "+sanitizeText(name)+" matured and await harvest") + "\n")
+		b.WriteString(th.Ready.Render("  🌱 "+itoa(n)+"× "+sanitizeText(name)+" matured and await harvest") + "\n")
 		wrote = true
 	}
 	if total := totalCount(ev.AutoHarvested); total > 0 {
-		b.WriteString(styleReady.Render("  ⚙ Auto-plots gathered "+itoa(total)+" crops (+"+money(ev.AutoCoins)+" coins)") + "\n")
+		b.WriteString(th.Ready.Render("  ⚙ Auto-plots gathered "+itoa(total)+" crops (+"+money(ev.AutoCoins)+" coins)") + "\n")
 		wrote = true
 	}
 	if ev.GoldenHarvests > 0 {
-		b.WriteString(styleReady.Render("  ✨ "+itoa(ev.GoldenHarvests)+" golden harvest(s)!") + "\n")
+		b.WriteString(th.Ready.Render("  ✨ "+itoa(ev.GoldenHarvests)+" golden harvest(s)!") + "\n")
 		wrote = true
 	}
 	for id, n := range ev.FailedHarvests {
@@ -1020,28 +1026,29 @@ func (g *Game) viewAway() string {
 		if crop := g.content.Crop(id); crop != nil {
 			name = crop.Name
 		}
-		b.WriteString(styleReady.Render("  💥 "+itoa(n)+"× "+sanitizeText(name)+" failed in the field") + "\n")
+		b.WriteString(th.Ready.Render("  💥 "+itoa(n)+"× "+sanitizeText(name)+" failed in the field") + "\n")
 		wrote = true
 	}
 	if ev.Discoveries > 0 {
-		b.WriteString(styleReady.Render("  ✨ "+itoa(ev.Discoveries)+" lucky finds (+"+money(ev.DiscoveryCoins)+" coins)") + "\n")
+		b.WriteString(th.Ready.Render("  ✨ "+itoa(ev.Discoveries)+" lucky finds (+"+money(ev.DiscoveryCoins)+" coins)") + "\n")
 		wrote = true
 	}
 	if ev.GiftArrived {
-		b.WriteString(styleReady.Render("  📦 A parcel waits at the gate — press g") + "\n")
+		b.WriteString(th.Ready.Render("  📦 A parcel waits at the gate — press g") + "\n")
 		wrote = true
 	}
 	if !wrote {
-		b.WriteString(styleHint.Render("  The fields rested quietly. A fine time to plant something.") + "\n")
+		b.WriteString(th.Hint.Render("  The fields rested quietly. A fine time to plant something.") + "\n")
 	}
-	return styleBox.Render(strings.TrimRight(b.String(), "\n"))
+	return th.Box.Render(strings.TrimRight(b.String(), "\n"))
 }
 
 func (g *Game) viewKicked() string {
-	return styleBox.Render(
-		styleSection.Render("Until next time 🌙") + "\n\n" +
-			styleValue.Render(sanitizeText(g.kickReason)) + "\n\n" +
-			styleHint.Render("Your progress is saved. Disconnecting…"))
+	th := g.theme()
+	return th.Box.Render(
+		th.Section.Render("Until next time 🌙") + "\n\n" +
+			th.Value.Render(sanitizeText(g.kickReason)) + "\n\n" +
+			th.Hint.Render("Your progress is saved. Disconnecting…"))
 }
 
 func onOff(b bool) string {

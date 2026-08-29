@@ -64,12 +64,13 @@ func (g *Game) registerOverlayBG() {
 }
 
 func (g *Game) registerNavHits() {
+	th := g.theme()
 	if g.overlay == ovKicked {
 		return
 	}
 	if g.overlay != ovNone {
 		tabsW := lipgloss.Width(g.viewNav())
-		closeText := styleNavOn.Render("[x] Close")
+		closeText := th.NavOn.Render("[x] Close")
 		closeW := lipgloss.Width(closeText)
 		g.addHit(g.layout.navX+tabsW+2, g.layout.navY, closeW, 1, "overlay:close", nil)
 		return
@@ -86,15 +87,15 @@ func (g *Game) registerNavHits() {
 	x := g.layout.navX
 	for _, l := range labels {
 		if l.lock {
-			w := lipgloss.Width(styleNavLock.Render(l.text + " 🔒"))
+			w := lipgloss.Width(th.NavLock.Render(l.text + " 🔒"))
 			x += w
 			continue
 		}
 		var styled string
 		if l.s == g.scr {
-			styled = styleNavOn.Render(l.text)
+			styled = th.NavOn.Render(l.text)
 		} else {
-			styled = styleNavOff.Render(l.text)
+			styled = th.NavOff.Render(l.text)
 		}
 		w := lipgloss.Width(styled)
 		g.addHit(x, g.layout.navY, w, 1, "nav:"+itoa(int(l.s)), l.s)
@@ -229,9 +230,21 @@ func (g *Game) registerHelpHits() {
 	g.addHit(g.layout.cx+10, tabY, 8, 1, "help:tab:1", 1)
 }
 
+// registerConfigHits places one hitbox per settings row. The overlay is
+// centred in the body region, so the rows' position is measured from the
+// rendered box rather than assumed: the previous fixed bodyY+4+i*2 offset
+// put every hitbox on the wrong line (rows render one per line, not two, and
+// centring moves the box as the body height changes).
 func (g *Game) registerConfigHits() {
-	for i := 0; i < 3; i++ {
-		g.addHit(g.layout.cx+2, g.layout.bodyY+4+i*2, g.layout.cw-4, 1, "config:"+itoa(i), i)
+	box := g.viewConfig()
+	boxW, boxH := lipgloss.Width(box), lipgloss.Height(box)
+	top := g.layout.bodyY + max((g.layout.bodyH-boxH)/2, 0)
+	left := g.layout.cx + max((g.layout.cw-boxW)/2, 0)
+
+	// Inside the box: 1 border + 1 padding + "Settings" + 1 blank line.
+	firstRow := top + 4
+	for i := range g.configRows() {
+		g.addHit(left+1, firstRow+i, max(boxW-2, 1), 1, "config:"+itoa(i), i)
 	}
 }
 

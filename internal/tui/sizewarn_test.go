@@ -117,7 +117,7 @@ func TestSizeWarningDoesNotBreakHitboxes(t *testing.T) {
 	lines := strings.Split(view(g), "\n")
 	navRow := -1
 	for y, line := range lines {
-		if strings.Contains(stripAnsi(line), "MARKET") && strings.Contains(stripAnsi(line), "FARM") {
+		if strings.Contains(stripAnsi(line), "2 Market") && strings.Contains(stripAnsi(line), "1 Farm") {
 			navRow = y
 			break
 		}

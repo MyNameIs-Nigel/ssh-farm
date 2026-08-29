@@ -56,7 +56,7 @@ func (g *Game) handleMouseWheel(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 	case ovUpgrade:
 		g.upgradeIdx = clamp(g.upgradeIdx+delta, 0, len(g.snap.State.Plots)-1)
 	case ovConfig:
-		g.configIdx = clamp(g.configIdx+delta, 0, 2)
+		g.configIdx = clamp(g.configIdx+delta, 0, len(g.configRows())-1)
 	case ovNone:
 		switch g.scr {
 		case scrFarm:

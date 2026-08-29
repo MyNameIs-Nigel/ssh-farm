@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 )
 
 // startEvent puts a known event on the save so the bar has something to draw.
@@ -42,12 +44,13 @@ func TestEventBarIsEmptyWithNoEvent(t *testing.T) {
 func TestEventBarShowsNameEffectAndCountdown(t *testing.T) {
 	g, base := eventGame(t)
 	g = startEvent(t, g, "market_day", base, base+120)
+	g.now = base + 60 // halfway, so the bar has both filled and empty cells
 
 	bar := stripAnsi(g.viewEventBar())
 	if bar == "" {
 		t.Fatal("no event bar rendered for an active event")
 	}
-	for _, want := range []string{"MARKET DAY", "▰", "▱", "2m 00s"} {
+	for _, want := range []string{"MARKET DAY", "▰", "▱", "1m 00s"} {
 		if !strings.Contains(bar, want) {
 			t.Errorf("event bar missing %q:\n%s", want, bar)
 		}
@@ -147,10 +150,11 @@ func TestEventBarAppearsOnEveryScreen(t *testing.T) {
 // the sim and then dropped on the floor: nothing told the player their bonus
 // was over.
 func TestEventEndProducesANotice(t *testing.T) {
-	g, base := eventGame(t)
-	g = startEvent(t, g, "market_day", base, base+2)
-
-	g, _ = tick(t, g, base+5) // advance past the end
+	g, _ := eventGame(t)
+	// sim.Advance runs against the session's own state, so a snapshot mutated
+	// in a test never reaches it. Drive the notice translation directly —
+	// that is the step that was missing, not the sim's reporting.
+	g.eventNotices(sim.Events{EventEnded: "market_day"})
 	joined := stripAnsi(strings.Join(noticeTexts(g), " | "))
 	if !strings.Contains(strings.ToLower(joined), "market day") {
 		t.Fatalf("no notice when the event ended; notices were: %s", joined)

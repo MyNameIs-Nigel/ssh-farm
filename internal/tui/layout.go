@@ -19,11 +19,6 @@ const (
 	windowTitle     = "ssh-farm 🌾"
 )
 
-var (
-	styleFrame = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("65")).Padding(0, 2)
-	styleRule  = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-)
-
 // canvasSize is the outer size of the framed game window, clamped to the terminal.
 func (g *Game) canvasSize() (w, h int) {
 	return min(g.width, canvasMaxWidth), min(g.height, canvasMaxHeight)
@@ -45,7 +40,31 @@ func (g *Game) contentHeight() int {
 // content on the full terminal, takes over the alternate screen, and titles
 // the window. Every View() return path must go through it.
 func (g *Game) fullscreen(content string) tea.View {
-	v := tea.NewView(lipgloss.Place(max(g.width, 1), max(g.height, 1), lipgloss.Center, lipgloss.Center, content))
+	th := g.theme()
+
+	// Three cooperating mechanisms paint the background, and all three are
+	// needed:
+	//
+	//  1. WithWhitespaceStyle paints the letterbox Place adds around the
+	//     canvas. Place emits exactly width x height cells, so painting what
+	//     we draw paints the whole terminal.
+	//  2. Paint re-asserts the palette after every SGR reset. lipgloss closes
+	//     each styled span with a reset, which would otherwise drop the
+	//     background for the rest of that line and render the canvas as
+	//     stripes. This is the load-bearing one: it needs no terminal support.
+	//  3. BackgroundColor/ForegroundColor set the terminal's own defaults via
+	//     OSC 11/10, so anything we miss still falls back to dark rather than
+	//     to the player's white. Terminal.app ignores these, which is exactly
+	//     why (2) cannot be skipped.
+	placed := lipgloss.Place(
+		max(g.width, 1), max(g.height, 1),
+		lipgloss.Center, lipgloss.Center, content,
+		lipgloss.WithWhitespaceStyle(lipgloss.NewStyle().Background(th.Bg)),
+	)
+
+	v := tea.NewView(th.Paint(placed))
+	v.BackgroundColor = th.Bg
+	v.ForegroundColor = th.Fg
 	v.AltScreen = true
 	v.WindowTitle = windowTitle
 	v.MouseMode = tea.MouseModeCellMotion
@@ -58,6 +77,7 @@ func (g *Game) fullscreen(content string) tea.View {
 // pinned to the bottom under a thin rule. With centerBody the body floats in
 // the middle of its region (overlay modals); otherwise it anchors top-left.
 func (g *Game) composeCanvas(body string, centerBody bool) string {
+	th := g.theme()
 	cw, ch := g.contentWidth(), g.contentHeight()
 
 	top := strings.Join([]string{
@@ -66,7 +86,7 @@ func (g *Game) composeCanvas(body string, centerBody bool) string {
 		"",
 	}, "\n")
 
-	bottomParts := []string{styleRule.Render(strings.Repeat("─", max(cw, 1)))}
+	bottomParts := []string{th.Rule.Render(strings.Repeat("─", max(cw, 1)))}
 	if n := g.viewNotices(); n != "" {
 		bottomParts = append(bottomParts, n)
 	}
@@ -88,7 +108,7 @@ func (g *Game) composeCanvas(body string, centerBody bool) string {
 	}
 
 	inner := lipgloss.NewStyle().MaxWidth(cw).MaxHeight(ch).Render(top + "\n" + body + "\n" + bottom)
-	return styleFrame.Render(inner)
+	return th.Frame.Render(inner)
 }
 
 // preserveBodyLines reports screens whose body text already has explicit

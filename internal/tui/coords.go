@@ -23,6 +23,7 @@ type frameLayout struct {
 const doubleClickMS = 400
 
 func (g *Game) computeLayout() frameLayout {
+	th := g.theme()
 	cw, ch := g.canvasSize()
 	ox := (g.width - cw) / 2
 	oy := (g.height - ch) / 2
@@ -36,7 +37,7 @@ func (g *Game) computeLayout() frameLayout {
 	}, "\n")
 	topH := lipgloss.Height(top)
 
-	bottomParts := []string{styleRule.Render(strings.Repeat("─", max(cxi, 1)))}
+	bottomParts := []string{th.Rule.Render(strings.Repeat("─", max(cxi, 1)))}
 	if n := g.viewNotices(); n != "" {
 		bottomParts = append(bottomParts, n)
 	}

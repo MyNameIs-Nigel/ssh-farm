@@ -59,6 +59,7 @@ func Advance(s *State, c *content.Content, to int64) Events {
 	if s.EventID != "" && to >= s.EventEndsAt {
 		ev.EventEnded = s.EventID
 		s.EventID = ""
+		s.EventStartedAt = 0
 		s.EventEndsAt = 0
 	}
 
@@ -314,6 +315,7 @@ func (s *State) rollOnlineEvent(c *content.Content, elapsed, to int64, ev *Event
 	if durMax > durMin {
 		dur += s.rollRange(0, durMax-durMin)
 	}
+	s.EventStartedAt = to
 	s.EventEndsAt = to + dur
 	ev.EventStarted = evDef.ID
 }

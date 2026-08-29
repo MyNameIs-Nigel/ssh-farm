@@ -158,11 +158,11 @@ func TestConfigClickTogglesEveryRow(t *testing.T) {
 	g := configGame(t)
 	for i, r := range g.configRows() {
 		view(g)
-		var y int
+		var x, y int
 		found := false
 		for _, b := range g.hits.Boxes() {
 			if b.ID == "config:"+itoa(i) {
-				y, found = b.Y, true
+				x, y, found = b.X, b.Y, true
 				break
 			}
 		}
@@ -170,7 +170,9 @@ func TestConfigClickTogglesEveryRow(t *testing.T) {
 			t.Fatalf("row %d (%q) has no hitbox", i, r.label)
 		}
 		before := g.configRows()[i].on
-		m, _ := g.handleMouseClick(tea.Mouse(tea.MouseClickMsg{X: g.layout.cx + 2, Y: y, Button: tea.MouseLeft}))
+		// The settings box is centred, so click inside it: a click on the same
+		// row but outside the box is a background dismiss, not a toggle.
+		m, _ := g.handleMouseClick(tea.Mouse(tea.MouseClickMsg{X: x + 1, Y: y, Button: tea.MouseLeft}))
 		g = m.(*Game)
 		if g.configRows()[i].on == before {
 			t.Errorf("clicking row %d (%q) did not toggle it", i, r.label)

@@ -29,7 +29,8 @@ func TestPhaseAtWalksTheCycle(t *testing.T) {
 		{"last second of night", 4*PhaseSeconds - 1, PhaseNight},
 		{"cycle wraps back to dawn", 4 * PhaseSeconds, PhaseDawn},
 		{"second cycle day", 5 * PhaseSeconds, PhaseDay},
-		{"far future stays in range", 987654 * PhaseSeconds, PhaseDawn},
+		{"far future wraps by cycle count", 987656 * PhaseSeconds, PhaseDawn},
+		{"far future mid-cycle", 987654 * PhaseSeconds, PhaseDusk},
 	}
 	for _, c := range cases {
 		if got := PhaseAt(c.now); got != c.want {
