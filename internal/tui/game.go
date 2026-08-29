@@ -1329,7 +1329,10 @@ func (g *Game) marketItemRow(i int, it marketItem, st *sim.State) string {
 		case it.owned:
 			return marker + th.Ready.Render("✓ "+line)
 		case it.locked:
-			return marker + th.Locked.Render(line+"  🔒 "+g.gateText(it.gate))
+			// The gate reason is the first thing to go on a narrow terminal:
+			// the item name matters more than why it is locked.
+			return marker + th.Locked.Render(fitWidth(line+"  🔒 "+g.gateText(it.gate),
+				g.contentWidth()-lipgloss.Width(marker)))
 		case st.Coins < it.cost:
 			return marker + th.Locked.Render(line+"  (can't afford)")
 		default:

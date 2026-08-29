@@ -48,7 +48,7 @@ func (g *Game) configRows() []configRow {
 			},
 		},
 		{
-			label: "Solid background", hint: "one fixed dark colour instead of the day/night cycle", on: st.ThemeSolid,
+			label: "Solid background", hint: "one dark colour, no day/night drift", on: st.ThemeSolid,
 			toggle: func(g *Game, enabled bool) {
 				if snap, err := g.sess.SetThemeSolid(g.now, enabled); err == nil {
 					g.snap = snap

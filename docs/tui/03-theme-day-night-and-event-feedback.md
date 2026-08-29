@@ -70,12 +70,16 @@ same grey. Indices render identically everywhere.
 | Role | Index | Use |
 | --- | --- | --- |
 | `bgNight` | `232` | night — almost pure black |
-| `bgSolid` | `233` | the pinned colour when the cycle is off |
-| `bgDawn` | `233` | dawn |
 | `bgDusk` | `233` | dusk |
-| `bgDay` | `234` | day — cool charcoal |
-| `bgEvent` | `235` | canvas lift while an event runs |
+| `bgSolid` | `233` | the pinned colour when the cycle is off |
+| `bgDawn` | `234` | dawn |
+| `bgDay` | `235` | day — cool charcoal |
+| event lift | `234`–`237` | two steps above the phase's own background, per phase |
 | `fg` | `253` | default foreground, so resets land somewhere legible |
+
+The four phase backgrounds are deliberately distinct indices: if two collapsed
+onto the same grey the cycle would be invisible, which
+`TestAutoModeGivesEveryPhaseItsOwnBackground` pins.
 
 Foregrounds carry over from v1 unchanged except where they are too close to
 near-black to read: `styleEmpty` and `styleLocked` (`240`/`241`) lift to
@@ -110,8 +114,10 @@ While `State.EventActive(now)`:
 
 The bar needs elapsed-vs-total, but only `EventEndsAt` is stored, so
 `EventStartedAt` joins it on `State` (`omitempty`, set in `rollOnlineEvent`
-alongside `EventEndsAt`; sim purity holds since `to` is a parameter). Saves
-migrating with an event already in flight backfill from `UpdatedAt`.
+alongside `EventEndsAt`; sim purity holds since `to` is a parameter). It is
+cleared wherever the event is cleared — expiry and rebirth — so the bar never
+draws against a span that no longer exists. A save written before the field
+existed reports a full bar rather than dividing by a zero span.
 
 `Events.EventEnded` is currently never surfaced anywhere; it becomes a notice.
 
@@ -137,8 +143,17 @@ Adding a row directly in `composeCanvas` would silently shift every hitbox.
 ### The `ThemeSolid` setting
 
 A fourth Config toggle, following the `NewsEnabled` chain exactly:
-`State.ThemeSolid bool`, default `false` (cycle on) for new and migrated
-saves, `sim.SetThemeSolid`, `Session.SetThemeSolid`.
+`State.ThemeSolid bool`, default `false` (cycle on), `sim.SetThemeSolid`,
+`Session.SetThemeSolid`.
+
+**No `StateVersion` bump.** The plan originally called for 4 → 5 with a
+migration, but `internal/sim/testdata/v1/` holds byte-identical goldens
+produced by the retired `ssh-idlefarmer` module, which is not checked out and
+cannot be re-run — so they can never be regenerated, and a version bump would
+break `TestGoldensRoundTripByteIdentical` permanently. Both new fields
+(`ThemeSolid`, `EventStartedAt`) have meaningful zero values, so they are
+`omitempty` instead: old saves round-trip unchanged and no migration is
+needed. `TestNewFieldsAreOmittedAtTheirDefaults` pins that property.
 
 The settings count is currently hardcoded in four places (`const settings`,
 the wheel clamp, the hitbox loop, the render slice). Rather than edit three of
@@ -167,8 +182,8 @@ already establishes.
   above it, and never appears on the blocking path.
 - [ ] `configRows()` pinned as single source of truth by a test mirroring
   `TestMarketLinesMatchViewOutput`; clicking and wheeling reach row 4.
-- [ ] `StateVersion` 4 → 5 migration test; `parity_test.go` still passes
-  byte-identically (both new fields are `omitempty`).
+- [ ] New save fields are omitted at their defaults, so `parity_test.go` still
+  passes byte-identically and no `StateVersion` bump is needed.
 - [ ] Existing geometry guards unchanged and passing:
   `TestComposedCanvasIsRectangular`, `TestViewIsCenteredOnLargeTerminals`,
   `TestCanvasHeightStableAcrossScreensAndNotices`,
@@ -178,8 +193,29 @@ already establishes.
 
 - **Reflowing screens for small terminals.** 80×24 gets a warning and test
   coverage, not a redesigned layout. If the cramped layout is still the
-  complaint after this lands, that is its own task.
+  complaint after this lands, that is its own task. In particular the **nav
+  strip is still clipped at 80 columns** (`? Help` renders as `? H`): the
+  labels would have to shorten, which changes the look at every size, so it is
+  left for a follow-up.
 - Per-crop or per-season palettes; the cycle is time-based only.
 - Extracting a shared fleet theme module — fleet-size-2 rule still applies.
 - The dead `farm:harvest-all` / `farm:replant` mouse dispatch
   (`mouse.go`, IDs never registered) — a real pre-existing bug, but unrelated.
+
+## Pre-existing bugs this work uncovered and fixed
+
+Adding 80×24 coverage (`assertFits` previously only ever ran at 100×38) turned
+up four truncation bugs that predate this task:
+
+- **Settings rows were clickable on the wrong line.** `registerConfigHits`
+  used a fixed `bodyY+4+i*2`, but rows render one per line inside a box that
+  is *centred* in the body region. Hitboxes are now measured from the rendered
+  box, the same way the market rows were fixed in `c6a1445`.
+- **Help and tutorial copy had hard line breaks sized for the design canvas**,
+  and interpolated variable-length labels (`starseedLabel`). Both now reflow
+  via `rewrap`/`helpBody`.
+- **Market and land lock reasons ran past the frame** and were silently
+  clipped; they are now cut with `fitWidth`, which measures display columns so
+  a two-column 🔒 cannot slip past the limit.
+- The replant-warning and kicked overlays had the same hard-break problem,
+  masked until the tutorial was fixed.

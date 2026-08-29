@@ -101,6 +101,28 @@ func shortFingerprint(fp string) string {
 	return fp[:max] + "…"
 }
 
+// fitWidth cuts s to max display columns, appending "…" when cut. Unlike
+// truncate it measures rendered width, so a line containing wide runes (a 🔒
+// costs two columns) does not slip past the limit and get clipped by the
+// frame. s must be unstyled: it is cut by runes, which would split an escape
+// sequence.
+func fitWidth(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= max {
+		return s
+	}
+	runes := []rune(s)
+	for len(runes) > 0 {
+		runes = runes[:len(runes)-1]
+		if lipgloss.Width(string(runes)+"…") <= max {
+			break
+		}
+	}
+	return string(runes) + "…"
+}
+
 // truncate cuts s to max runes, appending "…" when cut.
 func truncate(s string, max int) string {
 	if max <= 0 {
@@ -196,4 +218,29 @@ func centerWrap(width int, text string) string {
 		lines[i] = lipgloss.PlaceHorizontal(width, lipgloss.Center, line)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// fitRow trims an unstyled body line to the content width, so a long line is
+// cut with a visible "…" instead of being silently clipped by the frame.
+func (g *Game) fitRow(s string) string { return fitWidth(s, g.contentWidth()) }
+
+// rewrap reflows text to width, preserving blank-line paragraph breaks.
+//
+// Overlay copy is authored with hard line breaks sized for the design canvas.
+// On a narrower terminal those breaks push the box past the overlay clip and
+// the frame cuts the text off, so the breaks are re-flowed to fit.
+func rewrap(text string, width int) string {
+	paras := strings.Split(text, "\n\n")
+	for i, p := range paras {
+		flat := strings.Join(strings.Fields(strings.ReplaceAll(p, "\n", " ")), " ")
+		paras[i] = wrapIndent(width, "", flat)
+	}
+	return strings.Join(paras, "\n\n")
+}
+
+// overlayTextWidth is the room an overlay box has for its text: the content
+// area, less the clip Place applies to modals and the box's own border and
+// padding. Capped so wide terminals keep the authored line length.
+func (g *Game) overlayTextWidth() int {
+	return min(66, max(g.contentWidth()-10, 20))
 }

@@ -132,11 +132,10 @@ func (g *Game) viewBanner() string {
 
 func (g *Game) dailyHeadline() string {
 	st := g.snap.State
-	if st.EventActive(g.now) {
-		if ev := g.content.EventByID(st.EventID); ev != nil {
-			return strings.ToUpper(sanitizeText(ev.Name)) + " — " + strings.ToUpper(sanitizeText(ev.Description))
-		}
-	}
+	// No event branch here: the event bar sits directly above the headline
+	// and already names the event, its effect and its countdown. This used to
+	// be unreachable anyway — viewBanner only reached dailyHeadline when no
+	// event was running — so restating it would have been new duplication.
 	if st.GiftPending {
 		return "PARCEL DELIVERY UP ACROSS THE COUNTY"
 	}
@@ -554,7 +553,7 @@ func (g *Game) viewLand() string {
 			line += " · fails to " + money(st.SalvageValue(g.content, &crop)) + "c"
 		}
 		if !st.Unlocked(crop.Unlock) {
-			b.WriteString(th.Locked.Render(line+"  🔒 "+g.gateText(crop.Unlock)) + "\n")
+			b.WriteString(th.Locked.Render(g.fitRow(line+"  🔒 "+g.gateText(crop.Unlock))) + "\n")
 		} else {
 			b.WriteString(th.Value.Render(line) + "\n")
 		}
@@ -628,8 +627,10 @@ func (g *Game) viewStats() string {
 	for _, r := range g.configRows() {
 		settings = append(settings, strings.ToLower(r.label)+" "+onOff(r.on))
 	}
-	b.WriteString("  Settings: " + th.Value.Render(strings.Join(settings, " · ")) + "\n")
-	b.WriteString("  " + th.Hint.Render("(c to configure)") + "\n")
+	// Wrapped: four settings do not fit on one line at 80 columns.
+	b.WriteString("  Settings:\n")
+	b.WriteString(th.Value.Render(wrapIndent(g.contentWidth(), "    ", strings.Join(settings, " · "))) + "\n")
+	b.WriteString("    " + th.Hint.Render("(c to configure)") + "\n")
 	b.WriteString("\n" + th.Section.Render("Lifetime") + "\n")
 	b.WriteString("  Earnings: " + th.Value.Render(money(st.LifetimeEarnings)+" coins") + "\n")
 	b.WriteString("  Harvests: " + th.Value.Render(money(st.LifetimeHarvests)) + "\n")
@@ -742,10 +743,13 @@ func (g *Game) helpTabs() string {
 func (g *Game) viewHelpControls() string {
 	th := g.theme()
 	ss := g.starseedLabel()
+	// Wrapped rather than hard-broken: the label is variable length and the
+	// content width follows the terminal, so fixed breaks overflowed on any
+	// window narrower than the design size.
 	return th.Section.Render("How it works") + "\n\n" +
-		th.Value.Render("  Plant crops, go live your life, come back and harvest. Crops keep\n"+
-			"  growing while you're away. Earn coins, buy plots and upgrades, and\n"+
-			"  rebirth for "+ss+" — permanent bonuses that make every later run faster.") + "\n\n" +
+		g.helpBody("Plant crops, go live your life, come back and harvest. Crops keep "+
+			"growing while you're away. Earn coins, buy plots and upgrades, and "+
+			"rebirth for "+ss+" — permanent bonuses that make every later run faster.") + "\n\n" +
 		th.Section.Render("Keys") + "\n" +
 		th.Value.Render("  1-6               switch screens\n"+
 			"  ?                 help\n"+
@@ -947,7 +951,7 @@ func (g *Game) viewTutorial() string {
 	controls := check + " Skip" + "      " + th.Ready.Render(cont)
 
 	text := th.Title.Render(title) + "\n\n" +
-		th.Value.Render(body) + "\n\n" +
+		th.Value.Render(rewrap(body, g.overlayTextWidth())) + "\n\n" +
 		box + "  " + th.Hint.Render("s to skip · enter to continue") + "\n" +
 		controls
 	return th.Box.Render(text)
@@ -985,12 +989,12 @@ func (g *Game) viewConfig() string {
 func (g *Game) viewReplantWarn() string {
 	th := g.theme()
 	text := th.Section.Render("About “r — replant all” 🌱") + "\n\n" +
-		th.Value.Render("Replant fills every empty plot with the crop it last grew (or your\n"+
-			"last-planted crop for fresh plots). It spends coins automatically,\n"+
+		th.Value.Render(rewrap("Replant fills every empty plot with the crop it last grew (or your "+
+			"last-planted crop for fresh plots). It spends coins automatically, "+
 			"buying the most expensive seeds first.\n\n"+
-			"If you can't afford every plot, it plants as many as it can and\n"+
+			"If you can't afford every plot, it plants as many as it can and "+
 			"tells you how many it skipped — just like a normal short purchase.\n\n"+
-			"Plots that are still growing are left untouched.") + "\n\n" +
+			"Plots that are still growing are left untouched.", g.overlayTextWidth())) + "\n\n" +
 		th.Ready.Render("Press any key to close.")
 	return th.Box.Render(text)
 }
@@ -1047,7 +1051,7 @@ func (g *Game) viewKicked() string {
 	th := g.theme()
 	return th.Box.Render(
 		th.Section.Render("Until next time 🌙") + "\n\n" +
-			th.Value.Render(sanitizeText(g.kickReason)) + "\n\n" +
+			th.Value.Render(rewrap(sanitizeText(g.kickReason), g.overlayTextWidth())) + "\n\n" +
 			th.Hint.Render("Your progress is saved. Disconnecting…"))
 }
 
