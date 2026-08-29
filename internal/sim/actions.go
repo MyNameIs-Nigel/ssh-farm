@@ -441,3 +441,7 @@ func Rebirth(s *State, c *content.Content, now int64) (int64, error) {
 
 // SetFlavor toggles the ambient-discovery flavor for this save.
 func SetFlavor(s *State, enabled bool) { s.FlavorEnabled = enabled }
+
+// SetThemeSolid pins the background to one colour instead of letting it drift
+// with the day/night cycle.
+func SetThemeSolid(s *State, enabled bool) {}

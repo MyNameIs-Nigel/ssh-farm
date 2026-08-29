@@ -17,6 +17,7 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 	"github.com/mynameis-nigel/ssh-farm/internal/tui/hitbox"
+	"github.com/mynameis-nigel/ssh-farm/internal/tui/theme"
 )
 
 // Model is the Bubble Tea model type used by the Wish middleware.
@@ -148,6 +149,23 @@ type Game struct {
 	layout      frameLayout
 	lastClickID string
 	lastClickAt int64
+
+	// sizeWarned tracks whether the "too small" toast has already fired, so
+	// resizing around inside an undersized terminal does not re-nag.
+	sizeWarned bool
+}
+
+// theme builds the palette for this frame: the day/night phase from the
+// model's clock, the player's solid-background setting, and the active event
+// (which recolours the frame and lifts the canvas).
+func (g *Game) theme() theme.Theme {
+	st := g.snap.State
+	eventID := ""
+	if st != nil && st.EventActive(g.now) {
+		eventID = st.EventID
+	}
+	solid := st != nil && st.ThemeSolid
+	return theme.New(theme.PhaseAt(g.now), solid, eventID)
 }
 
 func NewGame(id identity.SessionIdentity, res game.AttachResult, c *content.Content, board *leaderboard.Engine, width, height int, now int64, idleTimeout int64) *Game {
@@ -1291,31 +1309,31 @@ func (g *Game) marketItemRow(i int, it marketItem, st *sim.State) string {
 		case it.level >= it.maxLvl:
 			return marker + styleReady.Render("✓ "+line+"  maxed")
 		case it.kind == "strain" && it.locked:
-			return marker + styleLocked.Render(line + "  🔒")
+			return marker + styleLocked.Render(line+"  🔒")
 		case st.Coins < it.cost:
-			return marker + styleLocked.Render(line + "  " + money(it.cost) + "c")
+			return marker + styleLocked.Render(line+"  "+money(it.cost)+"c")
 		default:
-			return marker + styleValue.Render(line + "  " + money(it.cost) + "c")
+			return marker + styleValue.Render(line+"  "+money(it.cost)+"c")
 		}
 	case "scarecrow":
 		line := sanitizeText(it.name) + " — " + sanitizeText(it.desc)
 		switch {
 		case it.owned:
-			return marker + styleReady.Render("✓ " + line + "  owned")
+			return marker + styleReady.Render("✓ "+line+"  owned")
 		case st.Coins < it.cost:
-			return marker + styleLocked.Render(line + "  " + money(it.cost) + "c")
+			return marker + styleLocked.Render(line+"  "+money(it.cost)+"c")
 		default:
-			return marker + styleValue.Render(line + "  " + money(it.cost) + "c")
+			return marker + styleValue.Render(line+"  "+money(it.cost)+"c")
 		}
 	case "zone":
 		line := sanitizeText(it.name) + " — " + money(it.cost) + "c · " + sanitizeText(it.desc)
 		switch {
 		case it.owned:
-			return marker + styleReady.Render("✓ " + line)
+			return marker + styleReady.Render("✓ "+line)
 		case it.locked:
-			return marker + styleLocked.Render(line + "  🔒 " + g.gateText(it.gate))
+			return marker + styleLocked.Render(line+"  🔒 "+g.gateText(it.gate))
 		case st.Coins < it.cost:
-			return marker + styleLocked.Render(line + "  (can't afford)")
+			return marker + styleLocked.Render(line+"  (can't afford)")
 		default:
 			return marker + styleValue.Render(line)
 		}

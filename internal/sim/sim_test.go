@@ -2,6 +2,7 @@ package sim
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
@@ -1104,5 +1105,122 @@ func TestGiftCoinRewardNeverExceedsCeiling(t *testing.T) {
 		if res.Coins > c.Gifts.CoinRewardCeiling {
 			t.Fatalf("gift paid %d, ceiling is %d", res.Coins, c.Gifts.CoinRewardCeiling)
 		}
+	}
+}
+
+// TestNewFieldsAreOmittedAtTheirDefaults is what lets the theme setting and
+// the event-start timestamp be added with no StateVersion bump. The v1 parity
+// goldens are byte-identical fixtures produced by the retired ssh-idlefarmer
+// module, so they can never be regenerated — any field that serialises at its
+// zero value would break TestGoldensRoundTripByteIdentical forever.
+func TestNewFieldsAreOmittedAtTheirDefaults(t *testing.T) {
+	c := testContent(t)
+	s := newTestState(t, c)
+	b, err := s.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"theme_solid", "event_started_at"} {
+		if strings.Contains(string(b), key) {
+			t.Errorf("%q is serialised at its default; it must be omitempty or the v1 goldens break", key)
+		}
+	}
+}
+
+func TestNewFieldsRoundTripWhenSet(t *testing.T) {
+	c := testContent(t)
+	s := newTestState(t, c)
+	SetThemeSolid(s, true)
+	s.EventStartedAt = 4242
+
+	b, err := s.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := DecodeState(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !back.ThemeSolid {
+		t.Error("ThemeSolid did not survive a round trip")
+	}
+	if back.EventStartedAt != 4242 {
+		t.Errorf("EventStartedAt = %d after round trip, want 4242", back.EventStartedAt)
+	}
+}
+
+func TestNewSaveStartsOnTheDayNightCycle(t *testing.T) {
+	c := testContent(t)
+	s := newTestState(t, c)
+	if s.ThemeSolid {
+		t.Fatal("a fresh save should start on the day/night cycle")
+	}
+}
+
+func TestSetThemeSolidTogglesTheSetting(t *testing.T) {
+	c := testContent(t)
+	s := newTestState(t, c)
+	SetThemeSolid(s, true)
+	if !s.ThemeSolid {
+		t.Fatal("SetThemeSolid(true) did not pin the background")
+	}
+	SetThemeSolid(s, false)
+	if s.ThemeSolid {
+		t.Fatal("SetThemeSolid(false) did not return to the cycle")
+	}
+}
+
+// TestThemeSolidSurvivesRebirth — it is a player setting, not run state.
+func TestThemeSolidSurvivesRebirth(t *testing.T) {
+	c := testContent(t)
+	s := newTestState(t, c)
+	SetThemeSolid(s, true)
+	s.RunEarnings = 1_000_000
+	s.LifetimeEarnings = 1_000_000
+	if _, err := Rebirth(s, c, 2000); err != nil {
+		t.Fatalf("rebirth: %v", err)
+	}
+	if !s.ThemeSolid {
+		t.Fatal("theme setting must persist across rebirth, like news and critters")
+	}
+}
+
+// TestRolledEventRecordsItsStart is what the countdown bar renders from.
+func TestRolledEventRecordsItsStart(t *testing.T) {
+	c := testContent(t)
+	s := newTestState(t, c)
+	// Roll forward one second at a time until an event fires.
+	now := s.UpdatedAt
+	for i := 0; i < 20000 && s.EventID == ""; i++ {
+		now++
+		Advance(s, c, now)
+	}
+	if s.EventID == "" {
+		t.Skip("no event rolled in the sampled window")
+	}
+	if s.EventStartedAt == 0 {
+		t.Fatal("a rolled event recorded no start time")
+	}
+	if s.EventStartedAt >= s.EventEndsAt {
+		t.Fatalf("event span is empty: started %d, ends %d", s.EventStartedAt, s.EventEndsAt)
+	}
+}
+
+// TestRebirthClearsEventStart keeps the event fields consistent: Rebirth
+// already clears EventID/EventEndsAt, so a stale start time would leave the
+// bar rendering against a span that no longer exists.
+func TestRebirthClearsEventStart(t *testing.T) {
+	c := testContent(t)
+	s := newTestState(t, c)
+	s.EventID = "market_day"
+	s.EventStartedAt = 100
+	s.EventEndsAt = 220
+	s.RunEarnings = 1_000_000
+	s.LifetimeEarnings = 1_000_000
+	if _, err := Rebirth(s, c, 2000); err != nil {
+		t.Fatalf("rebirth: %v", err)
+	}
+	if s.EventStartedAt != 0 {
+		t.Fatalf("EventStartedAt = %d after rebirth, want 0", s.EventStartedAt)
 	}
 }
