@@ -87,3 +87,5 @@ activity too — mouse-only players must not idle out.
 
 - Leaderboard screen → tui/02 (it lands as one more nav tab here).
 - Theme changes — v1's look ports as-is; restyling is not v2.0.
+  (Superseded post-2.0 by tui/03, which adds the day/night background,
+  the solid-colour setting, and the event bar.)

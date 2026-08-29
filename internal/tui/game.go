@@ -17,6 +17,7 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 	"github.com/mynameis-nigel/ssh-farm/internal/tui/hitbox"
+	"github.com/mynameis-nigel/ssh-farm/internal/tui/theme"
 )
 
 // Model is the Bubble Tea model type used by the Wish middleware.
@@ -47,8 +48,19 @@ func (e errScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (e errScreen) View() tea.View {
-	msg := "🌧 The farm could not be opened just now.\nPress any key to disconnect, then try again."
-	v := tea.NewView(lipgloss.Place(max(e.width, 1), max(e.height, 1), lipgloss.Center, lipgloss.Center, msg))
+	// The error screen paints itself the same way the game does. It has no
+	// save to read a setting from, so it uses the pinned solid background —
+	// this is the screen a player on a light terminal is most likely to hit.
+	th := theme.New(theme.PhaseNight, true, "")
+	msg := th.Value.Render("🌧 The farm could not be opened just now.") + "\n" +
+		th.Hint.Render("Press any key to disconnect, then try again.")
+	placed := lipgloss.Place(
+		max(e.width, 1), max(e.height, 1), lipgloss.Center, lipgloss.Center, msg,
+		lipgloss.WithWhitespaceStyle(lipgloss.NewStyle().Background(th.Bg)),
+	)
+	v := tea.NewView(th.Paint(placed))
+	v.BackgroundColor = th.Bg
+	v.ForegroundColor = th.Fg
 	v.AltScreen = true
 	v.WindowTitle = windowTitle
 	return v
@@ -148,6 +160,23 @@ type Game struct {
 	layout      frameLayout
 	lastClickID string
 	lastClickAt int64
+
+	// sizeWarned tracks whether the "too small" toast has already fired, so
+	// resizing around inside an undersized terminal does not re-nag.
+	sizeWarned bool
+}
+
+// theme builds the palette for this frame: the day/night phase from the
+// model's clock, the player's solid-background setting, and the active event
+// (which recolours the frame and lifts the canvas).
+func (g *Game) theme() theme.Theme {
+	st := g.snap.State
+	eventID := ""
+	if st != nil && st.EventActive(g.now) {
+		eventID = st.EventID
+	}
+	solid := st != nil && st.ThemeSolid
+	return theme.New(theme.PhaseAt(g.now), solid, eventID)
 }
 
 func NewGame(id identity.SessionIdentity, res game.AttachResult, c *content.Content, board *leaderboard.Engine, width, height int, now int64, idleTimeout int64) *Game {
@@ -203,6 +232,7 @@ func (g *Game) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		g.width, g.height = msg.Width, msg.Height
+		g.noteWindowSize()
 		return g, nil
 
 	case kickedMsg:
@@ -526,7 +556,7 @@ func (g *Game) handleTutorialKey(key string) (tea.Model, tea.Cmd) {
 }
 
 func (g *Game) handleConfigKey(key string) (tea.Model, tea.Cmd) {
-	const settings = 3 // lucky finds, news headlines, critter visits
+	settings := len(g.configRows())
 	switch key {
 	case "esc", "q", "c":
 		g.overlay = ovNone
@@ -542,30 +572,6 @@ func (g *Game) handleConfigKey(key string) (tea.Model, tea.Cmd) {
 		g.toggleConfig(g.configIdx)
 	}
 	return g, nil
-}
-
-func (g *Game) toggleConfig(idx int) {
-	st := g.snap.State
-	switch idx {
-	case 0:
-		enabled := !st.FlavorEnabled
-		if snap, err := g.sess.SetFlavor(g.now, enabled); err == nil {
-			g.snap = snap
-			g.addNotice("Lucky finds " + onOff(enabled) + ".")
-		}
-	case 1:
-		enabled := !st.NewsEnabled
-		if snap, err := g.sess.SetNews(g.now, enabled); err == nil {
-			g.snap = snap
-			g.addNotice("News headlines " + onOff(enabled) + ".")
-		}
-	case 2:
-		enabled := !st.CrittersEnabled
-		if snap, err := g.sess.SetCritters(g.now, enabled); err == nil {
-			g.snap = snap
-			g.addNotice("Critter visits " + onOff(enabled) + ".")
-		}
-	}
 }
 
 // openAutoSowPicker opens the crop picker in queue-editing mode, starting the
@@ -840,6 +846,7 @@ type boardLine struct {
 // exists, a divider and the ±3 Window around you — gameplay/02 already
 // dedupes the window against Top, so this never repeats a row.
 func (g *Game) boardLines(cw int) []boardLine {
+	th := g.theme()
 	rankWidth := 0
 	for _, r := range g.lbBoard.Top {
 		rankWidth = max(rankWidth, len(itoa(r.Rank)))
@@ -853,13 +860,13 @@ func (g *Game) boardLines(cw int) []boardLine {
 		lines = append(lines, boardLine{text: g.boardRowLine(g.lbBoard.Top[i], cw, rankWidth), row: &g.lbBoard.Top[i]})
 	}
 	if len(g.lbBoard.Window) > 0 {
-		lines = append(lines, boardLine{text: styleRule.Render(strings.Repeat("─", max(cw, 1)))})
+		lines = append(lines, boardLine{text: th.Rule.Render(strings.Repeat("─", max(cw, 1)))})
 		for i := range g.lbBoard.Window {
 			lines = append(lines, boardLine{text: g.boardRowLine(g.lbBoard.Window[i], cw, rankWidth), row: &g.lbBoard.Window[i]})
 		}
 	}
 	if len(lines) == 0 {
-		lines = append(lines, boardLine{text: styleHint.Render("No farms on the board yet — be the first!")})
+		lines = append(lines, boardLine{text: th.Hint.Render("No farms on the board yet — be the first!")})
 	}
 	return lines
 }
@@ -874,6 +881,7 @@ func (g *Game) boardLines(cw int) []boardLine {
 // number to the widest rank in the current Top+Window so "#1" and "#10"
 // don't stagger the name column.
 func (g *Game) boardRowLine(r leaderboard.Row, cw, rankWidth int) string {
+	th := g.theme()
 	name := r.DisplayName
 	if name == "" {
 		name = "FARM" // never-renamed farm; gameplay/02's documented UI fallback
@@ -904,15 +912,15 @@ func (g *Game) boardRowLine(r leaderboard.Row, cw, rankWidth int) string {
 	line := alignSides(left, right, cw)
 	switch {
 	case r.IsYou:
-		return styleSelected.Render(line)
+		return th.Selected.Render(line)
 	case r.Rank == 1:
-		return styleBoardGold.Render(line)
+		return th.BoardGold.Render(line)
 	case r.Rank == 2:
-		return styleBoardSilver.Render(line)
+		return th.BoardSilver.Render(line)
 	case r.Rank == 3:
-		return styleBoardBronze.Render(line)
+		return th.BoardBronze.Render(line)
 	default:
-		return styleValue.Render(line)
+		return th.Value.Render(line)
 	}
 }
 
@@ -920,7 +928,8 @@ func (g *Game) boardRowLine(r leaderboard.Row, cw, rankWidth int) string {
 // plus "YOU: #rank/total" (or the unranked callout for a farm still below
 // gameplay/02's coin floor).
 func (g *Game) boardHeaderLine(cw int) string {
-	title := styleSection.Render("LEADERBOARD — RICHEST FARMS")
+	th := g.theme()
+	title := th.Section.Render("LEADERBOARD — RICHEST FARMS")
 	var rank string
 	switch {
 	case g.lbBoard.You == nil:
@@ -928,7 +937,7 @@ func (g *Game) boardHeaderLine(cw int) string {
 	default:
 		rank = "YOU: #" + itoa(g.lbBoard.You.Rank) + "/" + itoa(g.lbBoard.Total)
 	}
-	return alignSides(title, styleValue.Render(rank), cw)
+	return alignSides(title, th.Value.Render(rank), cw)
 }
 
 // boardVisibleRows is how many of boardLines' rows fit under the pinned
@@ -1141,6 +1150,11 @@ func (g *Game) eventNotices(ev sim.Events) {
 	if ev.GiftArrived {
 		g.addNotice("📦 A parcel waits at the gate — press g to open it.")
 	}
+	if ev.EventEnded != "" {
+		if e := g.content.EventByID(ev.EventEnded); e != nil {
+			g.addNotice("⚡ " + sanitizeText(e.Name) + " has passed.")
+		}
+	}
 	if ev.EventStarted != "" {
 		if e := g.content.EventByID(ev.EventStarted); e != nil {
 			g.addNotice("📰 " + sanitizeText(e.Name) + ": " + sanitizeText(e.Description))
@@ -1235,11 +1249,12 @@ const noMarketItem = -1
 // marketLines lays out the Market screen body in the same order viewMarket
 // draws it — section headers, blank separators, and one row per item.
 func (g *Game) marketLines() []marketLine {
+	th := g.theme()
 	st := g.snap.State
 	items := g.marketItems()
 	var lines []marketLine
 
-	lines = append(lines, marketLine{text: styleSection.Render("Multipliers (this run)"), idx: noMarketItem})
+	lines = append(lines, marketLine{text: th.Section.Render("Multipliers (this run)"), idx: noMarketItem})
 	for i, it := range items {
 		if it.kind != "multiplier" {
 			continue
@@ -1248,7 +1263,7 @@ func (g *Game) marketLines() []marketLine {
 	}
 
 	lines = append(lines, marketLine{idx: noMarketItem})
-	lines = append(lines, marketLine{text: styleSection.Render("Hardier Strains"), idx: noMarketItem})
+	lines = append(lines, marketLine{text: th.Section.Render("Hardier Strains"), idx: noMarketItem})
 	for i, it := range items {
 		if it.kind != "strain" {
 			continue
@@ -1258,7 +1273,7 @@ func (g *Game) marketLines() []marketLine {
 
 	if g.content.Scarecrow.Cost > 0 {
 		lines = append(lines, marketLine{idx: noMarketItem})
-		lines = append(lines, marketLine{text: styleSection.Render("Helpers (this run)"), idx: noMarketItem})
+		lines = append(lines, marketLine{text: th.Section.Render("Helpers (this run)"), idx: noMarketItem})
 		for i, it := range items {
 			if it.kind != "scarecrow" {
 				continue
@@ -1268,7 +1283,7 @@ func (g *Game) marketLines() []marketLine {
 	}
 
 	lines = append(lines, marketLine{idx: noMarketItem})
-	lines = append(lines, marketLine{text: styleSection.Render("Zones"), idx: noMarketItem})
+	lines = append(lines, marketLine{text: th.Section.Render("Zones"), idx: noMarketItem})
 	for i, it := range items {
 		if it.kind != "zone" {
 			continue
@@ -1280,44 +1295,48 @@ func (g *Game) marketLines() []marketLine {
 }
 
 func (g *Game) marketItemRow(i int, it marketItem, st *sim.State) string {
+	th := g.theme()
 	marker := "  "
 	if i == g.marketIdx {
-		marker = styleSelected.Render("▸ ")
+		marker = th.Selected.Render("▸ ")
 	}
 	switch it.kind {
 	case "multiplier", "strain":
 		line := sanitizeText(it.name) + " Lv" + itoa(it.level) + "/" + itoa(it.maxLvl) + " — " + sanitizeText(it.desc)
 		switch {
 		case it.level >= it.maxLvl:
-			return marker + styleReady.Render("✓ "+line+"  maxed")
+			return marker + th.Ready.Render("✓ "+line+"  maxed")
 		case it.kind == "strain" && it.locked:
-			return marker + styleLocked.Render(line + "  🔒")
+			return marker + th.Locked.Render(line+"  🔒")
 		case st.Coins < it.cost:
-			return marker + styleLocked.Render(line + "  " + money(it.cost) + "c")
+			return marker + th.Locked.Render(line+"  "+money(it.cost)+"c")
 		default:
-			return marker + styleValue.Render(line + "  " + money(it.cost) + "c")
+			return marker + th.Value.Render(line+"  "+money(it.cost)+"c")
 		}
 	case "scarecrow":
 		line := sanitizeText(it.name) + " — " + sanitizeText(it.desc)
 		switch {
 		case it.owned:
-			return marker + styleReady.Render("✓ " + line + "  owned")
+			return marker + th.Ready.Render("✓ "+line+"  owned")
 		case st.Coins < it.cost:
-			return marker + styleLocked.Render(line + "  " + money(it.cost) + "c")
+			return marker + th.Locked.Render(line+"  "+money(it.cost)+"c")
 		default:
-			return marker + styleValue.Render(line + "  " + money(it.cost) + "c")
+			return marker + th.Value.Render(line+"  "+money(it.cost)+"c")
 		}
 	case "zone":
 		line := sanitizeText(it.name) + " — " + money(it.cost) + "c · " + sanitizeText(it.desc)
 		switch {
 		case it.owned:
-			return marker + styleReady.Render("✓ " + line)
+			return marker + th.Ready.Render("✓ "+line)
 		case it.locked:
-			return marker + styleLocked.Render(line + "  🔒 " + g.gateText(it.gate))
+			// The gate reason is the first thing to go on a narrow terminal:
+			// the item name matters more than why it is locked.
+			return marker + th.Locked.Render(fitWidth(line+"  🔒 "+g.gateText(it.gate),
+				g.contentWidth()-lipgloss.Width(marker)))
 		case st.Coins < it.cost:
-			return marker + styleLocked.Render(line + "  (can't afford)")
+			return marker + th.Locked.Render(line+"  (can't afford)")
 		default:
-			return marker + styleValue.Render(line)
+			return marker + th.Value.Render(line)
 		}
 	}
 	return ""
@@ -1333,31 +1352,32 @@ type starShopLine struct {
 const noShopItem = -1
 
 func (g *Game) starShopLines() []starShopLine {
+	th := g.theme()
 	st := g.snap.State
 	if st.Rebirths < 1 {
 		hint := centerWrap(g.contentWidth(), "The cosmos keeps its deeper rewards for those who begin anew.")
 		return []starShopLine{
-			{text: styleSection.Render("StarShop"), idx: noShopItem},
+			{text: th.Section.Render("StarShop"), idx: noShopItem},
 			{idx: noShopItem},
-			{text: styleLocked.Render("  🔒 Rebirth once to discover what lies beyond."), idx: noShopItem},
+			{text: th.Locked.Render("  🔒 Rebirth once to discover what lies beyond."), idx: noShopItem},
 			{idx: noShopItem},
-			{text: styleHint.Render(hint), idx: noShopItem},
+			{text: th.Hint.Render(hint), idx: noShopItem},
 		}
 	}
 
 	var lines []starShopLine
-	lines = append(lines, starShopLine{text: styleSection.Render("StarShop — " + g.starseedLabel()), idx: noShopItem})
+	lines = append(lines, starShopLine{text: th.Section.Render("StarShop — " + g.starseedLabel()), idx: noShopItem})
 	lines = append(lines, starShopLine{idx: noShopItem})
-	lines = append(lines, starShopLine{text: "  Balance: " + styleValue.Render("✦ "+money(st.PrestigeCurrency)), idx: noShopItem})
-	lines = append(lines, starShopLine{text: "  Rebirths: " + styleValue.Render(money(st.Rebirths)), idx: noShopItem})
+	lines = append(lines, starShopLine{text: "  Balance: " + th.Value.Render("✦ "+money(st.PrestigeCurrency)), idx: noShopItem})
+	lines = append(lines, starShopLine{text: "  Rebirths: " + th.Value.Render(money(st.Rebirths)), idx: noShopItem})
 	lines = append(lines, starShopLine{idx: noShopItem})
-	lines = append(lines, starShopLine{text: styleSection.Render("Lifetime upgrades"), idx: noShopItem})
+	lines = append(lines, starShopLine{text: th.Section.Render("Lifetime upgrades"), idx: noShopItem})
 
 	lineWidth := g.contentWidth() - 2
 	for i, u := range g.content.Upgrades {
 		marker := "  "
 		if i == g.progressIdx {
-			marker = styleSelected.Render("▸ ")
+			marker = th.Selected.Render("▸ ")
 		}
 		level := st.UpgradeLevel(u.ID)
 		cost := st.UpgradeCost(&g.content.Upgrades[i])
@@ -1365,11 +1385,11 @@ func (g *Game) starShopLines() []starShopLine {
 		var row string
 		switch {
 		case cost < 0:
-			row = marker + styleReady.Render(alignSides("✓ "+line, "maxed", lineWidth))
+			row = marker + th.Ready.Render(alignSides("✓ "+line, "maxed", lineWidth))
 		case st.PrestigeCurrency < cost:
-			row = marker + styleLocked.Render(alignSides(line, "✦ "+money(cost), lineWidth))
+			row = marker + th.Locked.Render(alignSides(line, "✦ "+money(cost), lineWidth))
 		default:
-			row = marker + styleValue.Render(alignSides(line, "✦ "+money(cost), lineWidth))
+			row = marker + th.Value.Render(alignSides(line, "✦ "+money(cost), lineWidth))
 		}
 		lines = append(lines, starShopLine{text: row, idx: i})
 	}

@@ -233,6 +233,15 @@ func (s *Session) SetCritters(now int64, enabled bool) (Snapshot, error) {
 	return snap, err
 }
 
+// SetThemeSolid pins the background colour for this save.
+func (s *Session) SetThemeSolid(now int64, enabled bool) (Snapshot, error) {
+	snap, _, err := s.intent(now, func(st *sim.State) error {
+		sim.SetThemeSolid(st, enabled)
+		return nil
+	})
+	return snap, err
+}
+
 // ShooCritter removes a critter from a plot.
 func (s *Session) ShooCritter(now int64, plot int) (int64, Snapshot, []string, error) {
 	var reward int64

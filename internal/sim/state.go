@@ -63,10 +63,11 @@ type State struct {
 	Scarecrow      bool            `json:"scarecrow,omitempty"`     // run-scoped: auto-shoos critters
 
 	// Gifts and events (gift pending persists across rebirth; events are transient).
-	GiftPending   bool   `json:"gift_pending,omitempty"`
-	GiftArrivedAt int64  `json:"gift_arrived_at,omitempty"`
-	EventID       string `json:"event_id,omitempty"`
-	EventEndsAt   int64  `json:"event_ends_at,omitempty"`
+	GiftPending    bool   `json:"gift_pending,omitempty"`
+	GiftArrivedAt  int64  `json:"gift_arrived_at,omitempty"`
+	EventID        string `json:"event_id,omitempty"`
+	EventStartedAt int64  `json:"event_started_at,omitempty"` // for the event countdown bar
+	EventEndsAt    int64  `json:"event_ends_at,omitempty"`
 
 	// Permanent (survive rebirth).
 	PrestigeCurrency int64            `json:"prestige_currency"`
@@ -84,6 +85,11 @@ type State struct {
 	CrittersEnabled bool   `json:"critters_enabled"`         // cosmetic critter visits
 	ReplantWarned   bool   `json:"replant_warned,omitempty"` // seen the replant-all warning once
 	LastCrop        string `json:"last_crop,omitempty"`      // last crop planted anywhere, replant fallback
+	// ThemeSolid is omitempty on purpose: false (the day/night cycle) is the
+	// default, so old saves round-trip byte-identically and no StateVersion
+	// bump — which the v1 parity goldens could never be regenerated for — is
+	// needed to add it.
+	ThemeSolid bool `json:"theme_solid,omitempty"`
 }
 
 // New creates a fresh save seeded with seed, simulated as of now.

@@ -87,9 +87,13 @@ func TestViewIsCenteredOnLargeTerminals(t *testing.T) {
 		if !strings.Contains(line, "ssh-farm") {
 			continue
 		}
+		// Measure on the stripped line: the background pass opens every line
+		// with an SGR sequence, so column positions have to be read from the
+		// printable text (the same convention overflow_test.go uses).
+		plain := stripAnsi(line)
 		// Canvas is 100 wide on a 200-col terminal: expect ~50 columns of
 		// left margin (±2 for emoji-width slack).
-		lead := len(line) - len(strings.TrimLeft(line, " "))
+		lead := len(plain) - len(strings.TrimLeft(plain, " "))
 		if lead < 48 || lead > 52 {
 			t.Fatalf("header line margin = %d leading spaces, want ~50", lead)
 		}

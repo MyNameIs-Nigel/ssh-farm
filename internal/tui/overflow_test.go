@@ -178,3 +178,89 @@ func TestLockedStarShopHintCenteredAndComplete(t *testing.T) {
 func collapseRun(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
+
+// stockGame renders at 80×24 — the stock macOS Terminal.app size, and the
+// terminal the day/night theme work was prompted by. designGame only ever
+// exercised 100×38, so until now the size most likely to overflow had no
+// coverage at all.
+func stockGame(t *testing.T) *Game {
+	t.Helper()
+	f := newFixture(t)
+	base := time.Now().Unix()
+	g := f.newGame(t, base)
+	g = dismissIntro(t, g)
+	g, _ = tick(t, g, base)
+	return resize(t, g, 80, 24)
+}
+
+func TestScreenBodiesFitContentWidthAtStockSize(t *testing.T) {
+	g := stockGame(t)
+	cw := g.contentWidth()
+
+	cases := []struct {
+		name  string
+		setup func()
+	}{
+		{"farm", func() { g.scr = scrFarm }},
+		{"market", func() { g.scr = scrMarket }},
+		{"land", func() { g.scr = scrLand }},
+		{"rebirth", func() { g.scr = scrRebirth }},
+		{"starshop-locked", func() { g.scr = scrStarShop; g.snap.State.Rebirths = 0 }},
+		{"starshop-unlocked", func() { g.scr = scrStarShop; g.snap.State.Rebirths = 2 }},
+		{"stats", func() { g.scr = scrStats }},
+		{"board-empty", func() { g.scr = scrBoard; g.lbErr = nil; g.lbBoard = leaderboard.Board{} }},
+		{"board-error", func() { g.scr = scrBoard; g.lbErr = errBoardUnavailable }},
+		{"board-populated", func() { g.scr = scrBoard; g.lbErr = nil; g.lbBoard = wideBoardFixture() }},
+		{"help", func() { g.scr = scrHelp }},
+	}
+	for _, c := range cases {
+		c.setup()
+		assertFits(t, "stock screen "+c.name, g.screenBody(), cw)
+	}
+}
+
+func TestOverlayBoxesFitContentWidthAtStockSize(t *testing.T) {
+	g := stockGame(t)
+	limit := g.contentWidth() - 4
+
+	for _, o := range []struct {
+		name string
+		ov   overlay
+	}{
+		{"tutorial", ovTutorial},
+		{"away", ovAway},
+		{"picker", ovPicker},
+		{"upgrade", ovUpgrade},
+		{"rebirth-confirm", ovRebirthConfirm},
+		{"name", ovName},
+		{"config", ovConfig},
+		{"replant-warn", ovReplantWarn},
+		{"kicked", ovKicked},
+	} {
+		g.overlay = o.ov
+		assertFits(t, "stock overlay "+o.name, g.overlayBox(), limit)
+	}
+}
+
+// TestComposedCanvasIsRectangularAtStockSize — the frame must stay a clean
+// rectangle at 80×24 too, including while the size warning and an event bar
+// are both occupying header rows.
+func TestComposedCanvasIsRectangularAtStockSize(t *testing.T) {
+	g := stockGame(t)
+	canvasW, _ := g.canvasSize()
+
+	g.snap.State.EventID = "market_day"
+	g.snap.State.EventStartedAt = g.now
+	g.snap.State.EventEndsAt = g.now + 120
+
+	for _, scr := range screenOrder {
+		g.scr = scr
+		out := g.composeCanvas(g.screenBody(), false)
+		for i, line := range strings.Split(out, "\n") {
+			if w := lipgloss.Width(line); w != canvasW {
+				t.Errorf("screen %v: line %d width %d != canvas width %d:\n%q",
+					scr, i, w, canvasW, stripAnsi(line))
+			}
+		}
+	}
+}

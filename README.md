@@ -2,7 +2,7 @@
 
 **Idle Farmer v2** — the ssharcade-native rebuild of
 [`ssh-idlefarmer`](../ssh-idlefarmer). Same beloved game (plant, sell, buy
-land, rebirth), three big upgrades:
+land, rebirth), four big upgrades:
 
 1. **Mouse everywhere.** Click plots, click market rows, click buttons —
    the keyboard still does everything, the mouse now does too.
@@ -12,6 +12,11 @@ land, rebirth), three big upgrades:
 3. **Durable data.** Every save is continuously replicated off the host to
    S3 (Litestream). A dead instance costs seconds of progress, never a
    farm.
+4. **A farm that reads on any terminal.** A fully painted near-black
+   canvas that drifts through a day/night cycle, a *Solid background*
+   setting for players who want one fixed colour, and events that take
+   over the frame with a draining countdown instead of one quiet line of
+   text. See [docs/tui/03](docs/tui/03-theme-day-night-and-event-feedback.md).
 
 Players reach it through the arcade:
 
