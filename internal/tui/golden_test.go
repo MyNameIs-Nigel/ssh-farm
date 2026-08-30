@@ -107,8 +107,8 @@ func TestGoldenRenders(t *testing.T) {
 			st.EventStartedAt = goldenBase
 			st.EventEndsAt = goldenBase + 120
 		}},
-		// The reported environment: a stock 80x24 terminal, which also shows
-		// the below-recommended-size warning.
+		// The reported environment: a stock 80x24 terminal, which is below
+		// the recommended 100x30 and so renders the Help tab as a warning.
 		{"farm-night-80x24", 80, 24, func(g *Game) {
 			g.now = goldenBase + 3*theme.PhaseSeconds
 		}},

@@ -69,7 +69,7 @@ Phase 4:             tui/02 (leaderboard screen)        tests/01, tests/02
 | [gameplay/03-farm-names-and-moderation.md](gameplay/03-farm-names-and-moderation.md) | Display names, normalization pipeline, denylist best practices |
 | [tui/01-mouse-retrofit.md](tui/01-mouse-retrofit.md) | Hitbox registry + click/wheel semantics across every v1 screen |
 | [tui/02-leaderboard-screen.md](tui/02-leaderboard-screen.md) | The board: rank header, top list, window around you |
-| [tui/03-theme-day-night-and-event-feedback.md](tui/03-theme-day-night-and-event-feedback.md) | Day/night background, solid-colour setting, size warning, event bar |
+| [tui/03-theme-day-night-and-event-feedback.md](tui/03-theme-day-night-and-event-feedback.md) | Day/night background, solid-colour setting, size indicator in Help, event bar |
 | [tests/01-parity-and-import-tests.md](tests/01-parity-and-import-tests.md) | v1↔v2 sim parity, migration, store |
 | [tests/02-leaderboard-moderation-and-durability-tests.md](tests/02-leaderboard-moderation-and-durability-tests.md) | Rank correctness, filter suite, restore drills |
 
