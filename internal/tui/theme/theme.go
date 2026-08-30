@@ -127,6 +127,7 @@ type Theme struct {
 	NavOn    lipgloss.Style
 	NavOff   lipgloss.Style
 	NavLock  lipgloss.Style
+	NavWarn  lipgloss.Style
 	Hint     lipgloss.Style
 	Notice   lipgloss.Style
 	Ready    lipgloss.Style
@@ -198,8 +199,13 @@ func New(p Phase, solid bool, eventID string) Theme {
 		NavOn:  base.Bold(true).Foreground(lipgloss.Color("229")).Background(lipgloss.Color("22")).Padding(0, 1),
 		// Lifted from v1's 245/240/243: those greys were tuned against a
 		// terminal-default background and vanish against near-black.
-		NavOff:   text("250").Padding(0, 1),
-		NavLock:  text("244").Padding(0, 1),
+		NavOff:  text("250").Padding(0, 1),
+		NavLock: text("244").Padding(0, 1),
+		// NavWarn is Warn wearing the nav strip's chrome. It must keep the
+		// same padding as the other tabs: the Help tab swaps to it while the
+		// window is undersized, and any width difference would shift the
+		// strip and every hitbox on it.
+		NavWarn:  text("214").Bold(true).Padding(0, 1),
 		Hint:     text("245").Italic(true),
 		Notice:   text("222"),
 		Ready:    text("120").Bold(true),

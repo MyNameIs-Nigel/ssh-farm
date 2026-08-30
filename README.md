@@ -16,7 +16,9 @@ land, rebirth), four big upgrades:
    canvas that drifts through a day/night cycle, a *Solid background*
    setting for players who want one fixed colour, and events that take
    over the frame with a draining countdown instead of one quiet line of
-   text. See [docs/tui/03](docs/tui/03-theme-day-night-and-event-feedback.md).
+   text. It plays from 80×24 up; below the recommended 100×30 the Help tab
+   turns into a yellow `⚠` and Help itself says what is cramped.
+   See [docs/tui/03](docs/tui/03-theme-day-night-and-event-feedback.md).
 
 Players reach it through the arcade:
 
