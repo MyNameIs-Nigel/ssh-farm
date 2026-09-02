@@ -109,7 +109,7 @@ func (g *Game) viewHeader() string {
 	// composeCanvas because coords.go:computeLayout calls viewHeader and so
 	// picks their height up automatically — a row added to composeCanvas
 	// would silently shift every mouse hitbox below it.
-	for _, row := range []string{g.viewSizeWarning(), g.viewEventBar(), g.viewBanner()} {
+	for _, row := range []string{g.viewEventBar(), g.viewBanner()} {
 		if row != "" {
 			header += "\n" + row
 		}
@@ -163,30 +163,57 @@ func (g *Game) navRowContent() string {
 	return tabs
 }
 
-func (g *Game) viewNav() string {
-	th := g.theme()
-	labels := []struct {
-		s    screen
-		text string
-		lock bool
-	}{
-		{scrFarm, "1 Farm", false}, {scrMarket, "2 Market", false}, {scrLand, "3 Land", false},
-		{scrRebirth, "4 Rebirth", false}, {scrStarShop, "5 StarShop", g.snap.State.Rebirths < 1},
-		{scrStats, "6 Stats", false}, {scrBoard, "7 Board", false}, {scrHelp, "? Help", false},
+// navLabel is one tab on the nav strip.
+type navLabel struct {
+	s    screen
+	text string
+	lock bool
+	warn bool // render in the Warn style rather than the usual nav styles
+}
+
+// navLabels is the single source of truth for the nav strip: viewNav renders
+// it and hitboxes.go:registerNavHits measures it. They used to hold separate
+// copies of this list, which meant a conditional label — like the Help tab's
+// size indicator — would drift the rendered row away from the hitboxes and
+// move the click target of every tab after it.
+func (g *Game) navLabels() []navLabel {
+	return []navLabel{
+		{s: scrFarm, text: "1 Farm"},
+		{s: scrMarket, text: "2 Market"},
+		{s: scrLand, text: "3 Land"},
+		{s: scrRebirth, text: "4 Rebirth"},
+		{s: scrStarShop, text: "5 StarShop", lock: g.snap.State.Rebirths < 1},
+		{s: scrStats, text: "6 Stats"},
+		{s: scrBoard, text: "7 Board"},
+		{s: scrHelp, text: g.helpNavLabel(), warn: g.undersized()},
 	}
+}
+
+// navStyle picks the style for one tab. It is shared with registerNavHits so
+// the measured width always matches the rendered width — Bold can change it.
+func (g *Game) navStyle(l navLabel) lipgloss.Style {
+	th := g.theme()
+	switch {
+	case l.s == g.scr && g.overlay == ovNone:
+		return th.NavOn
+	case l.lock:
+		return th.NavLock
+	case l.warn:
+		return th.NavWarn
+	default:
+		return th.NavOff
+	}
+}
+
+func (g *Game) viewNav() string {
+	labels := g.navLabels()
 	parts := make([]string, 0, len(labels))
 	for _, l := range labels {
 		text := l.text
 		if l.lock {
 			text += " 🔒"
 		}
-		if l.s == g.scr && g.overlay == ovNone {
-			parts = append(parts, th.NavOn.Render(text))
-		} else if l.lock {
-			parts = append(parts, th.NavLock.Render(text))
-		} else {
-			parts = append(parts, th.NavOff.Render(text))
-		}
+		parts = append(parts, g.navStyle(l).Render(text))
 	}
 	return strings.Join(parts, "")
 }
@@ -749,7 +776,14 @@ func (g *Game) viewHelpControls() string {
 	// Wrapped rather than hard-broken: the label is variable length and the
 	// content width follows the terminal, so fixed breaks overflowed on any
 	// window narrower than the design size.
-	return th.Section.Render("How it works") + "\n\n" +
+	// The size notice sits first: the ⚠ on the nav tab is what sent the
+	// player here, so the answer must be the first thing on the page.
+	notice := ""
+	if n := g.viewHelpSizeNotice(); n != "" {
+		notice = n + "\n"
+	}
+	return notice +
+		th.Section.Render("How it works") + "\n\n" +
 		g.helpBody("Plant crops, go live your life, come back and harvest. Crops keep "+
 			"growing while you're away. Earn coins, buy plots and upgrades, and "+
 			"rebirth for "+ss+" — permanent bonuses that make every later run faster.") + "\n\n" +

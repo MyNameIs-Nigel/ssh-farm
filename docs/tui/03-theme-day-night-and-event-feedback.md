@@ -127,22 +127,64 @@ existed reports a full bar rather than dividing by a zero span.
 
 ### Size warning
 
-`recommendedWidth`/`recommendedHeight` = the canvas maxima (100×38). Below
-either, `viewSizeWarning()` renders a chip in the `Warn` style:
+**Supported range.** The game is expected to be played anywhere between
+80×24 (the macOS Terminal.app default) and 120×30 (the Windows Terminal
+default) and up. Both of those are *playable*; only the roomier end is
+*comfortable*.
 
-```
-⚠ 80×24 · best at 100×38
-```
+`recommendedWidth`/`recommendedHeight` = **100×30**. Note these are not the
+canvas maxima: the canvas is 100×38, but 38 rows is taller than either stock
+terminal ships with, so warning at 38 would fire for essentially everyone and
+mean nothing. 30 is the height at which no screen has to scroll, and it puts
+the Windows default (120×30) comfortably inside the range while still catching
+the macOS default (80×24). Below either dimension, `undersized()` is true.
 
-It is **non-blocking** and separate from the existing hard guard at 36×10,
-which keeps its current behaviour. A one-shot toast also fires when a
-`WindowSizeMsg` crosses from adequate to undersized.
+The warning is **not** drawn in the frame. An earlier revision put a chip row
+in the header and raised a toast on crossing the threshold; both were removed.
+On the terminals that actually trip the warning, a permanent header row spends
+one of only 24 rows restating something the player can see for themselves, and
+the toast interrupts the idle loop to say the window is small. The signal
+belongs where the player goes when they want to know what is wrong.
 
-**Placement rule:** the warning and the event bar are emitted from
-`viewHeader()`. `coords.go:computeLayout()` duplicates `composeCanvas()`'s
-height arithmetic to keep mouse hitboxes aligned, and it already calls
-`viewHeader()` — so anything routed through the header is mirrored for free.
-Adding a row directly in `composeCanvas` would silently shift every hitbox.
+So instead:
+
+- **The nav strip carries the indicator.** The Help tab renders `⚠ Help` in
+  the new `NavWarn` style (yellow, bold) instead of `? Help` in `NavOff`.
+  `?` still opens it. What makes this free is that the warning tab is exactly
+  as wide as the normal one, so the strip never shifts and no hitbox moves.
+  Two things break that, and both did in development:
+  - `⚠` must be **U+26A0 with no variation selector**. Bare, it measures one
+    display column, exactly like `?`. The emoji form `⚠️` measures two.
+  - `NavWarn` must carry the same `Padding(0, 1)` as `NavOn`/`NavOff`/
+    `NavLock`. Reusing the bare `Warn` style cost two columns per tab and
+    slid the strip left, which is why `NavWarn` exists as its own palette
+    entry rather than as `Warn` applied at the call site.
+- **The Help screen carries the explanation.** `viewHelpSizeNotice()` renders
+  a `Warn` heading and one wrapped sentence at the top of the Controls page,
+  naming the current size, the recommended size, and what to do about it. It
+  is absent entirely at or above the recommended size, so Help does not carry
+  a permanent scold.
+
+  It is **deliberately three lines**. `helpVisibleLines()` is
+  `max(contentHeight-14, 6)`, which is 8 rows at 80×24 — so a chatty notice
+  pushes "How it works" and the entire key list off the page at exactly the
+  size that raises it. An earlier five-line draft did precisely that.
+
+It remains **non-blocking** and separate from the existing hard guard at
+36×10, which keeps its current behaviour and still suppresses the indicator
+(the "needs a bigger window" screen already says everything).
+
+**Single source of truth for the nav labels.** The label list was duplicated
+between `viewNav()` and `registerNavHits()`, so a conditional label would drift
+the two apart and move every hitbox after it. `navLabels()` is now the one
+list both read, following the `marketLines()` / `configRows()` pattern.
+
+**Placement rule (still binding for the event bar):** the event bar is emitted
+from `viewHeader()`. `coords.go:computeLayout()` duplicates
+`composeCanvas()`'s height arithmetic to keep mouse hitboxes aligned, and it
+already calls `viewHeader()` — so anything routed through the header is
+mirrored for free. Adding a row directly in `composeCanvas` would silently
+shift every hitbox.
 
 ### The `ThemeSolid` setting
 
@@ -182,8 +224,17 @@ already establishes.
 - [ ] The event bar shows name, effect, a draining `progressBar` and a
   `duration`; the border accent reverts when the event ends; an "ended"
   notice fires.
-- [ ] The size warning appears below the recommended size, is absent at or
-  above it, and never appears on the blocking path.
+- [ ] The Help nav tab reads `⚠ Help` below the recommended size and `? Help`
+  at or above it, and never `⚠` on the blocking path.
+- [ ] The **rendered** nav strip is the same width undersized or not — the
+  test measures `viewNav()`, not just the two label strings, because the
+  padding difference between `Warn` and `NavWarn` is invisible otherwise.
+- [ ] The Help hitbox lands on the column the Help tab actually renders at,
+  at 80×24 and at 120×40.
+- [ ] The Help screen names the current size, the recommended size and the
+  supported range when undersized, and says nothing about size when not.
+- [ ] `navLabels()` is pinned as the single source of truth for the nav strip
+  by a test comparing it against the rendered row.
 - [ ] `configRows()` pinned as single source of truth by a test mirroring
   `TestMarketLinesMatchViewOutput`; clicking and wheeling reach row 4.
 - [ ] New save fields are omitted at their defaults, so `parity_test.go` still
@@ -195,14 +246,22 @@ already establishes.
 
 ## Out of scope
 
-- **Reflowing screens for small terminals.** 80×24 gets a warning and test
-  coverage, not a redesigned layout. If the cramped layout is still the
-  complaint after this lands, that is its own task. In particular the **nav
-  strip is still clipped at 80 columns** (`? Help` renders as `? H`): the
-  labels would have to shorten, which changes the look at every size, so it is
-  left for a follow-up.
+- **Reflowing screens for small terminals.** 80×24 gets an indicator, an
+  explanation in Help, and test coverage — not a redesigned layout. If the
+  cramped layout is still the complaint after this lands, that is its own
+  task. In particular the **nav strip is still clipped at 80 columns** (the
+  Help tab renders as `⚠ H`): the labels would have to shorten, which changes
+  the look at every size, so it is left for a follow-up. This is also the one
+  place the indicator is weakest — the glyph survives the clip, the word does
+  not.
 - Per-crop or per-season palettes; the cycle is time-based only.
 - Extracting a shared fleet theme module — fleet-size-2 rule still applies.
+- **`helpVisibleLines()` over-reserving.** It hardcodes 14 rows of chrome, but
+  the real header/footer cost is nearer 7, so Help shows about half the rows
+  it has room for at every size — 8 of ~16 at 80×24. Pre-existing, unchanged
+  by this work, and fixing it means either sharing `composeCanvas`'s body-height
+  arithmetic with `computeLayout()` and `viewHelp()` or duplicating it a third
+  time. Worth its own task.
 - The dead `farm:harvest-all` / `farm:replant` mouse dispatch
   (`mouse.go`, IDs never registered) — a real pre-existing bug, but unrelated.
 

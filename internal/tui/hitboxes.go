@@ -75,30 +75,19 @@ func (g *Game) registerNavHits() {
 		g.addHit(g.layout.navX+tabsW+2, g.layout.navY, closeW, 1, "overlay:close", nil)
 		return
 	}
-	labels := []struct {
-		s    screen
-		text string
-		lock bool
-	}{
-		{scrFarm, "1 Farm", false}, {scrMarket, "2 Market", false}, {scrLand, "3 Land", false},
-		{scrRebirth, "4 Rebirth", false}, {scrStarShop, "5 StarShop", g.snap.State.Rebirths < 1},
-		{scrStats, "6 Stats", false}, {scrBoard, "7 Board", false}, {scrHelp, "? Help", false},
-	}
+	// navLabels/navStyle are shared with viewNav so the measured widths are
+	// the rendered widths; keeping a second copy of the list here is what
+	// used to let the two drift apart.
 	x := g.layout.navX
-	for _, l := range labels {
+	for _, l := range g.navLabels() {
+		text := l.text
 		if l.lock {
-			w := lipgloss.Width(th.NavLock.Render(l.text + " 🔒"))
-			x += w
-			continue
+			text += " 🔒"
 		}
-		var styled string
-		if l.s == g.scr {
-			styled = th.NavOn.Render(l.text)
-		} else {
-			styled = th.NavOff.Render(l.text)
+		w := lipgloss.Width(g.navStyle(l).Render(text))
+		if !l.lock {
+			g.addHit(x, g.layout.navY, w, 1, "nav:"+itoa(int(l.s)), l.s)
 		}
-		w := lipgloss.Width(styled)
-		g.addHit(x, g.layout.navY, w, 1, "nav:"+itoa(int(l.s)), l.s)
 		x += w
 	}
 }

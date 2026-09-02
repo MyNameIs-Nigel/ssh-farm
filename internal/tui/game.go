@@ -160,10 +160,6 @@ type Game struct {
 	layout      frameLayout
 	lastClickID string
 	lastClickAt int64
-
-	// sizeWarned tracks whether the "too small" toast has already fired, so
-	// resizing around inside an undersized terminal does not re-nag.
-	sizeWarned bool
 }
 
 // theme builds the palette for this frame: the day/night phase from the
@@ -232,7 +228,6 @@ func (g *Game) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		g.width, g.height = msg.Width, msg.Height
-		g.noteWindowSize()
 		return g, nil
 
 	case kickedMsg:
