@@ -75,16 +75,30 @@ func (g *Game) screenBody() string {
 func (g *Game) viewHeader() string {
 	th := g.theme()
 	st := g.snap.State
-	title := "🌾 ssh-farm"
-	if st.FarmName != "" {
-		title = "🌾 " + sanitizeText(st.FarmName)
-	}
-	left := th.Title.Render(title) + th.Header.Render("  ·  "+sanitizeText(g.id.Slot))
-	left += th.Hint.Render("  " + moonGlyph(st, g.content) + " " + st.MoonPhaseName(g.content))
+
+	// The wallet and the identity run (slot and clock) are fixed priority and
+	// never shrink, so both are built and measured before the farm title, which
+	// is the only part of this row allowed to give up columns.
 	right := th.Value.Render("⛀ " + money(st.Coins) + " coins")
 	if st.Rebirths > 0 || st.PrestigeCurrency > 0 {
 		right += th.Header.Render("  ✦ " + money(st.PrestigeCurrency) + " " + g.starseedLabel())
 	}
+	tail := th.Header.Render("  ·  " + sanitizeText(g.id.Slot) + "  ·  " + formatClock(g.now))
+
+	name := "ssh-farm"
+	if st.FarmName != "" {
+		name = sanitizeText(st.FarmName)
+	}
+	// titlePrefix is structural, so truncation eats into the name only and a
+	// narrow row still opens with the farm glyph rather than a bare separator.
+	// The trailing -1 reserves the one column the gap clamp below guarantees.
+	// truncate counts runes while budget counts display columns; they agree for
+	// the ASCII names this row is sized around, and a wide rune inside a name
+	// can still cost one extra column.
+	const titlePrefix = "🌾 "
+	budget := g.contentWidth() - lipgloss.Width(right) - lipgloss.Width(tail) - lipgloss.Width(titlePrefix) - 1
+	left := th.Title.Render(titlePrefix+truncate(name, budget)) + tail
+
 	gap := g.contentWidth() - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		gap = 1
@@ -101,17 +115,6 @@ func (g *Game) viewHeader() string {
 		}
 	}
 	return header
-}
-
-func moonGlyph(st *sim.State, c *content.Content) string {
-	switch st.MoonPhaseName(c) {
-	case "Full Moon":
-		return "🌕"
-	case "New Moon":
-		return "🌑"
-	default:
-		return "🌙"
-	}
 }
 
 func (g *Game) viewBanner() string {
@@ -465,7 +468,7 @@ func (g *Game) viewPicker() string {
 		cost := st.SeedCost(g.content, &crop)
 		info := name + "  " + money(cost) + "c · " + grow + " · sells " + money(crop.SellValue) + "c"
 		if crop.Archetype == "risky" {
-			salvage := st.SalvageValue(g.content, &crop)
+			salvage := st.SalvageValue(g.content, &crop, g.now)
 			info += " · fails to " + money(salvage) + "c (" + itoa(int(crop.FailChancePct)) + "%)"
 		}
 		switch {
@@ -577,7 +580,7 @@ func (g *Game) viewLand() string {
 			money(st.SeedCost(g.content, &crop)) + "c · " + grow +
 			" · sells " + money(crop.SellValue) + "c"
 		if crop.Archetype == "risky" {
-			line += " · fails to " + money(st.SalvageValue(g.content, &crop)) + "c"
+			line += " · fails to " + money(st.SalvageValue(g.content, &crop, g.now)) + "c"
 		}
 		if !st.Unlocked(crop.Unlock) {
 			b.WriteString(th.Locked.Render(g.fitRow(line+"  🔒 "+g.gateText(crop.Unlock))) + "\n")
@@ -894,12 +897,13 @@ func (g *Game) viewHelpGameplay() string {
 	b.WriteString(g.helpBody("Broke with empty plots? The cheapest unlocked seed plants "+
 		"for FREE — \"the land provides\".") + "\n")
 
-	b.WriteString("\n" + th.Section.Render("Golden harvest & moon") + "\n")
+	b.WriteString("\n" + th.Section.Render("Golden harvest & night") + "\n")
 	b.WriteString(g.helpBody("Any harvest has a "+money(gh.ChancePct)+
 		"% chance to pay "+money(goldenMult)+"×. "+
-		"Moon phases cycle every "+money(c.Moon.CycleDays)+
-		" days in the header. Full Moon gives Moonberry +"+
-		money(c.Moon.FullMoonSellBonusPct)+"% sell bonus.") + "\n")
+		"Watch the clock beside your slot: any time from 20:00 to 03:59 gives "+
+		"Moonberry +"+money(c.Moon.FullMoonSellBonusPct)+
+		"% sell bonus. A full in-game day passes every 24 minutes, so the "+
+		"night window comes round often.") + "\n")
 
 	return strings.TrimRight(b.String(), "\n")
 }

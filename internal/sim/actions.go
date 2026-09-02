@@ -165,7 +165,7 @@ func Harvest(s *State, c *content.Content, i int, now int64) (HarvestResult, err
 		return HarvestResult{}, ErrNotMature
 	}
 
-	payout, discovery, failed, golden := s.harvestPayout(c, crop)
+	payout, discovery, failed, golden := s.harvestPayout(c, crop, now)
 	s.credit(payout)
 	if discovery > 0 {
 		s.credit(discovery)

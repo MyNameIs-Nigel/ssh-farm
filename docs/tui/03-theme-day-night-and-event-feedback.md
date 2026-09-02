@@ -99,6 +99,10 @@ phase = (now / 360) % 4      →  0 dawn · 1 day · 2 dusk · 3 night
 `PhaseAt` is a pure function of a unix timestamp, so every phase is testable
 by passing a constant. Negative timestamps clamp to dawn.
 
+The follow-up [tui/04](04-time-clock-header.md) exposes this same cycle as a
+24-hour in-game clock in the primary header. That task reuses the model's
+`now`; it does not introduce a second timer or change this phase formula.
+
 ### Event feedback
 
 While `State.EventActive(now)`:

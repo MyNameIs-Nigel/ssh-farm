@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/mynameis-nigel/ssh-farm/internal/gameclock"
 )
 
 // The palette. Backgrounds sit in the 232-237 greyscale ramp: 232 is almost
@@ -53,13 +55,11 @@ const (
 )
 
 // PhaseSeconds is how long one phase lasts; four of them make a 24-minute day.
-//
-// The cycle is deliberately accelerated rather than tied to the wall clock:
-// SSH gives us no reliable player timezone, and a real-time cycle would never
-// visibly change inside a single session.
-const PhaseSeconds = 360
+// It is re-exported from gameclock, which owns the cycle so the simulation and
+// the TUI cannot drift apart.
+const PhaseSeconds = gameclock.PhaseSeconds
 
-const phaseCount = 4
+const phaseCount = gameclock.PhaseCount
 
 // PhaseAt returns the cycle phase at a unix timestamp. It is a pure function
 // of now so every phase is reachable in a test by passing a constant.

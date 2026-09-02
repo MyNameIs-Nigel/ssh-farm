@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
+	"github.com/mynameis-nigel/ssh-farm/internal/gameclock"
 )
 
 // VisibleCrops returns crops that should appear in pickers and catalogs.
@@ -74,10 +75,10 @@ func (s *State) SeedCost(c *content.Content, crop *content.Crop) int64 {
 }
 
 // SalvageValue returns the coins from a failed risky harvest at current strain level.
-func (s *State) SalvageValue(c *content.Content, crop *content.Crop) int64 {
+func (s *State) SalvageValue(c *content.Content, crop *content.Crop, now int64) int64 {
 	num := SalvageNumerator(s.SeedUpgradeLevel(crop.ID))
 	base := crop.SellValue * num / 8
-	return s.sellMultiplied(c, base, crop.ID)
+	return s.sellMultiplied(c, base, crop.ID, now)
 }
 
 // GrowSeconds returns the crop's effective grow time for this save.
@@ -107,7 +108,9 @@ func (s *State) GrowSeconds(c *content.Content, crop *content.Crop) int64 {
 }
 
 // sellMultiplied applies permanent and run-scoped sell bonuses to a base payout.
-func (s *State) sellMultiplied(c *content.Content, base int64, cropID string) int64 {
+// now is the tick counter the payout is settled at; it drives the Moonberry
+// night window.
+func (s *State) sellMultiplied(c *content.Content, base int64, cropID string, now int64) int64 {
 	bonus := int64(0)
 	for _, u := range c.Upgrades {
 		if u.Effect == "sell_bonus_pct" {
@@ -122,7 +125,7 @@ func (s *State) sellMultiplied(c *content.Content, base int64, cropID string) in
 	if ev := s.activeEvent(c); ev != nil && ev.Effect == "sell_bonus_pct" {
 		bonus += ev.EffectValue
 	}
-	if s.isFullMoon(c, cropID) {
+	if isMoonberryHour(c, cropID, now) {
 		bonus += c.Moon.FullMoonSellBonusPct
 	}
 	if bonus == 0 {
@@ -146,14 +149,26 @@ func (s *State) EventActive(now int64) bool {
 	return s.EventID != "" && now < s.EventEndsAt
 }
 
-// isFullMoon reports whether the moon is full and cropID gets the bonus.
-func (s *State) isFullMoon(c *content.Content, cropID string) bool {
-	if cropID != c.Moon.MoonberryCropID || c.Moon.CycleDays < 1 {
+// Moonberry's sell bonus runs through the in-game night: 20:00 inclusive to
+// 03:59 inclusive. The window wraps midnight, so the check is a disjunction
+// rather than a single range.
+const (
+	moonberryStartMinute = 20 * 60
+	moonberryEndMinute   = 4 * 60
+)
+
+// isMoonberryHour reports whether cropID gets the night sell bonus at now.
+//
+// It reads the same gameclock minute-of-day the header clock displays, so the
+// bonus is active exactly when the player can see a qualifying time on screen.
+// It deliberately does not consult MoonPhase: the moon cycle is derived from
+// persisted wall-clock days and would not line up with the accelerated clock.
+func isMoonberryHour(c *content.Content, cropID string, now int64) bool {
+	if cropID != c.Moon.MoonberryCropID {
 		return false
 	}
-	phase := s.MoonPhase()
-	// Full moon at phase 14 of a 28-day cycle (0-indexed day in cycle).
-	return phase == c.Moon.CycleDays/2
+	m := gameclock.MinuteOfDay(now)
+	return m >= moonberryStartMinute || m < moonberryEndMinute
 }
 
 // MoonPhase returns the day index (0..cycle-1) in the current moon cycle.
