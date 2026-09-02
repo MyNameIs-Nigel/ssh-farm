@@ -89,14 +89,21 @@ func TestTimeClockHeaderFitsSupportedWidths(t *testing.T) {
 	}
 }
 
-func TestGameplayHelpNoLongerClaimsMoonIsInHeader(t *testing.T) {
+func TestGameplayHelpExplainsTheMoonberryNightWindow(t *testing.T) {
 	g := goldenGame(t, canvasMaxWidth, canvasMaxHeight)
 	help := stripAnsi(g.viewHelpGameplay())
 
 	if strings.Contains(help, "Moon phases cycle every "+money(g.content.Moon.CycleDays)+" days in the header") {
 		t.Error("gameplay help still says moon phases appear in the header")
 	}
-	if !strings.Contains(help, "Full Moon gives Moonberry") {
-		t.Error("gameplay help must retain the Full Moon gameplay effect after removing its header display")
+	// The Full Moon trigger was replaced by the in-game clock window, so help
+	// must describe the window rather than the moon phase.
+	if strings.Contains(help, "Full Moon") {
+		t.Error("gameplay help still credits Full Moon for the Moonberry bonus")
+	}
+	for _, want := range []string{"20:00", "03:59", "Moonberry"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("gameplay help = %q, want it to mention %q", help, want)
+		}
 	}
 }

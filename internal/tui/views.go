@@ -441,7 +441,7 @@ func (g *Game) viewPicker() string {
 		cost := st.SeedCost(g.content, &crop)
 		info := name + "  " + money(cost) + "c · " + grow + " · sells " + money(crop.SellValue) + "c"
 		if crop.Archetype == "risky" {
-			salvage := st.SalvageValue(g.content, &crop)
+			salvage := st.SalvageValue(g.content, &crop, g.now)
 			info += " · fails to " + money(salvage) + "c (" + itoa(int(crop.FailChancePct)) + "%)"
 		}
 		switch {
@@ -553,7 +553,7 @@ func (g *Game) viewLand() string {
 			money(st.SeedCost(g.content, &crop)) + "c · " + grow +
 			" · sells " + money(crop.SellValue) + "c"
 		if crop.Archetype == "risky" {
-			line += " · fails to " + money(st.SalvageValue(g.content, &crop)) + "c"
+			line += " · fails to " + money(st.SalvageValue(g.content, &crop, g.now)) + "c"
 		}
 		if !st.Unlocked(crop.Unlock) {
 			b.WriteString(th.Locked.Render(g.fitRow(line+"  🔒 "+g.gateText(crop.Unlock))) + "\n")
@@ -863,12 +863,13 @@ func (g *Game) viewHelpGameplay() string {
 	b.WriteString(g.helpBody("Broke with empty plots? The cheapest unlocked seed plants "+
 		"for FREE — \"the land provides\".") + "\n")
 
-	b.WriteString("\n" + th.Section.Render("Golden harvest & moon") + "\n")
+	b.WriteString("\n" + th.Section.Render("Golden harvest & night") + "\n")
 	b.WriteString(g.helpBody("Any harvest has a "+money(gh.ChancePct)+
 		"% chance to pay "+money(goldenMult)+"×. "+
-		"Moon phases cycle every "+money(c.Moon.CycleDays)+
-		" days in the header. Full Moon gives Moonberry +"+
-		money(c.Moon.FullMoonSellBonusPct)+"% sell bonus.") + "\n")
+		"Watch the clock beside your slot: any time from 20:00 to 03:59 gives "+
+		"Moonberry +"+money(c.Moon.FullMoonSellBonusPct)+
+		"% sell bonus. A full in-game day passes every 24 minutes, so the "+
+		"night window comes round often.") + "\n")
 
 	return strings.TrimRight(b.String(), "\n")
 }

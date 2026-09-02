@@ -112,7 +112,7 @@ func Advance(s *State, c *content.Content, to int64) Events {
 		for matureAt <= to {
 			if cycles >= autoCycleCap {
 				if plot.AutoSow && s.Coins >= s.SeedCost(c, crop) {
-					gross := expectedPayout(s, c, crop)
+					gross := expectedPayout(s, c, crop, matureAt)
 					seedCost := s.SeedCost(c, crop)
 					if gross > seedCost {
 						remaining := (to - matureAt) / grow
@@ -137,7 +137,7 @@ func Advance(s *State, c *content.Content, to int64) Events {
 				// loop's cursor, so later Advances settle the remainder.
 				break
 			}
-			payout, discovery, failed, golden := s.harvestPayout(c, crop)
+			payout, discovery, failed, golden := s.harvestPayout(c, crop, matureAt)
 			s.credit(payout)
 			ev.AutoCoins = satAdd(ev.AutoCoins, payout)
 			if failed {
@@ -362,7 +362,7 @@ func (s *State) activeCritterCount() int64 {
 }
 
 // harvestPayout rolls one harvest of crop.
-func (s *State) harvestPayout(c *content.Content, crop *content.Crop) (payout, discovery int64, failed, golden bool) {
+func (s *State) harvestPayout(c *content.Content, crop *content.Crop, now int64) (payout, discovery int64, failed, golden bool) {
 	base := crop.SellValue
 	if crop.Archetype == "risky" {
 		if s.roll100() < crop.FailChancePct {
@@ -370,7 +370,7 @@ func (s *State) harvestPayout(c *content.Content, crop *content.Crop) (payout, d
 			failed = true
 		}
 	}
-	payout = s.sellMultiplied(c, base, crop.ID)
+	payout = s.sellMultiplied(c, base, crop.ID, now)
 
 	if c.GoldenHarvest.ChancePct > 0 && s.roll100() < c.GoldenHarvest.ChancePct {
 		mult := c.GoldenHarvest.Multiplier
@@ -390,15 +390,15 @@ func (s *State) harvestPayout(c *content.Content, crop *content.Crop) (payout, d
 }
 
 // expectedPayout is the integer expected value of one harvest for batched catch-up.
-func expectedPayout(s *State, c *content.Content, crop *content.Crop) int64 {
+func expectedPayout(s *State, c *content.Content, crop *content.Crop, now int64) int64 {
 	if crop.Archetype != "risky" {
-		return s.sellMultiplied(c, crop.SellValue, crop.ID)
+		return s.sellMultiplied(c, crop.SellValue, crop.ID, now)
 	}
 	failPct := crop.FailChancePct
 	salvage := crop.SellValue * SalvageNumerator(s.SeedUpgradeLevel(crop.ID)) / 8
 	successPct := 100 - failPct
 	base := (failPct*salvage + successPct*crop.SellValue) / 100
-	return s.sellMultiplied(c, base, crop.ID)
+	return s.sellMultiplied(c, base, crop.ID, now)
 }
 
 // CheckAchievements records any newly satisfied achievement conditions.

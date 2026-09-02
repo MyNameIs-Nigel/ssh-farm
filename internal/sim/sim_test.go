@@ -458,7 +458,8 @@ func TestUpgradesAffectTheNextRun(t *testing.T) {
 	if got := s.GrowSeconds(c, turnip); got != 54 { // 60 * 90%
 		t.Fatalf("grow seconds = %d, want 54", got)
 	}
-	if got := s.sellMultiplied(c, 100, ""); got != 115 {
+	// Empty cropID, so the Moonberry night window never applies and now is inert.
+	if got := s.sellMultiplied(c, 100, "", 0); got != 115 {
 		t.Fatalf("sell multiplied = %d, want 115", got)
 	}
 	if got := s.NextPlotCost(c); got != 45 { // 50 * 90%
@@ -864,9 +865,11 @@ func TestSalvageUpgradeImprovesPayout(t *testing.T) {
 	c := testContent(t)
 	s := newTestState(t, c)
 	crop := c.Crop("gamble")
-	base := s.SalvageValue(c, crop)
+	// Fixed now so the comparison isolates the upgrade, not the clock.
+	const now = 0
+	base := s.SalvageValue(c, crop, now)
 	s.SeedUpgrades["gamble"] = 3
-	upgraded := s.SalvageValue(c, crop)
+	upgraded := s.SalvageValue(c, crop, now)
 	if upgraded <= base {
 		t.Fatalf("salvage should improve: %d -> %d", base, upgraded)
 	}

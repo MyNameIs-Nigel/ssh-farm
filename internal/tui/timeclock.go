@@ -3,25 +3,16 @@ package tui
 import (
 	"fmt"
 
-	"github.com/mynameis-nigel/ssh-farm/internal/tui/theme"
+	"github.com/mynameis-nigel/ssh-farm/internal/gameclock"
 )
 
-// Time clock formatter for the 24-hour in-game clock.
+// formatClock renders the accelerated in-game time at a tick counter as a
+// zero-padded 24-hour HH:MM string.
+//
+// The minute-of-day math lives in gameclock so the simulation's night-time
+// Moonberry window and this display cannot disagree. It never reads the wall
+// clock, which is what keeps golden renders deterministic.
 func formatClock(now int64) string {
-	// Define what a full cycle of the game is in seconds
-	const cycle = 4 * theme.PhaseSeconds
-
-	// Calculate the current second within the cycle
-	seconds := ((now % cycle) + cycle) % cycle
-
-	// Offset the clock to start at 06:00 instead of 00:00
-	const offsetSeconds = theme.PhaseSeconds
-
-	total := seconds + offsetSeconds
-
-	// Calculate the hour and minute for the in-game clock
-	clockMinute := total % 60
-	clockHour := (total % cycle) / 60
-
-	return fmt.Sprintf("%02d:%02d", clockHour, clockMinute)
+	hour, minute := gameclock.HourMinute(now)
+	return fmt.Sprintf("%02d:%02d", hour, minute)
 }
