@@ -40,20 +40,21 @@ jobs:
             ghcr.io/mynameis-nigel/ssh-farm:latest
             ghcr.io/mynameis-nigel/ssh-farm:${{ steps.meta.outputs.sha_short }}
 
-  deploy:
-    needs: publish
-    # Runs directly on the play.ssharcade.dev EC2 host (self-hosted runner
-    # installed there, see ssh-arcadelobby/deploy/README.md) instead of
-    # dialing out over SSH: the host's real sshd (port 9922) is locked to
-    # one dev IP, and GitHub-hosted runners use ephemeral IPs from a huge,
-    # ever-changing range that will never match that allowlist. Running the
-    # job on the box itself means no inbound port has to be opened for CI,
-    # and no GHCR login is needed either — packages are public.
-    runs-on: [self-hosted, production]
-    environment: production
-    steps:
-      - name: Deploy farm
-        run: |
-          cd /srv/ssharcade
-          docker compose pull farm
-          docker compose up -d farm
+  # There is no `deploy:` job any more.
+  #
+  # It ran `runs-on: [self-hosted, production]` — directly on the
+  # play.ssharcade.dev host. A self-hosted runner is unsafe on a repo that is
+  # going public: for `pull_request` events GitHub reads the workflow file
+  # from the PR head, so anyone who can open a fork PR can point `runs-on:` at
+  # the `self-hosted` label and execute their own code on the box — which is
+  # in the docker group, and holds every player save. The runners were
+  # deregistered and uninstalled on 2026-09-04, before any repo is flipped
+  # public. Do not reinstate one here.
+  #
+  # Merging to `main` therefore builds and publishes the image but does not
+  # ship it. Deploy by hand until the OIDC + SSM path replaces this:
+  #
+  #   ssh <host> && cd /srv/ssharcade
+  #   docker compose pull farm && docker compose up -d farm
+  #
+  # See ../ssh-arcadelobby/deploy/README.md, "Deploying by hand".

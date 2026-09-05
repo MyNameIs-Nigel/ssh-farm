@@ -33,8 +33,12 @@ live game** (the idlefarmer cutover).
 
 - `ci.yml`: PRs + non-main pushes → `go vet`, `go build`, `go test -race`.
 - `release.yml`: main → test → build/push
-  `ghcr.io/mynameis-nigel/ssh-farm:latest` + `:sha-<short>` → SSH deploy:
-  `docker compose pull farm && docker compose up -d farm`.
+  `ghcr.io/mynameis-nigel/ssh-farm:latest` + `:sha-<short>`. It stops there.
+  `docker compose pull farm && docker compose up -d farm` on the host is a
+  manual step (`../ssh-arcadelobby/deploy/README.md` § "Deploying by hand"):
+  the deploy job ran on a self-hosted runner on the production host, which
+  cannot survive this repo going public, and all four were removed on
+  2026-09-04.
 - **Private-repo wrinkle**: the GHCR image is private. The arcade host
   must be logged in once with a fine-grained PAT scoped to
   `read:packages` only (stored on the host, documented in the arcade
@@ -88,8 +92,9 @@ Rollback at any step = stop `farm`, start `idlefarmer`, revert
 
 ## Acceptance criteria
 
-- [ ] PR with a failing test blocks; main merge redeploys only `farm`
-  (other services' uptimes untouched).
+- [ ] PR with a failing test blocks; main merge publishes an image, and a
+  manual `up -d farm` restarts only `farm` (other services' uptimes
+  untouched).
 - [ ] Host pulls the private image non-interactively after one-time login.
 - [ ] Dev compose: direct `ssh -p 2222 localhost` works with no AWS
   credentials present (litestream disabled or MinIO-pointed — the game
