@@ -17,6 +17,7 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
 	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	applog "github.com/mynameis-nigel/ssh-farm/internal/log"
+	"github.com/mynameis-nigel/ssh-farm/internal/moderation"
 	"github.com/mynameis-nigel/ssh-farm/internal/server"
 	"github.com/mynameis-nigel/ssh-farm/internal/store"
 )
@@ -34,6 +35,13 @@ func runServe() {
 	c, err := content.Load(cfg.DataDir)
 	if err != nil {
 		logger.Error("content load failed", "error", err)
+		os.Exit(1)
+	}
+
+	// Fail closed before opening the database or binding a port: a process that
+	// is not allowed to serve should not have touched player data first.
+	if err := moderation.Init(cfg.ModerationPath, cfg.RequireModeration); err != nil {
+		logger.Error("moderation load failed", "path", cfg.ModerationPath, "error", err)
 		os.Exit(1)
 	}
 
@@ -72,6 +80,23 @@ func runServe() {
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	// SIGHUP re-reads the denylist in place, so tightening it is a file edit
+	// plus a signal rather than a rebuild and a redeploy — which is what the
+	// retroactive-tightening requirement in docs/gameplay/03 needs, since the
+	// leaderboard re-checks every name at render time. A failed reload leaves
+	// the previous list in force and says so; it never drops the filter.
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	go func() {
+		for range hup {
+			if err := moderation.Reload(); err != nil {
+				logger.Error("denylist reload failed, keeping the previously loaded list", "error", err)
+				continue
+			}
+			logger.Info("denylist reloaded", "path", cfg.ModerationPath)
+		}
+	}()
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, ssh.ErrServerClosed) {

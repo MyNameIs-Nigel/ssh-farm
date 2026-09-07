@@ -41,10 +41,11 @@ player is still subject to the normal 1/minute, 10/day budget
 
 ## Add a denylist term and confirm it takes effect retroactively
 
-1. Edit `data/moderation/denylist.toml` (private repo — never copy real
-   entries into public repos, commit messages, or test names; test
-   fixtures use placeholder tokens like `badterm` instead, see
-   `internal/moderation/denylist_test.go`).
+1. Edit the denylist **on the host** — `/srv/ssharcade/private/farm/denylist.toml`,
+   the file `FARM_MODERATION_PATH` points at. It is not in the repository and
+   must never enter one: never copy real entries into a repo, a commit message,
+   an issue, or a test name. Test fixtures use placeholder tokens (`zzbadword`,
+   `zzmeanie`) — see `internal/moderation/testdata/denylist.fixture.toml`.
 2. Add a `[[term]]` block:
    ```toml
    [[term]]
@@ -60,11 +61,22 @@ player is still subject to the normal 1/minute, 10/day budget
 3. If the change introduces a false positive, add the *specific* affected
    name to the `allow` list at the bottom of the same file — never remove
    or weaken the term that caused it.
-4. Run `go test ./internal/moderation/...` to confirm the new term parses
-   and the existing corpus (including the Scunthorpe cases and the
-   `Generate` all-pairs exhaustive test) still passes.
-5. Rebuild and redeploy. This is a data change bundled into a normal
-   binary release — there is no runtime hot-reload for the denylist.
+4. Run `go test ./internal/moderation/...` to confirm the package still
+   passes (the Scunthorpe cases and the `Generate` all-pairs exhaustive test).
+   Note this exercises the *fixture*, not your edit — the check that your edit
+   parses is step 5, and it is deliberately non-destructive.
+5. Reload without a redeploy: `docker compose kill -s HUP farm`. The server
+   re-reads the file in place. **If the edit does not parse, the reload fails,
+   says so in the logs, and the previously loaded list stays in force** — so a
+   typo degrades to "your change didn't apply", never to "the filter is off".
+   Confirm the reload landed:
+
+   ```bash
+   docker compose logs --since 1m farm | grep -i 'denylist reload'
+   ```
+
+   A restart also picks up the file, but with `FARM_REQUIRE_MODERATION=true` a
+   malformed list means the container will not come back — prefer SIGHUP.
 6. **Verify the retroactive mask**: any *already-stored* name that now
    matches is never rewritten in the database (the blob and `farm_name`
    column are untouched), but `internal/leaderboard`'s render-time

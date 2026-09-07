@@ -30,8 +30,13 @@ statement — with a lock so it stays fixed.
 - `internal/moderation/` — `validate.go` (charset/length),
   `normalize.go` (the pipeline), `denylist.go` (tiered matching),
   `generate.go` (default names), exhaustive tests
-- `data/moderation/denylist.toml`, `data/moderation/namewords.toml`
-  (embedded; **private repo only** — see repo conventions)
+- `data/moderation/namewords.toml` (embedded — wholesome by construction,
+  and keeping it embedded is what lets a clone generate names out of the box)
+- `internal/moderation/testdata/denylist.fixture.toml` — the placeholder
+  fixture used by dev and the test suite. Invented tokens only, forever.
+- The real denylist is **not a deliverable of this repo**. It is host state at
+  `FARM_MODERATION_PATH`, loaded at boot and reloadable on SIGHUP — see
+  "Where the denylist lives" below.
 - The `RenameFarm` action wrapping `sim.SetFarmName`
 
 ## Spec
@@ -76,7 +81,31 @@ Filters that check raw input are decorative. Normalize first:
    repeat-collapsed (`niiice→nice`) — check both (collapsing can both
    create and destroy matches; checking both sides closes the gap).
 
-### Tiered denylist (`data/moderation/denylist.toml`)
+### Where the denylist lives
+
+The list is a file on the production host, mounted read-only into the
+container. It is in no repository and never has been part of the public tree.
+
+| Env var | Meaning |
+| --- | --- |
+| `FARM_MODERATION_PATH` | Path to the denylist TOML. Unset means the dev fixture. |
+| `FARM_REQUIRE_MODERATION` | `true` in production: refuse to boot without a real list. |
+
+Boot is fail-closed, and deliberately so in both directions:
+
+- Path set but missing, unreadable, or malformed → **exit non-zero**, in dev as
+  well as production. Falling back to the stub because the real list failed to
+  parse is the silent downgrade this design exists to prevent.
+- Path unset with `FARM_REQUIRE_MODERATION=true` → **exit non-zero**.
+- Path unset otherwise → the fixture, logged loudly, with player-set names
+  refused outright and generated names used instead.
+
+`SIGHUP` re-reads the file in place, which is what makes the retroactive
+tightening below a file edit plus a signal rather than a rebuild and a
+redeploy. A reload that fails to parse leaves the previously loaded list in
+force and logs the error: a typo in a live edit must never drop the filter.
+
+### Tiered denylist (file format)
 
 ```toml
 [[term]]

@@ -1,4 +1,4 @@
-# ssh-farm (private)
+# ssh-farm
 
 **Idle Farmer v2** — the ssharcade-native rebuild of
 [`ssh-idlefarmer`](../ssh-idlefarmer). Same beloved game (plant, sell, buy
@@ -51,6 +51,15 @@ go vet ./...                               # vet
 
 ## Note
 
-This repo is **private** (game balance + moderation denylist stay out of
-public view). CI/CD notes in `docs/framework/03` cover the private-image
-pull auth this requires on the host.
+This repo is public. The moderation **algorithm** lives here and is meant to
+be readable; the moderation **denylist** does not. That list is host state
+loaded from `FARM_MODERATION_PATH` and exists in no repository — see
+[docs/gameplay/03](docs/gameplay/03-farm-names-and-moderation.md).
+
+A clone builds, tests, and runs with no extra setup: with `FARM_MODERATION_PATH`
+unset the server loads the placeholder fixture at
+`internal/moderation/testdata/denylist.fixture.toml`, logs that it is in
+moderation dev mode, and refuses player-set farm names in favour of generated
+ones — a stub list must never be mistaken for a working filter. Production sets
+`FARM_REQUIRE_MODERATION=true`, which turns a missing or malformed list into a
+refusal to boot.

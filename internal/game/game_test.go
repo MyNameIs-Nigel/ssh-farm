@@ -291,7 +291,7 @@ func TestRenameFarmAppliesModerationAndRateLimit(t *testing.T) {
 
 	// Past the cooldown, a denylisted name is refused generically and the
 	// name is still unchanged.
-	_, err = res.Session.RenameFarm(context.Background(), 1091, "FUCK")
+	_, err = res.Session.RenameFarm(context.Background(), 1091, "ZZMEANIE")
 	if err != ErrNameDenied {
 		t.Fatalf("expected ErrNameDenied, got %v", err)
 	}

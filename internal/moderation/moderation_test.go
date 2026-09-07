@@ -28,12 +28,12 @@ func TestFilterAcceptsHappyNames(t *testing.T) {
 }
 
 func TestFilterRejectionIsIndistinguishableForInvalidVsDenied(t *testing.T) {
-	// "too short" is a Validate failure; "FUCK" is a Check (denylist)
-	// failure. Both must produce the exact same shape of result: ("",
+	// "too short" is a Validate failure; the fixture token is a Check
+	// (denylist) failure. Both must produce the exact same shape of result: ("",
 	// true). The caller (internal/game) relies on this to show one generic
 	// message without ever leaking which rule fired.
 	invalidOut, invalidLocked := Filter("ab")
-	deniedOut, deniedLocked := Filter("FUCK")
+	deniedOut, deniedLocked := Filter("ZZMEANIE")
 	if !invalidLocked || !deniedLocked {
 		t.Fatalf("expected both invalid and denied inputs to lock: invalid=%v denied=%v", invalidLocked, deniedLocked)
 	}
@@ -56,8 +56,8 @@ func TestFilterRejectionIsIndistinguishableForInvalidVsDenied(t *testing.T) {
 // other, so this uses an absolute per-call budget instead.
 func TestFilterRejectionTimingIsNotAnObviousOracle(t *testing.T) {
 	const iterations = 2000
-	invalidElapsed := timeFilter(iterations, "ab")  // Validate failure: too short
-	deniedElapsed := timeFilter(iterations, "FUCK") // Check failure: denylist
+	invalidElapsed := timeFilter(iterations, "ab")      // Validate failure: too short
+	deniedElapsed := timeFilter(iterations, "ZZMEANIE") // Check failure: denylist
 
 	diffPerCall := (deniedElapsed - invalidElapsed) / iterations
 	if diffPerCall < 0 {
@@ -116,7 +116,7 @@ func TestCheckMirrorsFilterForAlreadyNormalizedInput(t *testing.T) {
 func FuzzFilterNeverPanics(f *testing.F) {
 	seeds := []string{
 		"", "a", "ABC", "123", "farm name", "🙂", "名前", "\x00\x01", "----",
-		strings.Repeat("x", 100), "FUCK", "SCUNTHORPE", "s-l-u-r",
+		strings.Repeat("x", 100), "ZZMEANIE", "SCUNTHORPE", "s-l-u-r",
 	}
 	for _, s := range seeds {
 		f.Add(s)
