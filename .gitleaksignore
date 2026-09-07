@@ -1,0 +1,6 @@
+# Local dev SSH host keys. Gitignored, never committed, and verified on
+# 2026-09-06 to be absent from history and from unreachable objects; their
+# fingerprints match nothing serving on play.ssharcade.dev. `gitleaks dir`
+# ignores .gitignore, so it flags them on every scan — this stops that
+# recurring at the Phase 6 visibility flip.
+var/ssh_host_key
