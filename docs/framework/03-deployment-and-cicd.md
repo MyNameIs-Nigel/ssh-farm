@@ -6,9 +6,10 @@
 ## Goal
 
 ssh-farm ships like every fleet service — PR tested, main auto-deployed,
-only this service restarted — with two wrinkles the other repos don't
-have: this repo is **private** (private image pulls), and it **replaces a
-live game** (the idlefarmer cutover).
+only this service restarted — with two wrinkles the other repos don't have:
+it **replaces a live game** (the idlefarmer cutover), and it is the only
+service with a **denylist file that must be provisioned on the host before
+first deploy**, because it refuses to boot without one.
 
 ## References
 
@@ -39,11 +40,16 @@ live game** (the idlefarmer cutover).
   the deploy job ran on a self-hosted runner on the production host, which
   cannot survive this repo going public, and all four were removed on
   2026-09-04.
-- **Private-repo wrinkle**: the GHCR image is private. The arcade host
-  must be logged in once with a fine-grained PAT scoped to
-  `read:packages` only (stored on the host, documented in the arcade
-  deploy README — file the PR there). CI itself uses the repo-scoped
-  `GITHUB_TOKEN`; no extra secrets for publishing.
+- **No registry auth needed**: the GHCR package is public, so the host pulls
+  anonymously and holds no Docker credential at all. CI uses the repo-scoped
+  `GITHUB_TOKEN` to publish; no extra secrets.
+- **Denylist provisioning is a first-deploy prerequisite.** `farm` runs with
+  `FARM_REQUIRE_MODERATION=true` and will not start without
+  `/srv/ssharcade/private/farm/denylist.toml` (0400, root, mounted read-only
+  as a directory — see the compose file for why a directory and not a single
+  file). Provision it before the first `up -d farm` on a new host, or the
+  service crash-loops by design. Tighten the list later with
+  `docker compose kill -s HUP farm`; no redeploy.
 - Deploys are safe mid-session by construction (v1's ported shutdown
   flush); the lobby shows `○ OFFLINE` during the restart seconds.
 
@@ -95,7 +101,8 @@ Rollback at any step = stop `farm`, start `idlefarmer`, revert
 - [ ] PR with a failing test blocks; main merge publishes an image, and a
   manual `up -d farm` restarts only `farm` (other services' uptimes
   untouched).
-- [ ] Host pulls the private image non-interactively after one-time login.
+- [ ] Host pulls the public image anonymously, holding no registry credential.
+- [ ] `farm` refuses to boot when the denylist file is absent, and boots when it is present.
 - [ ] Dev compose: direct `ssh -p 2222 localhost` works with no AWS
   credentials present (litestream disabled or MinIO-pointed — the game
   must run without S3 in dev).

@@ -537,7 +537,7 @@ func TestImportHelpers(t *testing.T) {
 	}
 }
 
-func TestGateRenameAllowsThenRateLimitsWithinCooldown(t *testing.T) {
+func TestGateRenameAllowsABurstThenRateLimitsUntilCooldown(t *testing.T) {
 	st := openTest(t)
 	ctx := context.Background()
 	if err := st.TouchAccount(ctx, "SHA256:r", "k", 1); err != nil {
@@ -547,30 +547,50 @@ func TestGateRenameAllowsThenRateLimitsWithinCooldown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gate, err := st.GateRename(ctx, "SHA256:r", "farm", 1000)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if gate != RenameAllowed {
-		t.Fatalf("first attempt gate = %v, want RenameAllowed", gate)
+	// The whole burst is spendable back to back, one second apart — the
+	// point of the burst is that iterating on a name is not punished.
+	var last int64
+	for i := 0; i < RenameBurstLimit; i++ {
+		last = 1000 + int64(i)
+		gate, err := st.GateRename(ctx, "SHA256:r", "farm", last)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gate != RenameAllowed {
+			t.Fatalf("burst attempt %d gate = %v, want RenameAllowed", i+1, gate)
+		}
 	}
 
-	// A second attempt 30s later (inside the 60s cooldown) is refused.
-	gate, err = st.GateRename(ctx, "SHA256:r", "farm", 1030)
+	// One past the burst, with no time elapsed, is refused.
+	gate, err := st.GateRename(ctx, "SHA256:r", "farm", last+1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gate != RenameRateLimited {
-		t.Fatalf("second attempt (30s later) gate = %v, want RenameRateLimited", gate)
+		t.Fatalf("attempt %d gate = %v, want RenameRateLimited", RenameBurstLimit+1, gate)
 	}
 
-	// Past the cooldown, a third attempt is allowed again.
-	gate, err = st.GateRename(ctx, "SHA256:r", "farm", 1061)
+	// Still refused one second short of the cooldown, which is measured
+	// from the last ALLOWED attempt rather than the last attempt of any
+	// kind — the refusal above must not have pushed the unlock later.
+	gate, err = st.GateRename(ctx, "SHA256:r", "farm", last+renameCooldownSeconds-1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gate != RenameAllowed {
-		t.Fatalf("third attempt (61s later) gate = %v, want RenameAllowed", gate)
+	if gate != RenameRateLimited {
+		t.Fatalf("gate just inside the cooldown = %v, want RenameRateLimited", gate)
+	}
+
+	// Once the cooldown elapses the allowance refills in full.
+	resumed := last + renameCooldownSeconds
+	for i := 0; i < RenameBurstLimit; i++ {
+		gate, err := st.GateRename(ctx, "SHA256:r", "farm", resumed+int64(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gate != RenameAllowed {
+			t.Fatalf("post-cooldown attempt %d gate = %v, want RenameAllowed", i+1, gate)
+		}
 	}
 }
 
@@ -669,8 +689,12 @@ func TestGateRenameCountersSurviveReopen(t *testing.T) {
 	if _, _, err := st.LoadOrCreateSave(ctx, "SHA256:p", "farm", 1, freshPayload("blob", 0, "")); err != nil {
 		t.Fatal(err)
 	}
-	if gate, err := st.GateRename(ctx, "SHA256:p", "farm", 1000); err != nil || gate != RenameAllowed {
-		t.Fatalf("gate = %v, err = %v, want RenameAllowed", gate, err)
+	// Spend the whole burst before closing, so what has to survive the
+	// restart is an exhausted allowance rather than a partly used one.
+	for i := 0; i < RenameBurstLimit; i++ {
+		if gate, err := st.GateRename(ctx, "SHA256:p", "farm", 1000+int64(i)); err != nil || gate != RenameAllowed {
+			t.Fatalf("burst attempt %d: gate = %v, err = %v, want RenameAllowed", i+1, gate, err)
+		}
 	}
 	if err := st.Close(); err != nil {
 		t.Fatal(err)
@@ -682,8 +706,9 @@ func TestGateRenameCountersSurviveReopen(t *testing.T) {
 	}
 	defer st2.Close()
 	// A restart-and-reconnect within the cooldown must still be refused:
-	// the counters are read from disk, not process memory.
-	gate, err := st2.GateRename(ctx, "SHA256:p", "farm", 1010)
+	// the counters are read from disk, not process memory, so a restart is
+	// not a way to buy a fresh burst.
+	gate, err := st2.GateRename(ctx, "SHA256:p", "farm", 1000+RenameBurstLimit)
 	if err != nil {
 		t.Fatal(err)
 	}

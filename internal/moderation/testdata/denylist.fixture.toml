@@ -1,0 +1,40 @@
+# Dev and test denylist fixture — INVENTED TOKENS ONLY.
+#
+# The real list is host state: it lives at FARM_MODERATION_PATH on the
+# production host and in no repository at all. See
+# docs/gameplay/03-farm-names-and-moderation.md.
+#
+# This file exists so that a fresh clone builds, tests, and runs the server
+# without needing the real list, and so the public test suite can exercise
+# every evasion class — leetspeak, separator insertion, character repeats,
+# embedding inside a longer name — without publishing a single real entry.
+#
+# HARD RULE: never add a real term to this file. The algorithm being public is
+# fine and intended; the payload is the part that must not be.
+#
+# A process that loads this fixture instead of a real list runs in moderation
+# dev mode: it logs loudly and refuses player-set names outright, falling back
+# to generated ones. A stub list must never be mistaken for a working filter.
+
+# Slur tier: substring match, so it is caught anywhere inside a longer name.
+[[term]]
+word = "zzbadword"
+tier = "slur"
+match = "substring"
+
+# Second substring token whose folded form differs from its literal spelling,
+# to keep the leet/homoglyph normalization path covered by the fixture alone.
+[[term]]
+word = "zzevilword"
+tier = "slur"
+match = "substring"
+
+# Profanity tier: whole-word match only, so "ZZMEANIEFARM" is fine and
+# "ZZMEANIE" is not.
+[[term]]
+word = "zzmeanie"
+tier = "profanity"
+match = "word"
+
+# Whole-name exception, to keep the allow-list short-circuit exercised.
+allow = ["zzbadwordallowed"]

@@ -67,6 +67,17 @@ var migrations = []string{
 		lifetime_earnings = CASE WHEN json_valid(state) THEN COALESCE(json_extract(state, '$.lifetime_earnings'), 0) ELSE 0 END,
 		rebirths = CASE WHEN json_valid(state) THEN COALESCE(json_extract(state, '$.rebirths'), 0) ELSE 0 END;
 	CREATE INDEX idx_saves_lifetime_earnings ON saves (lifetime_earnings DESC);`,
+
+	// v5: the rename budget becomes a burst allowance instead of a flat
+	// one-per-minute gate. The old shape made naming genuinely unpleasant —
+	// a player who mistyped, or who tripped the denylist once, waited a full
+	// minute before their second try, and the denylist deliberately gives no
+	// reason, so the wait taught them nothing. A burst lets someone actually
+	// iterate on a name, while still capping how fast a determined prober can
+	// probe. Zero is the correct default for existing rows: nobody is
+	// mid-burst at migration time, and starting everyone with a full
+	// allowance is the generous direction to be wrong in.
+	`ALTER TABLE saves ADD COLUMN rename_burst_count INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (st *Store) migrate(ctx context.Context) error {

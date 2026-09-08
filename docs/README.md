@@ -44,7 +44,7 @@ Identical to v1/moonminer with two additions:
 | `internal/server/`, `internal/identity/`, `internal/game/`, `internal/sim/`, `internal/tui/`, `internal/store/`, `internal/content/`, `data/` | as in v1 (ported) — same responsibilities as the table in `../ssh-moonminer/docs/README.md` |
 | `internal/leaderboard/` | **new** — rank engine, cached board snapshots (gameplay/02) |
 | `internal/moderation/` | **new** — name validation/normalization + embedded denylist (gameplay/03) |
-| `data/moderation/` | denylist + generated-name word lists (one reason this repo is **private**) |
+| `data/moderation/` | generated-name word lists only. The denylist is **not here** — it is host state loaded from `FARM_MODERATION_PATH`; see gameplay/03 |
 
 ## Build order
 
@@ -63,7 +63,7 @@ Phase 4:             tui/02 (leaderboard screen)        tests/01, tests/02
 | [01-v2-vision-and-scope.md](01-v2-vision-and-scope.md) | What changes, what must not, v1 cutover plan (context, not a task) |
 | [framework/01-server-port-and-arcade-identity.md](framework/01-server-port-and-arcade-identity.md) | Port v1 server; add proxied identity, mouse option, fp-keyed caps |
 | [framework/02-store-durability-and-v1-import.md](framework/02-store-durability-and-v1-import.md) | Store port + leaderboard columns, Litestream integration, `import-v1` |
-| [framework/03-deployment-and-cicd.md](framework/03-deployment-and-cicd.md) | Private-repo CI/CD, fleet compose service, idlefarmer→farm cutover |
+| [framework/03-deployment-and-cicd.md](framework/03-deployment-and-cicd.md) | CI/CD, fleet compose service, idlefarmer→farm cutover |
 | [gameplay/01-sim-port-and-parity.md](gameplay/01-sim-port-and-parity.md) | Port `internal/sim` + content verbatim; parity goldens vs v1 |
 | [gameplay/02-leaderboard-engine.md](gameplay/02-leaderboard-engine.md) | Coins ranking, schema, caching, activity window |
 | [gameplay/03-farm-names-and-moderation.md](gameplay/03-farm-names-and-moderation.md) | Display names, normalization pipeline, denylist best practices |
@@ -83,10 +83,12 @@ conventions" applies verbatim (substituting `FARM_*`), plus:
 1. **Parity beats improvement.** During the port, resist "while I'm here"
    gameplay changes — v1 players are watching their own farms cross over.
    File ideas as TODOs; ship parity first.
-2. **The denylist is content, not code** — `data/moderation/*` — and this
-   repo stays **private** partly so the filter isn't trivially studied.
-   Never copy denylist contents into public repos, commit messages, or
-   test names.
+2. **The denylist is content, not code, and it does not live here.** It is
+   host state at `FARM_MODERATION_PATH` (gameplay/03). Repo visibility never
+   protected it — `go:embed` used to bake it into a publicly pullable image —
+   so the protection is that it is not in the tree at all. Never copy denylist
+   contents into a repo, a commit message, an issue, or a test name; fixtures
+   use invented tokens.
 3. **Names are re-validated at render time**, not just at write time, so a
    denylist update retroactively masks old names (gameplay/03).
 4. **Every new feature keeps the sim pure** — leaderboard reads are store

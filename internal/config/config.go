@@ -29,6 +29,13 @@ type Config struct {
 	DataDir             string // content override dir; empty = embedded
 	ProxyKeysPath       string // trusted arcade proxy keys; empty = direct-only dev
 
+	// Moderation (gameplay/03). The denylist is host state mounted into the
+	// container, not repo content: a public repository cannot carry a private
+	// list. ModerationPath empty means the dev fixture, which is why
+	// RequireModeration exists — production must not start on the stub.
+	ModerationPath    string // FARM_MODERATION_PATH: denylist file; empty = dev fixture
+	RequireModeration bool   // FARM_REQUIRE_MODERATION: refuse to boot without a real list
+
 	// Leaderboard (gameplay/02): both filters gate which saves count toward
 	// the board at all, independent of the in-process cache TTL.
 	LeaderboardTTL            time.Duration // FARM_LEADERBOARD_TTL: max snapshot staleness
@@ -40,15 +47,19 @@ type Config struct {
 func Load() (Config, error) {
 	var err error
 	cfg := Config{
-		ListenHost:    envOr("FARM_LISTEN_HOST", "0.0.0.0"),
-		HostKeyPath:   envOr("FARM_HOST_KEY_PATH", "var/ssh_host_key"),
-		DefaultSlot:   envOr("FARM_DEFAULT_SLOT", "default"),
-		LogLevel:      envOr("FARM_LOG_LEVEL", "info"),
-		LogFormat:     envOr("FARM_LOG_FORMAT", "text"),
-		DBPath:        envOr("FARM_DB_PATH", "var/farm.db"),
-		SessionPolicy: envOr("FARM_SESSION_POLICY", "takeover"),
-		DataDir:       os.Getenv("FARM_DATA_DIR"),
-		ProxyKeysPath: os.Getenv("FARM_PROXY_KEYS_PATH"),
+		ListenHost:     envOr("FARM_LISTEN_HOST", "0.0.0.0"),
+		HostKeyPath:    envOr("FARM_HOST_KEY_PATH", "var/ssh_host_key"),
+		DefaultSlot:    envOr("FARM_DEFAULT_SLOT", "default"),
+		LogLevel:       envOr("FARM_LOG_LEVEL", "info"),
+		LogFormat:      envOr("FARM_LOG_FORMAT", "text"),
+		DBPath:         envOr("FARM_DB_PATH", "var/farm.db"),
+		SessionPolicy:  envOr("FARM_SESSION_POLICY", "takeover"),
+		DataDir:        os.Getenv("FARM_DATA_DIR"),
+		ProxyKeysPath:  os.Getenv("FARM_PROXY_KEYS_PATH"),
+		ModerationPath: os.Getenv("FARM_MODERATION_PATH"),
+	}
+	if cfg.RequireModeration, err = envBoolOr("FARM_REQUIRE_MODERATION", false); err != nil {
+		return Config{}, err
 	}
 	if cfg.ListenPort, err = envIntOr("FARM_LISTEN_PORT", 22); err != nil {
 		return Config{}, err
@@ -116,6 +127,9 @@ func Load() (Config, error) {
 	if cfg.SessionPolicy != "takeover" && cfg.SessionPolicy != "refuse" {
 		return Config{}, fmt.Errorf("FARM_SESSION_POLICY must be %q or %q, got %q", "takeover", "refuse", cfg.SessionPolicy)
 	}
+	if cfg.RequireModeration && cfg.ModerationPath == "" {
+		return Config{}, fmt.Errorf("FARM_MODERATION_PATH must be set when FARM_REQUIRE_MODERATION is true")
+	}
 	if cfg.DBPath == "" {
 		return Config{}, fmt.Errorf("FARM_DB_PATH must not be empty")
 	}
@@ -134,6 +148,22 @@ func Load() (Config, error) {
 
 func (c Config) ListenAddr() string {
 	return fmt.Sprintf("%s:%d", c.ListenHost, c.ListenPort)
+}
+
+// envBoolOr accepts the strconv.ParseBool spellings ("true"/"1"/"t", and the
+// false equivalents) and rejects anything else rather than treating it as
+// false. FARM_REQUIRE_MODERATION=yes silently meaning "no" would disable the
+// fail-closed guard at exactly the moment someone was trying to turn it on.
+func envBoolOr(key string, fallback bool) (bool, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean (true/false), got %q", key, v)
+	}
+	return b, nil
 }
 
 func envOr(key, fallback string) string {

@@ -13,12 +13,13 @@ import "testing"
 // shape) and TestSaveFlushMovesBoardAfterRebuild (rebuilds happen on TTL
 // expiry with no explicit invalidation) — this test exercises the actual
 // "denylist gains a term" transition itself, which can only be done here:
-// defaultDenylist is deliberately immutable and private outside this
-// package (a broken/edited content file is meant to be fatal at process
-// startup, not hot-swappable), so no other package can perform this swap.
+// the active list is private to this package, so no other package can
+// perform this swap. Since the migration to a host file it IS hot-swappable
+// in production too, via Reload on SIGHUP — this test covers the same
+// transition at the level below that.
 func TestFilterRetroactivelyLocksANameOnceTheDenylistGainsATerm(t *testing.T) {
-	old := defaultDenylist
-	t.Cleanup(func() { defaultDenylist = old })
+	old := loaded()
+	t.Cleanup(func() { current.Store(old) })
 
 	const name = "GIZMO VALE"
 
@@ -26,7 +27,7 @@ func TestFilterRetroactivelyLocksANameOnceTheDenylistGainsATerm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defaultDenylist = empty
+	current.Store(empty)
 
 	filtered, locked := Filter(name)
 	if locked {
@@ -43,7 +44,7 @@ func TestFilterRetroactivelyLocksANameOnceTheDenylistGainsATerm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defaultDenylist = updated
+	current.Store(updated)
 
 	_, locked = Filter(name)
 	if !locked {

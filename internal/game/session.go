@@ -269,7 +269,8 @@ func (s *Session) SetFarmName(now int64, name string) (Snapshot, error) {
 // order:
 //
 //  1. Store.GateRename checks the operator lock and atomically consumes
-//     one unit of the rename rate-limit budget (1/minute, 10/day) — before
+//     one unit of the rename rate-limit budget (a 5-attempt burst refilled
+//     60s after the last allowed attempt, 60/day) — before
 //     moderation runs, so a rate-limited request never even reaches the
 //     denylist, and the budget is spent whether or not the name below
 //     turns out to be denied (retrying denied names buys no extra

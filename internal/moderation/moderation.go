@@ -23,7 +23,7 @@ package moderation
 func Check(name string) bool {
 	folded, stripped, collapsed := candidates(name)
 	toks := tokens(folded)
-	return !defaultDenylist.blocks(stripped, collapsed, toks)
+	return !loaded().blocks(stripped, collapsed, toks)
 }
 
 // Filter is the single entry point for turning arbitrary player input into
@@ -48,6 +48,13 @@ func Check(name string) bool {
 func Filter(name string) (out string, locked bool) {
 	if name == "" {
 		return "", false
+	}
+	// Dev mode is running on the placeholder fixture, which blocks two invented
+	// tokens and nothing else. Accepting player-set names against it would look
+	// like moderation while providing none, so refuse them all and let the
+	// caller fall back to Generate — the same path a denied name already takes.
+	if devMode.Load() {
+		return "", true
 	}
 	norm, ok := Validate(name)
 	if !ok {
