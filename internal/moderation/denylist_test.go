@@ -3,6 +3,7 @@ package moderation
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -268,4 +269,53 @@ func restoreDefaults(t *testing.T) {
 	sourcePath.Store(nil)
 	devMode.Store(false)
 	fixtureOnce = sync.Once{}
+}
+
+// A denylist entry is a slur. Any error that names one puts it in the
+// container logs, which is the one route by which the real list — host state
+// that exists in no repository — can escape by accident. These tests use an
+// invented token and assert it never survives into an error string.
+func TestDenylistErrorsNeverNameTheTerm(t *testing.T) {
+	const invented = "zzsecretterm"
+
+	cases := []struct {
+		name  string
+		terms []term
+	}{
+		{"unknown tier", []term{{Word: invented, Tier: "nonsense", Match: "word"}}},
+		{"unknown match kind", []term{{Word: invented, Tier: "slur", Match: "nonsense"}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := newDenylist(tc.terms, nil)
+			if err == nil {
+				t.Fatal("expected an error for a malformed entry")
+			}
+			if strings.Contains(err.Error(), invented) {
+				t.Fatalf("error names the offending term: %v", err)
+			}
+			if !strings.Contains(err.Error(), "entry 0") {
+				t.Fatalf("error should locate the entry by index, got: %v", err)
+			}
+		})
+	}
+}
+
+// The parse path is the other way a term could reach the logs: BurntSushi
+// exposes the offending source line through ErrorWithPosition, and a syntax
+// error on a term's own line would reprint it. Error() does not include that
+// excerpt today, so this guards the property rather than fixing a live leak —
+// it fails if the library starts quoting source, or if someone reaches for the
+// richer formatter.
+func TestParseErrorDoesNotQuoteTheSource(t *testing.T) {
+	const invented = "zzsecretterm"
+	malformed := []byte("[[term]]\nword = \"" + invented + "\" this is a syntax error\n")
+
+	_, err := parseDenylist(malformed, "denylist.toml")
+	if err == nil {
+		t.Fatal("expected a parse error")
+	}
+	if strings.Contains(err.Error(), invented) {
+		t.Fatalf("parse error quotes the source line: %v", err)
+	}
 }

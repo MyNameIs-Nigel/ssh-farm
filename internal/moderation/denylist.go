@@ -3,7 +3,6 @@ package moderation
 import (
 	_ "embed"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"os"
 	"strings"
@@ -43,7 +42,11 @@ type denylist struct {
 // appear in test source.
 func newDenylist(terms []term, allow []string) (*denylist, error) {
 	dl := &denylist{words: map[string]bool{}, allow: map[string]bool{}}
-	for _, t := range terms {
+	// Errors below identify the offending entry by INDEX, never by word. The
+	// real list is slurs; naming one in an error puts it in the container logs,
+	// which is the one place it can escape by accident. The operator has the
+	// file, so an index is enough to find it.
+	for i, t := range terms {
 		w := strings.ToLower(strings.TrimSpace(t.Word))
 		if w == "" {
 			continue
@@ -51,7 +54,7 @@ func newDenylist(terms []term, allow []string) (*denylist, error) {
 		switch t.Tier {
 		case "slur", "profanity":
 		default:
-			return nil, fmt.Errorf("moderation: denylist term %q has unknown tier %q", t.Word, t.Tier)
+			return nil, fmt.Errorf("moderation: denylist entry %d has unknown tier %q", i, t.Tier)
 		}
 		switch t.Match {
 		case "substring":
@@ -59,7 +62,7 @@ func newDenylist(terms []term, allow []string) (*denylist, error) {
 		case "word":
 			dl.words[w] = true
 		default:
-			return nil, fmt.Errorf("moderation: denylist term %q has unknown match kind %q", t.Word, t.Match)
+			return nil, fmt.Errorf("moderation: denylist entry %d has unknown match kind %q", i, t.Match)
 		}
 	}
 	for _, a := range allow {
@@ -69,19 +72,6 @@ func newDenylist(terms []term, allow []string) (*denylist, error) {
 		}
 	}
 	return dl, nil
-}
-
-// loadDenylist reads and parses the denylist TOML from fsys at name.
-func loadDenylist(fsys fs.FS, name string) (*denylist, error) {
-	b, err := fs.ReadFile(fsys, name)
-	if err != nil {
-		return nil, fmt.Errorf("moderation: read %s: %w", name, err)
-	}
-	var f denylistFile
-	if err := toml.Unmarshal(b, &f); err != nil {
-		return nil, fmt.Errorf("moderation: parse %s: %w", name, err)
-	}
-	return newDenylist(f.Term, f.Allow)
 }
 
 // blocks reports whether the (already-validated, uppercase) name is denied.
