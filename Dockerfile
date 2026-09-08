@@ -27,15 +27,10 @@ RUN mkdir -p /out/data-dir && chown 65532:65532 /out/data-dir
 # ---- Litestream: pinned, pulled as a static binary --------------------------
 FROM litestream/litestream:0.5.12 AS litestream
 
-# ---- mc: MinIO Client, used only for the host-key object (a single small
-# file outside litestream's job) — S3-compatible, so the same entrypoint
-# logic works against real S3 in prod and MinIO in local/CI drills.
-FROM minio/mc:RELEASE.2025-08-13T08-35-41Z AS mc
-
 # ---- Runtime stage --------------------------------------------------------
 # alpine:3, not distroless: per the canonical fleet durability doc
 # (../ssh-arcadelobby/docs/06-fleet-data-durability.md), the entrypoint needs
-# a shell to restore/upload the host key and hand off to litestream. The
+# a shell to seed the host key and hand off to litestream. The
 # rest of the hardening (non-root, read-only rootfs, dropped capabilities)
 # is unchanged and enforced in docker-compose.yml.
 FROM alpine:3.22
@@ -45,7 +40,6 @@ RUN apk add --no-cache ca-certificates && \
     adduser -D -H -u 65532 -G nonroot nonroot
 
 COPY --from=litestream /usr/local/bin/litestream /usr/local/bin/litestream
-COPY --from=mc /usr/bin/mc /usr/local/bin/mc
 COPY --from=build /out/ssh-farm /app/ssh-farm
 COPY --from=build /out/restore-check /app/restore-check
 COPY --from=build --chown=65532:65532 /out/data-dir /var/lib/farm
@@ -57,12 +51,10 @@ RUN chmod 755 /entrypoint.sh
 # unprivileged port instead and the operator maps host 22 to it, so the
 # process never needs root or CAP_NET_BIND_SERVICE.
 #
-# HOME: the nonroot user has no /home/nonroot (and can't create one — /home
-# is root-owned), but `mc` writes its config there even when every alias
-# comes from an MC_HOST_* env var, so without this every `mc` call in
-# entrypoint.sh fails with "Unable to save new mc config" — silently, since
-# entrypoint.sh redirects mc's stderr to /dev/null. /tmp is already
-# world-writable in the base image.
+# HOME: the nonroot user has no /home/nonroot and cannot create one (/home is
+# root-owned). Nothing requires it now that mc is gone, but a read-only rootfs
+# with HOME unset is a footgun for any tool added later, so it stays pointed at
+# the tmpfs.
 ENV FARM_LISTEN_PORT=2222 \
     FARM_HOST_KEY_PATH=/var/lib/farm/ssh_host_key \
     FARM_DB_PATH=/var/lib/farm/farm.db \

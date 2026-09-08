@@ -46,8 +46,11 @@ services:
       LITESTREAM_SECRET_ACCESS_KEY: drillpassword
       # litestream 0.5+ auto-detects a host:port endpoint as MinIO and
       # enables path-style addressing; no force-path-style flag needed.
-      FARM_HOST_KEY_MC_PATH: drill/ssharcade-drill/keys/farm/ssh_host_key
-      MC_HOST_drill: http://drilluser:drillpassword@minio:9000
+      # No host-key vars here any more: the entrypoint seeds its host key from a
+      # read-only host mount, not from the bucket, so FARM_HOST_KEY_MC_PATH and
+      # MC_HOST_drill would be silently ignored. The drill exercises the DB
+      # restore path, which is what its gate actually asserts; the container
+      # generates a throwaway host key, which is correct for a drill.
     volumes:
       - farm-drill-data:/var/lib/farm
     ports:
