@@ -24,13 +24,17 @@ services:
       # Durability (leave unset for dev mode; see entrypoint.sh):
       # LITESTREAM_REPLICA_URL: s3://<bucket>/farm/db
       # LITESTREAM_S3_REGION: us-east-1
-      # FARM_HOST_KEY_MC_PATH: s3/<bucket>/keys/farm/ssh_host_key
-      # MC_HOST_s3: https://<access-key>:<secret-key>@s3.amazonaws.com
+      # FARM_HOST_KEY_SOURCE: /etc/farm/hostkey/ssh_host_key
       # AWS credentials for litestream come from the EC2 instance role —
       # never set LITESTREAM_ACCESS_KEY_ID/SECRET in production compose.
-      # mc has no instance-role support, so MC_HOST_s3 needs an explicit
-      # key pair scoped to the same bucket-only IAM policy (see the
-      # canonical doc); it is only used for the one small host-key object.
+      # That role is the ONLY way anything here reaches S3. The host key is
+      # not fetched from the bucket: mount the host's canonical copy
+      # read-only at FARM_HOST_KEY_SOURCE and the entrypoint seeds the data
+      # volume from it when the volume has none. This replaced an `mc cat`
+      # and the static key pair it required, since mc cannot use the
+      # instance role. Mount it owned by uid 65532 — a bind mount keeps
+      # host ownership, and the container is not root.
+      #   - ./private/keys/farm:/etc/farm/hostkey:ro
       #
       # Tune limits here if needed; see README for the full variable table.
       # FARM_MAX_CONNECTIONS: "100"
