@@ -449,15 +449,35 @@ const (
 	// RenameLocked means an operator has locked this save's name
 	// (docs/runbooks/moderation.md); no attempt is recorded.
 	RenameLocked
-	// RenameRateLimited means the save's abuse-friction budget (1/minute,
-	// 10/day) is exhausted; no attempt is recorded.
+	// RenameRateLimited means the save's abuse-friction budget (a burst of
+	// RenameBurstLimit, then renameCooldownSeconds; renameDailyLimit/day) is
+	// exhausted; no attempt is recorded.
 	RenameRateLimited
 )
 
 const (
-	renameCooldownSeconds  = 60
+	// RenameBurstLimit is how many attempts a player may make back to back
+	// before the cooldown applies. Naming is iterative — you try one, you
+	// dislike it, you try another — and moderation gives no reason for a
+	// denial, so a player who trips the denylist is guessing. One attempt per
+	// minute turned that guessing into an unusable feature. A burst absorbs
+	// the honest iteration; the cooldown behind it still bounds a prober to
+	// RenameBurstLimit guesses per renameCooldownSeconds, which is far too
+	// slow to map a denylist of any size.
+	RenameBurstLimit = 5
+
+	// renameCooldownSeconds is how long a save waits, after spending its
+	// burst, before the allowance refills.
+	renameCooldownSeconds = 60
+
 	renameDayWindowSeconds = 86400
-	renameDailyLimit       = 10
+
+	// renameDailyLimit is the backstop against someone grinding the burst all
+	// day. It has to stay well clear of RenameBurstLimit or the burst is
+	// decorative: at the old value of 10 a player got two bursts and then
+	// nothing until tomorrow, which is a worse experience than the per-minute
+	// gate this replaces.
+	renameDailyLimit = 60
 )
 
 // GateRename checks and, if allowed, atomically consumes one unit of
@@ -468,6 +488,10 @@ const (
 // content moderation runs after this and a denied name must not be free to
 // retry — so a rate-limited or content-denied attempt looks identical from
 // the outside (no oracle on why a given attempt failed).
+//
+// The budget is a burst of RenameBurstLimit attempts, refilled in full once
+// renameCooldownSeconds have passed since the last allowed attempt, under a
+// renameDailyLimit-per-day ceiling.
 //
 // This lives in Store rather than internal/sim (whose diff from v1 is
 // frozen) or internal/moderation (which stays a pure function over
@@ -485,11 +509,11 @@ func (st *Store) GateRename(ctx context.Context, fingerprint, slot string, now i
 
 	var locked int
 	var lastAt, dayStart int64
-	var dayCount int
+	var dayCount, burstCount int
 	err = tx.QueryRowContext(ctx, `
-		SELECT name_locked, rename_last_at, rename_day_start, rename_day_count
+		SELECT name_locked, rename_last_at, rename_day_start, rename_day_count, rename_burst_count
 		FROM saves WHERE fingerprint = ? AND slot = ?`,
-		fingerprint, slot).Scan(&locked, &lastAt, &dayStart, &dayCount)
+		fingerprint, slot).Scan(&locked, &lastAt, &dayStart, &dayCount, &burstCount)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return RenameRateLimited, fmt.Errorf("store: gate rename: no row for this key/slot")
@@ -500,7 +524,15 @@ func (st *Store) GateRename(ctx context.Context, fingerprint, slot string, now i
 		return RenameLocked, nil
 	}
 
-	if lastAt != 0 && now < lastAt+renameCooldownSeconds {
+	// The burst refills in full once the cooldown has elapsed since the last
+	// attempt that was actually allowed. Measuring from the last *allowed*
+	// attempt, not the last attempt of any kind, is what stops a player who
+	// keeps hammering during the cooldown from pushing their own unlock
+	// further away every time they try.
+	if lastAt != 0 && now >= lastAt+renameCooldownSeconds {
+		burstCount = 0
+	}
+	if burstCount >= RenameBurstLimit {
 		return RenameRateLimited, nil
 	}
 	if now >= dayStart+renameDayWindowSeconds {
@@ -511,11 +543,12 @@ func (st *Store) GateRename(ctx context.Context, fingerprint, slot string, now i
 		return RenameRateLimited, nil
 	}
 	dayCount++
+	burstCount++
 
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE saves SET rename_last_at = ?, rename_day_start = ?, rename_day_count = ?
+		UPDATE saves SET rename_last_at = ?, rename_day_start = ?, rename_day_count = ?, rename_burst_count = ?
 		WHERE fingerprint = ? AND slot = ?`,
-		now, dayStart, dayCount, fingerprint, slot); err != nil {
+		now, dayStart, dayCount, burstCount, fingerprint, slot); err != nil {
 		return RenameRateLimited, fmt.Errorf("store: gate rename: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

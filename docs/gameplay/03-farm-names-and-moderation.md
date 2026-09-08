@@ -86,6 +86,55 @@ Filters that check raw input are decorative. Normalize first:
 The list is a file on the production host, mounted read-only into the
 container. It is in no repository and never has been part of the public tree.
 
+#### How the list is produced
+
+It is generated, not hand-written, by `internal/moderation/cmd/gen-denylist`:
+
+```bash
+curl -sLO https://raw.githubusercontent.com/awdev1/better-profane-words/main/words.json
+go run ./internal/moderation/cmd/gen-denylist -in words.json -out denylist.toml
+```
+
+The upstream corpus classifies ~2,700 terms by category and by an intensity
+from 1 (mild) to 5 (slurs and hate speech), which replaces the previous list's
+29 individual judgement calls with a single policy knob: `-min-intensity`,
+defaulting to 2. Intensity 1 — `crap`, `damn`, `ass`, `hell` — is deliberately
+allowed.
+
+The generator's real work is choosing the match tier, because that is where a
+word filter earns its reputation. A term is promoted to `substring` matching
+only when it carries a slur or hate-speech category, is at least 5 characters,
+and is not a substring of any dictionary word in either its raw or its
+repeat-collapsed spelling; a term at least 10 characters is promoted on length
+alone. Everything else matches as a whole `word`. Two findings are worth
+keeping, because both were caught only by measuring:
+
+- The corpus classifies `nig` as an intensity-5 racial slur. Substring-matching
+  a stem that short blocks `NIGEL` — the operator's own name — along with 250-odd
+  ordinary English words.
+- The collision test has to run against the *collapsed* spelling too. The corpus
+  carries the misspelling `nigar`, which is inside no dictionary word, yet
+  collapsing `niggardly` yields `nigardly`, which contains it. Checking only the
+  raw spelling blocked the whole `niggard` family.
+
+Before writing anything, the generator runs
+`internal/moderation/testdata/must_allow.txt` through the list it just built and
+**refuses to emit** one that would block any name there. That check has to live
+in the generator: the generated list never enters the repository, so the test
+suite only ever sees the placeholder fixture and could not catch a bad
+production list.
+
+Two upstream classifications are worth knowing about. `niggardly` and
+`niggardliness` are listed as intensity-5 racial slurs, which is etymologically
+wrong — the word means stingy and is unrelated. They are blocked as whole words
+only. If that ever matters, add the name to the generated file's `allow` list
+rather than editing terms, and note that regenerating overwrites it.
+
+The corpus is **GPL-3.0-only**, which is the other reason the generated list
+stays out of this repository: ssh-farm ships a public binary, and baking a
+GPL-3.0 data file into it would entangle the whole distribution. `.gitignore`
+carries `denylist.toml` and `words.json` as a backstop.
+
 | Env var | Meaning |
 | --- | --- |
 | `FARM_MODERATION_PATH` | Path to the denylist TOML. Unset means the dev fixture. |
@@ -144,8 +193,21 @@ match = "substring"   # substring | word
 
 ### Abuse friction
 
-- Rename rate limit: 1 per minute, 10 per day per save (state-tracked) —
-  makes oracle-probing the filter tedious.
+- Rename rate limit: a burst of **5 attempts**, refilled in full once **60
+  seconds** have passed since the last allowed attempt, under a ceiling of
+  **60 per day** per save (state-tracked) — makes oracle-probing the filter
+  tedious without making ordinary naming tedious too.
+
+  This started life as a flat 1 per minute, 10 per day, which was a mistake
+  worth recording: naming is iterative, and because a denial deliberately
+  carries no reason (see "no oracle" above), a player who trips the filter is
+  guessing. Making them wait a minute between guesses did not slow an
+  attacker down meaningfully — it just made the feature unpleasant for
+  everyone else. The burst absorbs honest iteration; the cooldown behind it
+  still caps a prober at 5 guesses a minute, far too slow to map a list of
+  any size. The daily ceiling had to move with it: at 10/day a player got two
+  bursts and then nothing until tomorrow, which is worse than what it
+  replaced.
 - Rejected attempts logged (fingerprint truncated + the rejected name) for
   operator review — the feedback loop for list tightening.
 - **Operator runbook** (`docs/runbooks/moderation.md`, written in this

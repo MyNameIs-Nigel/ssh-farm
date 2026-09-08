@@ -275,32 +275,40 @@ func TestRenameFarmAppliesModerationAndRateLimit(t *testing.T) {
 		t.Fatalf("FarmName = %q, want %q", snap.State.FarmName, "SUNNY HOLLOW")
 	}
 
-	// A second attempt inside the 60s cooldown is refused, and the name is
-	// left unchanged.
-	_, err = res.Session.RenameFarm(context.Background(), 1030, "Northfield")
-	if err != ErrNameRateLimited {
-		t.Fatalf("expected ErrNameRateLimited, got %v", err)
-	}
-	snap, _, advErr := res.Session.Advance(1031)
-	if advErr != nil {
-		t.Fatal(advErr)
-	}
-	if snap.State.FarmName != "SUNNY HOLLOW" {
-		t.Fatal("a rate-limited attempt must not change the stored name")
-	}
-
-	// Past the cooldown, a denylisted name is refused generically and the
-	// name is still unchanged.
-	_, err = res.Session.RenameFarm(context.Background(), 1091, "ZZMEANIE")
+	// A denylisted name inside the burst is refused generically — the burst
+	// exists so that a player who trips the filter can immediately try
+	// again — and the stored name is unchanged.
+	_, err = res.Session.RenameFarm(context.Background(), 1001, "ZZMEANIE")
 	if err != ErrNameDenied {
 		t.Fatalf("expected ErrNameDenied, got %v", err)
 	}
-	snap, _, advErr = res.Session.Advance(1092)
+	snap, _, advErr := res.Session.Advance(1002)
 	if advErr != nil {
 		t.Fatal(advErr)
 	}
 	if snap.State.FarmName != "SUNNY HOLLOW" {
 		t.Fatal("a denied attempt must not change the stored name")
+	}
+
+	// Spend the rest of the burst; a denied attempt still costs a unit, so
+	// the two above already consumed two of it.
+	for i := 2; i < store.RenameBurstLimit; i++ {
+		if _, err := res.Session.RenameFarm(context.Background(), 1000+int64(i), "Northfield"); err != nil {
+			t.Fatalf("attempt %d inside the burst: %v", i+1, err)
+		}
+	}
+
+	// One past the burst is rate limited, and the name is left unchanged.
+	_, err = res.Session.RenameFarm(context.Background(), 1000+int64(store.RenameBurstLimit), "Eastmarch")
+	if err != ErrNameRateLimited {
+		t.Fatalf("expected ErrNameRateLimited, got %v", err)
+	}
+	snap, _, advErr = res.Session.Advance(1000 + int64(store.RenameBurstLimit) + 1)
+	if advErr != nil {
+		t.Fatal(advErr)
+	}
+	if snap.State.FarmName != "NORTHFIELD" {
+		t.Fatalf("a rate-limited attempt must not change the stored name, got %q", snap.State.FarmName)
 	}
 }
 
@@ -330,17 +338,23 @@ func TestRenameFarmCounterSurvivesReconnect(t *testing.T) {
 	id := ident("SHA256:reconnect", "farm")
 
 	res := mustAttach(t, m, id, 1000)
-	if _, err := res.Session.RenameFarm(context.Background(), 1000, "Sunny Hollow"); err != nil {
-		t.Fatal(err)
+	// Spend the whole burst, so a reconnect cannot be mistaken for a player
+	// who simply had allowance left.
+	for i := 0; i < store.RenameBurstLimit; i++ {
+		if _, err := res.Session.RenameFarm(context.Background(), 1000+int64(i), "Sunny Hollow"); err != nil {
+			t.Fatalf("burst attempt %d: %v", i+1, err)
+		}
 	}
 	res.Session.Detach()
 
 	// Reopen against the same database (simulating a process restart) and
-	// reconnect within the cooldown: the rate limit must still apply.
+	// reconnect within the cooldown: the rate limit must still apply, so
+	// reconnecting is not a way to buy a fresh burst.
 	m2 := reopenManager(t, path, PolicyTakeover, time.Hour)
-	res2 := mustAttach(t, m2, id, 1010)
+	at := int64(1000 + store.RenameBurstLimit)
+	res2 := mustAttach(t, m2, id, at)
 	defer res2.Session.Detach()
-	_, err := res2.Session.RenameFarm(context.Background(), 1010, "Northfield")
+	_, err := res2.Session.RenameFarm(context.Background(), at, "Northfield")
 	if err != ErrNameRateLimited {
 		t.Fatalf("expected ErrNameRateLimited after reconnect within cooldown, got %v", err)
 	}

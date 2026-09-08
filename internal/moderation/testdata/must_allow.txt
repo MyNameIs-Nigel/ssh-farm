@@ -9,6 +9,12 @@
 #
 # Blank lines and lines starting with # are ignored.
 
+# This file is also read by internal/moderation/cmd/gen-denylist, which
+# refuses to emit a host denylist that would block any name below. That is
+# where the guard actually bites: the test in this package can only exercise
+# the placeholder fixture, so a generated production list is checked at the
+# moment it is generated instead.
+
 # --- Scunthorpe-class: legitimate words containing a denylist substring as
 #     part of a longer word, never as a standalone token ---
 SCUNTHORPE
@@ -17,6 +23,39 @@ GRASS VALLEY
 PASSING GRADE
 ASSISTANT FARMER
 COCKTAIL HOUR
+ASSISI
+BRASSICA
+BASSETT
+CLASSIC ACRES
+HITCHCOCK
+POPPYCOCK
+COCKERELL
+PENISTONE
+TITCHFIELD
+LIGHTWATER
+MIDDLESEX
+SUSSEX DOWNS
+ESSEX FARM
+CUMBRIA
+CUMBERLAND
+ANALYSIS
+GRAPEVINE
+HORNCASTLE
+DICKSON
+WANGFORD
+SHITAKE RIDGE
+MAGNET FARM
+
+# --- given names, which a player is very likely to use and which collide
+#     with short slur stems. NIGEL is here for a specific reason: the
+#     classified corpus gen-denylist reads lists "nig" as an intensity-5
+#     racial slur, and substring-matching a stem that short blocks it, along
+#     with 250-odd ordinary English words. Losing this line means the
+#     operator's own name stops working. ---
+NIGEL
+NIGELS FARM
+NIGEL_THE_FARMER
+BIGELOW
 
 # --- ordinary farm vocabulary players would plausibly pick ---
 SUNNY HOLLOW

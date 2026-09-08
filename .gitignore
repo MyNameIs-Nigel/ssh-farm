@@ -15,3 +15,11 @@ proxy_keys
 # Editor noise
 .DS_Store
 Thumbs.db
+
+# Generated moderation denylist and its source corpus — host state, never
+# committed. The list is produced by internal/moderation/cmd/gen-denylist and
+# lives only at FARM_MODERATION_PATH on the host and on the operator's
+# machine; the upstream corpus is GPL-3.0-only. The checked-in placeholder is
+# internal/moderation/testdata/denylist.fixture.toml, which this does not match.
+denylist.toml
+words.json

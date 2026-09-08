@@ -36,8 +36,9 @@ UPDATE saves SET name_locked = 0 WHERE fingerprint = 'SHA256:...' AND slot = '..
 ```
 
 This also resets nothing about the rate-limit counters — a freshly-unlocked
-player is still subject to the normal 1/minute, 10/day budget
-(`rename_last_at`, `rename_day_start`, `rename_day_count` columns).
+player is still subject to the normal budget of a 5-attempt burst, refilled
+60 seconds after the last allowed attempt, capped at 60/day (`rename_last_at`,
+`rename_day_start`, `rename_day_count`, `rename_burst_count` columns).
 
 ## Add a denylist term and confirm it takes effect retroactively
 
