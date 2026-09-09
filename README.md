@@ -63,3 +63,13 @@ moderation dev mode, and refuses player-set farm names in favour of generated
 ones — a stub list must never be mistaken for a working filter. Production sets
 `FARM_REQUIRE_MODERATION=true`, which turns a missing or malformed list into a
 refusal to boot.
+
+
+## Licence
+
+MIT — see [`LICENSE`](LICENSE).
+
+[`NOTICE`](NOTICE) covers third-party software redistributed inside the
+published container image (currently Litestream, Apache-2.0). Update it if the
+image ever gains another bundled binary — Apache-2.0 requires that attribution
+to travel with the artifact, not merely with the source.
