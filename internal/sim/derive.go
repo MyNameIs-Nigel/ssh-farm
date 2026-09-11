@@ -346,9 +346,14 @@ func isqrt(n int64) int64 {
 }
 
 // Unlocked reports whether an unlock gate is satisfied for this save.
+// The "season" kind is always unlocked here: festival availability is
+// wall-clock state, not save state, so it is checked separately with
+// SeasonalPlantable (which takes the timestamp Unlocked never had).
 func (s *State) Unlocked(u content.Unlock) bool {
 	switch u.Kind {
 	case "", "start":
+		return true
+	case "season":
 		return true
 	case "earnings":
 		return s.LifetimeEarnings >= u.Value

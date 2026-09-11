@@ -111,7 +111,11 @@ func Advance(s *State, c *content.Content, to int64) Events {
 		cycles := 0
 		for matureAt <= to {
 			if cycles >= autoCycleCap {
-				if plot.AutoSow && s.Coins >= s.SeedCost(c, crop) {
+				// A seasonal crop whose window has closed must not be
+				// batch-estimated past the season: fall through to the
+				// per-cycle path, which harvests once and leaves the plot
+				// empty via the replant check below.
+				if plot.AutoSow && s.Coins >= s.SeedCost(c, crop) && SeasonalPlantable(crop.Unlock, to) {
 					gross := expectedPayout(s, c, crop, matureAt)
 					seedCost := s.SeedCost(c, crop)
 					if gross > seedCost {
@@ -164,7 +168,7 @@ func Advance(s *State, c *content.Content, to int64) Events {
 						sow = nc
 					}
 				}
-				if s.Coins >= s.SeedCost(c, sow) && s.Unlocked(sow.Unlock) {
+				if s.Coins >= s.SeedCost(c, sow) && s.Unlocked(sow.Unlock) && SeasonalPlantable(sow.Unlock, to) {
 					s.Coins -= s.SeedCost(c, sow)
 					ev.AutoCoins -= s.SeedCost(c, sow)
 					if sow.ID != crop.ID {

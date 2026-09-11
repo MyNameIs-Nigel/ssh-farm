@@ -90,7 +90,16 @@ type State struct {
 	// bump — which the v1 parity goldens could never be regenerated for — is
 	// needed to add it.
 	ThemeSolid bool `json:"theme_solid,omitempty"`
+	// SeasonalOff opts out of the Halloween/Christmas look (same omitempty
+	// reasoning: false means the festival skins are on, so v1 payloads stay
+	// byte-identical). Seasonal seeds are unaffected by it and stay gated
+	// only by the calendar.
+	SeasonalOff bool `json:"seasonal_off,omitempty"`
 }
+
+// SeasonalEnabled reports whether the festival skins may render for this
+// save. Seeds ignore it — they answer to the calendar, not the toggle.
+func (s *State) SeasonalEnabled() bool { return !s.SeasonalOff }
 
 // New creates a fresh save seeded with seed, simulated as of now.
 func New(c *content.Content, seed uint64, now int64) *State {

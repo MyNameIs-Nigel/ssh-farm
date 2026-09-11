@@ -242,6 +242,16 @@ func (s *Session) SetThemeSolid(now int64, enabled bool) (Snapshot, error) {
 	return snap, err
 }
 
+// SetSeasonal toggles the Halloween/Christmas look for this save. Seasonal
+// seeds stay gated by the calendar either way.
+func (s *Session) SetSeasonal(now int64, enabled bool) (Snapshot, error) {
+	snap, _, err := s.intent(now, func(st *sim.State) error {
+		sim.SetSeasonal(st, enabled)
+		return nil
+	})
+	return snap, err
+}
+
 // ShooCritter removes a critter from a plot.
 func (s *Session) ShooCritter(now int64, plot int) (int64, Snapshot, []string, error) {
 	var reward int64

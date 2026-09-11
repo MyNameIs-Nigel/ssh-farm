@@ -120,6 +120,36 @@ name = "Bad"
 description = "x"
 condition = { kind = "vibes", value = 1 }
 `},
+		{"season unlock with unknown season", minimalCrops + `
+[[crop]]
+id = "bad"
+name = "Bad"
+archetype = "fast"
+seed_cost = 1
+grow_seconds = 1
+sell_value = 1
+unlock = { kind = "season", season = "easter" }
+`, minimalBalance},
+		{"season unlock with a value", minimalCrops + `
+[[crop]]
+id = "bad"
+name = "Bad"
+archetype = "fast"
+seed_cost = 1
+grow_seconds = 1
+sell_value = 1
+unlock = { kind = "season", season = "halloween", value = 1 }
+`, minimalBalance},
+		{"season unlock with a zone", minimalCrops + `
+[[crop]]
+id = "bad"
+name = "Bad"
+archetype = "fast"
+seed_cost = 1
+grow_seconds = 1
+sell_value = 1
+unlock = { kind = "season", season = "christmas", zone = "greenhouse" }
+`, minimalBalance},
 	}
 
 	for _, tc := range cases {
@@ -219,3 +249,48 @@ kind = ["crow"]
 [flavor]
 enabled = false
 `
+
+func TestSeasonUnlockLoads(t *testing.T) {
+	crops := minimalCrops + `
+[[crop]]
+id = "spook"
+name = "Spook"
+archetype = "fast"
+seed_cost = 1
+grow_seconds = 1
+sell_value = 2
+unlock = { kind = "season", season = "halloween" }
+`
+	dir := t.TempDir()
+	writeFixture(t, dir, "crops.toml", crops)
+	writeFixture(t, dir, "balance.toml", minimalBalance)
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatalf("season unlock should validate: %v", err)
+	}
+	crop := c.Crop("spook")
+	if crop == nil || crop.Unlock.Kind != "season" || crop.Unlock.Season != "halloween" {
+		t.Fatalf("season unlock did not survive load: %+v", crop)
+	}
+}
+
+func TestEmbeddedSeasonalCropsExist(t *testing.T) {
+	c, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]string{
+		"candycorn":  "halloween",
+		"witchhazel": "halloween",
+		"peppermint": "christmas",
+		"tinseltree": "christmas",
+	} {
+		crop := c.Crop(id)
+		if crop == nil {
+			t.Fatalf("embedded crops missing seasonal %q", id)
+		}
+		if crop.Unlock.Kind != "season" || crop.Unlock.Season != want {
+			t.Fatalf("%q unlock = %+v, want season %q", id, crop.Unlock, want)
+		}
+	}
+}
