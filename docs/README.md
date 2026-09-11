@@ -72,6 +72,7 @@ Phase 4:             tui/02 (leaderboard screen)        tests/01, tests/02
 | [tui/03-theme-day-night-and-event-feedback.md](tui/03-theme-day-night-and-event-feedback.md) | Day/night background, solid-colour setting, size warning, event bar |
 | [tui/04-time-clock-header.md](tui/04-time-clock-header.md) | Replace the moon header chip with a deterministic accelerated in-game clock |
 | [tui/03-theme-day-night-and-event-feedback.md](tui/03-theme-day-night-and-event-feedback.md) | Day/night background, solid-colour setting, size indicator in Help, event bar |
+| [tui/05-seasonal-themes.md](tui/05-seasonal-themes.md) | Halloween (October) & Christmas (Nov 25–Dec 25) skins, sky row, seasonal seeds, opt-out toggle |
 | [tests/01-parity-and-import-tests.md](tests/01-parity-and-import-tests.md) | v1↔v2 sim parity, migration, store |
 | [tests/02-leaderboard-moderation-and-durability-tests.md](tests/02-leaderboard-moderation-and-durability-tests.md) | Rank correctness, filter suite, restore drills |
 
