@@ -249,6 +249,14 @@ func TestConfigScreenTogglesSettings(t *testing.T) {
 	if g.snap.State.CrittersEnabled {
 		t.Fatal("toggling critters should disable it")
 	}
+	g = press(t, g, "down", "enter") // toggle solid background (idx 3)
+	if !g.snap.State.ThemeSolid {
+		t.Fatal("toggling solid background should enable it")
+	}
+	g = press(t, g, "down", "enter") // toggle seasonal themes (idx 4)
+	if g.snap.State.SeasonalEnabled() {
+		t.Fatal("toggling seasonal themes should opt out")
+	}
 	g = press(t, g, "esc")
 	if g.overlay != ovNone {
 		t.Fatal("esc should close the config overlay")

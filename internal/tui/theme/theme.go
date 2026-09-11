@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/gameclock"
+	"github.com/mynameis-nigel/ssh-farm/internal/season"
 )
 
 // The palette. Backgrounds sit in the 232-237 greyscale ramp: 232 is almost
@@ -42,6 +43,21 @@ var (
 	phaseBg      = [...]string{PhaseDawn: bgDawn, PhaseDay: bgDay, PhaseDusk: bgDusk, PhaseNight: bgNight}
 	phaseEventBg = [...]string{PhaseDawn: "236", PhaseDay: "237", PhaseDusk: "235", PhaseNight: "234"}
 	phaseName    = [...]string{PhaseDawn: "Dawn", PhaseDay: "Day", PhaseDusk: "Dusk", PhaseNight: "Night"}
+
+	// phaseSeasonBg tints the canvas while a festival is active. Every index
+	// stays near-black readable under fgDefault; night goes pitch black so
+	// the Christmas stars and the Halloween moon pop.
+	phaseSeasonBg = map[season.Season][phaseCount]string{
+		season.SeasonHalloween: {PhaseDawn: "52", PhaseDay: "94", PhaseDusk: "53", PhaseNight: "16"},
+		season.SeasonChristmas: {PhaseDawn: "17", PhaseDay: "22", PhaseDusk: "23", PhaseNight: "16"},
+	}
+
+	// seasonFrameAccent tints the frame border while a festival is active. A
+	// live random event keeps priority (its accent wins below).
+	seasonFrameAccent = map[season.Season]string{
+		season.SeasonHalloween: "208", // pumpkin
+		season.SeasonChristmas: "120", // pine light
+	}
 )
 
 // Phase is where we are in the accelerated day/night cycle.
@@ -149,6 +165,12 @@ type Theme struct {
 	BoardGold   lipgloss.Style
 	BoardSilver lipgloss.Style
 	BoardBronze lipgloss.Style
+
+	// Sky and SkyBright render the seasonal sky row (stars, moon, showpiece
+	// star). They are built in every constructor so the all-styles
+	// background test keeps holding; off-season they are quiet defaults.
+	Sky       lipgloss.Style
+	SkyBright lipgloss.Style
 }
 
 // New builds the theme for a phase. When solid is set the background is
@@ -157,6 +179,15 @@ type Theme struct {
 // and the banner, because that is event feedback, not the day/night cycle.
 // eventID is "" when no event is running.
 func New(p Phase, solid bool, eventID string) Theme {
+	return NewWithSeason(p, solid, eventID, season.SeasonNone)
+}
+
+// NewWithSeason builds the theme for a phase while a festival skin is
+// active. Precedence is deliberate: solid pins the canvas background (as
+// with the cycle and the event lift), a live random event wins the frame
+// accent and the background lift, and the festival takes everything else.
+// Pass season.SeasonNone off-season.
+func NewWithSeason(p Phase, solid bool, eventID string, sn season.Season) Theme {
 	if p < 0 || int(p) >= phaseCount {
 		p = PhaseDawn
 	}
@@ -167,6 +198,10 @@ func New(p Phase, solid bool, eventID string) Theme {
 		bgIdx = bgSolid
 	case eventID != "":
 		bgIdx = phaseEventBg[p]
+	default:
+		if tint, ok := phaseSeasonBg[sn]; ok {
+			bgIdx = tint[p]
+		}
 	}
 
 	bg := lipgloss.Color(bgIdx)
@@ -178,6 +213,9 @@ func New(p Phase, solid bool, eventID string) Theme {
 	text := func(c string) lipgloss.Style { return base.Foreground(lipgloss.Color(c)) }
 
 	frameAccent := lipgloss.Color("65")
+	if tint, ok := seasonFrameAccent[sn]; ok {
+		frameAccent = lipgloss.Color(tint)
+	}
 	if eventID != "" {
 		frameAccent = EventAccent(eventID)
 	}
@@ -189,12 +227,23 @@ func New(p Phase, solid bool, eventID string) Theme {
 		eventStyle = text("229").Bold(true).Padding(0, 1)
 	}
 
+	titleColor, sectionColor := "114", "151"
+	skyColor, skyBrightColor := "250", "229"
+	switch sn {
+	case season.SeasonHalloween:
+		titleColor, sectionColor = "208", "183"
+		skyColor, skyBrightColor = "208", "214"
+	case season.SeasonChristmas:
+		titleColor, sectionColor = "210", "159"
+		skyColor, skyBrightColor = "159", "220"
+	}
+
 	return Theme{
 		Bg:     bg,
 		Fg:     fg,
 		bgIdx:  bgIdx,
 		fgIdx:  fgDefault,
-		Title:  text("114").Bold(true),
+		Title:  text(titleColor).Bold(true),
 		Header: text("180"),
 		NavOn:  base.Bold(true).Foreground(lipgloss.Color("229")).Background(lipgloss.Color("22")).Padding(0, 1),
 		// Lifted from v1's 245/240/243: those greys were tuned against a
@@ -214,7 +263,7 @@ func New(p Phase, solid bool, eventID string) Theme {
 		Locked:   text("243"),
 		Selected: text("229").Bold(true),
 		Value:    text("222"),
-		Section:  text("151").Bold(true),
+		Section:  text(sectionColor).Bold(true),
 		Box:      base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("65")).BorderBackground(bg).Padding(1, 2),
 		PlotCard: base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("244")).BorderBackground(bg).Padding(0, 1).Width(20),
 		PlotSel:  base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("114")).BorderBackground(bg).Padding(0, 1).Width(20),
@@ -227,6 +276,9 @@ func New(p Phase, solid bool, eventID string) Theme {
 		BoardGold:   text("220").Bold(true),
 		BoardSilver: text("152").Bold(true),
 		BoardBronze: text("183").Bold(true),
+
+		Sky:       text(skyColor),
+		SkyBright: text(skyBrightColor).Bold(true),
 	}
 }
 

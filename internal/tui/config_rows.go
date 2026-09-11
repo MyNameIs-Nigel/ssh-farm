@@ -56,6 +56,15 @@ func (g *Game) configRows() []configRow {
 				}
 			},
 		},
+		{
+			label: "Seasonal themes", hint: "festival looks (seeds stay)", on: st.SeasonalEnabled(),
+			toggle: func(g *Game, enabled bool) {
+				if snap, err := g.sess.SetSeasonal(g.now, enabled); err == nil {
+					g.snap = snap
+					g.addNotice("Seasonal themes " + onOff(enabled) + ".")
+				}
+			},
+		},
 	}
 }
 

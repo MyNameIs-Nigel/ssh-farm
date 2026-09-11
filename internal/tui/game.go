@@ -163,8 +163,8 @@ type Game struct {
 }
 
 // theme builds the palette for this frame: the day/night phase from the
-// model's clock, the player's solid-background setting, and the active event
-// (which recolours the frame and lifts the canvas).
+// model's clock, the player's solid-background setting, the active event
+// (which recolours the frame and lifts the canvas), and the festival skin.
 func (g *Game) theme() theme.Theme {
 	st := g.snap.State
 	eventID := ""
@@ -172,7 +172,7 @@ func (g *Game) theme() theme.Theme {
 		eventID = st.EventID
 	}
 	solid := st != nil && st.ThemeSolid
-	return theme.New(theme.PhaseAt(g.now), solid, eventID)
+	return theme.NewWithSeason(theme.PhaseAt(g.now), solid, eventID, g.season())
 }
 
 func NewGame(id identity.SessionIdentity, res game.AttachResult, c *content.Content, board *leaderboard.Engine, width, height int, now int64, idleTimeout int64) *Game {
@@ -444,7 +444,7 @@ func (g *Game) handleFarmKey(key string) (tea.Model, tea.Cmd) {
 			reward, snap, ach, err := g.sess.ShooCritter(g.now, g.cursor)
 			g.applyAction(snap, ach, err)
 			if err == nil {
-				g.addNotice("Shooed the " + sanitizeText(st.Plots[g.cursor].Critter) + " (+" + money(reward) + " coins).")
+				g.addNotice("Shooed the " + sanitizeText(g.critterName(st.Plots[g.cursor].Critter)) + " (+" + money(reward) + " coins).")
 			}
 		}
 	case "enter", "space", " ":
@@ -622,7 +622,7 @@ func (g *Game) handlePickerKey(key string) (tea.Model, tea.Cmd) {
 		g.applyAction(snap, ach, err)
 		if err == nil {
 			g.overlay = ovNone
-			if st.MercyPlantEligible(g.content, crop.ID) {
+			if st.MercyPlantEligible(g.content, crop.ID) && sim.SeasonalPlantable(crop.Unlock, g.now) {
 				g.addNotice("Planted " + sanitizeText(crop.Name) + " — FREE, the land provides.")
 			} else {
 				g.addNotice("Planted " + sanitizeText(crop.Name) + ".")
@@ -1156,7 +1156,7 @@ func (g *Game) eventNotices(ev sim.Events) {
 		}
 	}
 	for _, c := range ev.CritterVisits {
-		g.addNotice("A " + sanitizeText(c) + " visited an empty plot.")
+		g.addNotice("A " + sanitizeText(g.critterName(c)) + " visited an empty plot.")
 	}
 	g.achievementNotices(ev.Achievements)
 }
@@ -1181,7 +1181,7 @@ func (g *Game) pruneNotices() {
 func (g *Game) starseedLabel() string { return g.content.StarseedLabel() }
 
 func (g *Game) visibleCrops() []content.Crop {
-	return sim.VisibleCrops(g.snap.State, g.content)
+	return sim.VisibleCropsAt(g.snap.State, g.content, g.now)
 }
 
 type marketItem struct {
