@@ -95,8 +95,7 @@ Following the `ThemeSolid` precedent (tui/03: the v1 parity goldens in
 - `sim.SetSeasonal(s, enabled)`, `Session.SetSeasonal(now, enabled)`,
   mirroring the `SetThemeSolid` chain exactly.
 - New `configRows()` entry **appended last**: "Seasonal themes", hint
-  "halloween & christmas looks (seasonal seeds stay)". Single toggle for
-  both festivals ( Noël and spooky share one switch).
+  "festival looks (seeds stay)". Single toggle for both festivals.
 - Persists across rebirth like the other player settings; never cleared.
 - What the toggle gates: palette, sky row, title glyph, seasonal headlines,
   critter display names. What it never gates: seasonal seed availability —
@@ -172,8 +171,11 @@ the timestamp is a parameter, never read from a clock):
 - Already-planted seasonal crops are unaffected by the window closing: they
   keep growing, mature, and harvest for full payout (plus strains, bonuses,
   mercy rules all keep working — the crop row is ordinary content).
-- `CheapestUnlockedCrop`/`MercyPlantEligible` gain `At` variants on the same
-  pattern so a free mercy seed can never be an unplantable seasonal crop.
+- `CheapestUnlockedCrop`/`MercyPlantEligible` keep their signatures (a
+  seasonal seed can never be cheapest while the 5c turnip exists), but both
+  mercy call sites — `Plant` and the picker/plant notice — add a
+  `SeasonalPlantable` guard, so a free mercy seed can never be an
+  unplantable seasonal crop.
 
 ### Theme changes
 
