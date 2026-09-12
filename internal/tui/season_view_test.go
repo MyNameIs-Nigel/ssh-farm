@@ -34,7 +34,6 @@ func seasonalGame(t *testing.T, w, h int, now int64) *Game {
 	g := goldenGame(t, w, h)
 	g.now = now
 	g.snap.Now = now
-	g.SetTrueColor(true)
 	return g
 }
 

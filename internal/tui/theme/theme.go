@@ -3,9 +3,8 @@
 // background survive lipgloss's nested styles.
 //
 // The normal backgrounds use ANSI-256 indices for consistent rendering. The
-// optional festival background tints use RGB only after the SSH session has
-// positively detected True Color support; limited-color terminals keep the
-// normal canvas while the renderer down-samples seasonal accents for them.
+// festival backgrounds use deliberately near-black RGB tints; terminal color
+// capability detection and fallback behavior are outside this package.
 package theme
 
 import (
@@ -45,8 +44,8 @@ var (
 	phaseEventBg = [...]string{PhaseDawn: "236", PhaseDay: "237", PhaseDusk: "235", PhaseNight: "234"}
 	phaseName    = [...]string{PhaseDawn: "Dawn", PhaseDay: "Day", PhaseDusk: "Dusk", PhaseNight: "Night"}
 
-	// phaseSeasonBg tints the canvas only on True Color terminals. Values are
-	// deliberately almost black and stay within one hue family per festival.
+	// phaseSeasonBg values are deliberately almost black and stay within one
+	// hue family per festival.
 	phaseSeasonBg = map[season.Season][phaseCount]string{
 		season.SeasonHalloween: {PhaseDawn: "#100606", PhaseDay: "#140808", PhaseDusk: "#0d0505", PhaseNight: "#070303"},
 		season.SeasonChristmas: {PhaseDawn: "#060817", PhaseDay: "#080b1b", PhaseDusk: "#050816", PhaseNight: "#03040b"},
@@ -179,16 +178,15 @@ type Theme struct {
 // and the banner, because that is event feedback, not the day/night cycle.
 // eventID is "" when no event is running.
 func New(p Phase, solid bool, eventID string) Theme {
-	return NewWithSeason(p, solid, eventID, season.SeasonNone, false)
+	return NewWithSeason(p, solid, eventID, season.SeasonNone)
 }
 
 // NewWithSeason builds the theme for a phase while a festival skin is
-// active. trueColor gates only the festival canvas background; seasonal
-// accents remain active on limited-color terminals. Precedence is deliberate:
-// solid pins the canvas background (as with the cycle and the event lift), a
-// live random event wins the frame accent and background lift, and the
-// festival takes everything else. Pass season.SeasonNone off-season.
-func NewWithSeason(p Phase, solid bool, eventID string, sn season.Season, trueColor bool) Theme {
+// active. Precedence is deliberate: solid pins the canvas background (as with
+// the cycle and the event lift), a live random event wins the frame accent and
+// background lift, and the festival takes everything else. Pass
+// season.SeasonNone off-season.
+func NewWithSeason(p Phase, solid bool, eventID string, sn season.Season) Theme {
 	if p < 0 || int(p) >= phaseCount {
 		p = PhaseDawn
 	}
@@ -200,9 +198,6 @@ func NewWithSeason(p Phase, solid bool, eventID string, sn season.Season, trueCo
 	case eventID != "":
 		bgIdx = phaseEventBg[p]
 	default:
-		if !trueColor {
-			break
-		}
 		if tint, ok := phaseSeasonBg[sn]; ok {
 			bgIdx = tint[p]
 		}

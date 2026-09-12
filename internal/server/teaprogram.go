@@ -4,26 +4,12 @@ import (
 	"bytes"
 	"io"
 	"runtime"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/wish/v2/bubbletea"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/ssh"
 )
-
-func supportsTrueColor(env []string, term string) bool {
-	envs := make([]string, 0, len(env)+1)
-	for _, item := range env {
-		if !strings.HasPrefix(item, "TERM=") {
-			envs = append(envs, item)
-		}
-	}
-	if term != "" {
-		envs = append(envs, "TERM="+term)
-	}
-	return colorprofile.Env(envs) == colorprofile.TrueColor
-}
 
 // newTeaProgram builds the per-session Bubble Tea program. It exists (instead
 // of letting the middleware call teaHandler directly) so Windows hosts can
