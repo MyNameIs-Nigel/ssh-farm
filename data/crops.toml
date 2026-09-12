@@ -116,3 +116,44 @@ seed_cost = 1200
 grow_seconds = 43200
 sell_value = 10000
 unlock = { kind = "zone", zone = "greenhouse" }
+
+# Seasonal festival seeds. Each pays above the permanent profit curve
+# (~0.30 coins/sec vs voidlotus ~0.28) — the event window is the balancer.
+# They are gated by wall-clock season (see internal/season), never by
+# progression, and stay harvestable after the window closes.
+
+[[crop]]
+id = "candycorn"
+name = "Candycorn"
+archetype = "fast"
+seed_cost = 60
+grow_seconds = 300
+sell_value = 150
+unlock = { kind = "season", season = "halloween" }
+
+[[crop]]
+id = "witchhazel"
+name = "Witchhazel"
+archetype = "slow"
+seed_cost = 400
+grow_seconds = 7200
+sell_value = 2600
+unlock = { kind = "season", season = "halloween" }
+
+[[crop]]
+id = "peppermint"
+name = "Peppermint"
+archetype = "fast"
+seed_cost = 90
+grow_seconds = 480
+sell_value = 240
+unlock = { kind = "season", season = "christmas" }
+
+[[crop]]
+id = "tinseltree"
+name = "Tinseltree"
+archetype = "slow"
+seed_cost = 800
+grow_seconds = 14400
+sell_value = 5200
+unlock = { kind = "season", season = "christmas" }

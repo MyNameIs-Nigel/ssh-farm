@@ -36,3 +36,24 @@ seed_cost = 100
 grow_seconds = 1200
 sell_value = 400
 unlock = { kind = "zone", zone = "greenhouse" }
+
+# Seasonal fixtures for the festival tests: one fast Halloween seed and one
+# slow Christmas seed, mirroring the real content's season unlocks.
+
+[[crop]]
+id = "lanternberry"
+name = "Lanternberry"
+archetype = "fast"
+seed_cost = 60
+grow_seconds = 300
+sell_value = 150
+unlock = { kind = "season", season = "halloween" }
+
+[[crop]]
+id = "snowbell"
+name = "Snowbell"
+archetype = "slow"
+seed_cost = 800
+grow_seconds = 14400
+sell_value = 5200
+unlock = { kind = "season", season = "christmas" }

@@ -21,7 +21,11 @@ const (
 
 // canvasSize is the outer size of the framed game window, clamped to the terminal.
 func (g *Game) canvasSize() (w, h int) {
-	return min(g.width, canvasMaxWidth), min(g.height, canvasMaxHeight)
+	skyH := 0
+	if text, _ := g.seasonalSky(); text != "" {
+		skyH = 1
+	}
+	return min(g.width, canvasMaxWidth), min(max(g.height-skyH, 1), canvasMaxHeight)
 }
 
 // contentWidth and contentHeight are the usable area inside the frame
@@ -108,7 +112,11 @@ func (g *Game) composeCanvas(body string, centerBody bool) string {
 	}
 
 	inner := lipgloss.NewStyle().MaxWidth(cw).MaxHeight(ch).Render(top + "\n" + body + "\n" + bottom)
-	return th.Frame.Render(inner)
+	frame := th.Frame.Render(inner)
+	if sky := g.viewSky(); sky != "" {
+		return sky + "\n" + frame
+	}
+	return frame
 }
 
 // preserveBodyLines reports screens whose body text already has explicit

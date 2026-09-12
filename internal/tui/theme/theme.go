@@ -2,19 +2,20 @@
 // day/night cycle that shifts it, and the painting helper that makes a
 // background survive lipgloss's nested styles.
 //
-// Backgrounds are ANSI-256 indices rather than hex on purpose. wish forces a
-// color profile and the common case (Terminal.app) reports xterm-256color, so
-// truecolor would be quantized and adjacent near-blacks could collapse onto
-// the same grey. Indices render identically everywhere.
+// The normal backgrounds use ANSI-256 indices for consistent rendering. The
+// festival backgrounds use deliberately near-black RGB tints; terminal color
+// capability detection and fallback behavior are outside this package.
 package theme
 
 import (
 	"image/color"
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/gameclock"
+	"github.com/mynameis-nigel/ssh-farm/internal/season"
 )
 
 // The palette. Backgrounds sit in the 232-237 greyscale ramp: 232 is almost
@@ -42,6 +43,20 @@ var (
 	phaseBg      = [...]string{PhaseDawn: bgDawn, PhaseDay: bgDay, PhaseDusk: bgDusk, PhaseNight: bgNight}
 	phaseEventBg = [...]string{PhaseDawn: "236", PhaseDay: "237", PhaseDusk: "235", PhaseNight: "234"}
 	phaseName    = [...]string{PhaseDawn: "Dawn", PhaseDay: "Day", PhaseDusk: "Dusk", PhaseNight: "Night"}
+
+	// phaseSeasonBg values are deliberately almost black and stay within one
+	// hue family per festival.
+	phaseSeasonBg = map[season.Season][phaseCount]string{
+		season.SeasonHalloween: {PhaseDawn: "#100606", PhaseDay: "#140808", PhaseDusk: "#0d0505", PhaseNight: "#070303"},
+		season.SeasonChristmas: {PhaseDawn: "#060817", PhaseDay: "#080b1b", PhaseDusk: "#050816", PhaseNight: "#03040b"},
+	}
+
+	// seasonFrameAccent tints the frame border while a festival is active. A
+	// live random event keeps priority (its accent wins below).
+	seasonFrameAccent = map[season.Season]string{
+		season.SeasonHalloween: "#5a2424",
+		season.SeasonChristmas: "#30405f",
+	}
 )
 
 // Phase is where we are in the accelerated day/night cycle.
@@ -149,6 +164,12 @@ type Theme struct {
 	BoardGold   lipgloss.Style
 	BoardSilver lipgloss.Style
 	BoardBronze lipgloss.Style
+
+	// Sky and SkyBright render the seasonal sky row (stars, moon, showpiece
+	// star). They are built in every constructor so the all-styles
+	// background test keeps holding; off-season they are quiet defaults.
+	Sky       lipgloss.Style
+	SkyBright lipgloss.Style
 }
 
 // New builds the theme for a phase. When solid is set the background is
@@ -157,6 +178,15 @@ type Theme struct {
 // and the banner, because that is event feedback, not the day/night cycle.
 // eventID is "" when no event is running.
 func New(p Phase, solid bool, eventID string) Theme {
+	return NewWithSeason(p, solid, eventID, season.SeasonNone)
+}
+
+// NewWithSeason builds the theme for a phase while a festival skin is
+// active. Precedence is deliberate: solid pins the canvas background (as with
+// the cycle and the event lift), a live random event wins the frame accent and
+// background lift, and the festival takes everything else. Pass
+// season.SeasonNone off-season.
+func NewWithSeason(p Phase, solid bool, eventID string, sn season.Season) Theme {
 	if p < 0 || int(p) >= phaseCount {
 		p = PhaseDawn
 	}
@@ -167,6 +197,10 @@ func New(p Phase, solid bool, eventID string) Theme {
 		bgIdx = bgSolid
 	case eventID != "":
 		bgIdx = phaseEventBg[p]
+	default:
+		if tint, ok := phaseSeasonBg[sn]; ok {
+			bgIdx = tint[p]
+		}
 	}
 
 	bg := lipgloss.Color(bgIdx)
@@ -178,6 +212,9 @@ func New(p Phase, solid bool, eventID string) Theme {
 	text := func(c string) lipgloss.Style { return base.Foreground(lipgloss.Color(c)) }
 
 	frameAccent := lipgloss.Color("65")
+	if tint, ok := seasonFrameAccent[sn]; ok {
+		frameAccent = lipgloss.Color(tint)
+	}
 	if eventID != "" {
 		frameAccent = EventAccent(eventID)
 	}
@@ -189,12 +226,23 @@ func New(p Phase, solid bool, eventID string) Theme {
 		eventStyle = text("229").Bold(true).Padding(0, 1)
 	}
 
+	titleColor, sectionColor := "114", "151"
+	skyColor, skyBrightColor := "250", "229"
+	switch sn {
+	case season.SeasonHalloween:
+		titleColor, sectionColor = "#c06b6b", "#aa7777"
+		skyColor, skyBrightColor = "#9b5555", "#d18b8b"
+	case season.SeasonChristmas:
+		titleColor, sectionColor = "#8398bd", "#7189b4"
+		skyColor, skyBrightColor = "#667da8", "#a9bce0"
+	}
+
 	return Theme{
 		Bg:     bg,
 		Fg:     fg,
 		bgIdx:  bgIdx,
 		fgIdx:  fgDefault,
-		Title:  text("114").Bold(true),
+		Title:  text(titleColor).Bold(true),
 		Header: text("180"),
 		NavOn:  base.Bold(true).Foreground(lipgloss.Color("229")).Background(lipgloss.Color("22")).Padding(0, 1),
 		// Lifted from v1's 245/240/243: those greys were tuned against a
@@ -214,7 +262,7 @@ func New(p Phase, solid bool, eventID string) Theme {
 		Locked:   text("243"),
 		Selected: text("229").Bold(true),
 		Value:    text("222"),
-		Section:  text("151").Bold(true),
+		Section:  text(sectionColor).Bold(true),
 		Box:      base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("65")).BorderBackground(bg).Padding(1, 2),
 		PlotCard: base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("244")).BorderBackground(bg).Padding(0, 1).Width(20),
 		PlotSel:  base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("114")).BorderBackground(bg).Padding(0, 1).Width(20),
@@ -227,12 +275,30 @@ func New(p Phase, solid bool, eventID string) Theme {
 		BoardGold:   text("220").Bold(true),
 		BoardSilver: text("152").Bold(true),
 		BoardBronze: text("183").Bold(true),
+
+		Sky:       text(skyColor),
+		SkyBright: text(skyBrightColor).Bold(true),
 	}
 }
 
 // sgr is the sequence that re-establishes the theme's colours.
 func (t Theme) sgr() string {
-	return "\x1b[38;5;" + t.fgIdx + ";48;5;" + t.bgIdx + "m"
+	return "\x1b[" + sgrColor("38", t.fgIdx) + ";" + sgrColor("48", t.bgIdx) + "m"
+}
+
+func sgrColor(kind, value string) string {
+	if len(value) == 7 && value[0] == '#' {
+		parts := make([]string, 0, 3)
+		for i := 1; i < 7; i += 2 {
+			n, err := strconv.ParseUint(value[i:i+2], 16, 8)
+			if err != nil {
+				return kind + ";5;0"
+			}
+			parts = append(parts, strconv.FormatUint(n, 10))
+		}
+		return kind + ";2;" + strings.Join(parts, ";")
+	}
+	return kind + ";5;" + value
 }
 
 // Paint re-asserts the theme's fg/bg after every SGR reset in s.

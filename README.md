@@ -49,6 +49,10 @@ go test ./...                              # test
 go vet ./...                               # vet
 ```
 
+The TUI assumes a terminal with 24-bit color support. The server forces Bubble
+Tea's True Color profile for every SSH session, so players do not need to
+forward `COLORTERM` with `SendEnv`.
+
 ## Note
 
 This repo is public. The moderation **algorithm** lives here and is meant to
@@ -63,6 +67,18 @@ moderation dev mode, and refuses player-set farm names in favour of generated
 ones — a stub list must never be mistaken for a working filter. Production sets
 `FARM_REQUIRE_MODERATION=true`, which turns a missing or malformed list into a
 refusal to boot.
+
+For local seasonal-theme testing outside the festival dates, set
+`FARM_DEV_SEASON` before starting the server:
+
+```bash
+FARM_DEV_SEASON=halloween go run ./cmd/ssh-farm
+FARM_DEV_SEASON=christmas go run ./cmd/ssh-farm
+```
+
+It forces the corresponding skin and seasonal seeds for that process only.
+With the variable unset (or set to any other value), the normal UTC calendar
+windows apply.
 
 
 ## Licence

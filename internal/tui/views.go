@@ -95,7 +95,7 @@ func (g *Game) viewHeader() string {
 	// truncate counts runes while budget counts display columns; they agree for
 	// the ASCII names this row is sized around, and a wide rune inside a name
 	// can still cost one extra column.
-	const titlePrefix = "🌾 "
+	titlePrefix := g.titleGlyph()
 	budget := g.contentWidth() - lipgloss.Width(right) - lipgloss.Width(tail) - lipgloss.Width(titlePrefix) - 1
 	left := th.Title.Render(titlePrefix+truncate(name, budget)) + tail
 
@@ -105,10 +105,9 @@ func (g *Game) viewHeader() string {
 	}
 	header := left + strings.Repeat(" ", gap) + right
 
-	// Extra header rows, in priority order. They live here rather than in
-	// composeCanvas because coords.go:computeLayout calls viewHeader and so
-	// picks their height up automatically — a row added to composeCanvas
-	// would silently shift every mouse hitbox below it.
+	// Extra framed header rows, in priority order. The seasonal sky is the one
+	// deliberate exception: composeCanvas renders it outside the top border
+	// and coords.go reserves its row independently.
 	for _, row := range []string{g.viewEventBar(), g.viewBanner()} {
 		if row != "" {
 			header += "\n" + row
@@ -141,6 +140,9 @@ func (g *Game) dailyHeadline() string {
 	// event was running — so restating it would have been new duplication.
 	if st.GiftPending {
 		return "PARCEL DELIVERY UP ACROSS THE COUNTY"
+	}
+	if seasonal := g.seasonalHeadline(); seasonal != "" {
+		return seasonal
 	}
 	if len(g.content.Headlines) == 0 {
 		return "ALL QUIET ON THE HOMESTEAD"
@@ -358,7 +360,7 @@ func (g *Game) plotCard(i int) string {
 	switch {
 	case plot.Crop == "":
 		if plot.Critter != "" {
-			line1 = th.Empty.Render("· " + sanitizeText(plot.Critter) + " ·")
+			line1 = th.Empty.Render("· " + sanitizeText(g.critterName(plot.Critter)) + " ·")
 			line2 = th.Hint.Render("x to shoo")
 		} else {
 			line1 = th.Empty.Render("· empty ·")
@@ -408,7 +410,7 @@ func (g *Game) viewFarmCompact() string {
 		switch {
 		case plot.Crop == "":
 			if plot.Critter != "" {
-				status = th.Empty.Render(sanitizeText(plot.Critter))
+				status = th.Empty.Render(sanitizeText(g.critterName(plot.Critter)))
 			} else {
 				status = th.Empty.Render("empty")
 			}
@@ -467,6 +469,9 @@ func (g *Game) viewPicker() string {
 		grow := duration(st.GrowSeconds(g.content, &crop))
 		cost := st.SeedCost(g.content, &crop)
 		info := name + "  " + money(cost) + "c · " + grow + " · sells " + money(crop.SellValue) + "c"
+		if marker := seasonMarker(crop); marker != "" {
+			info += "  " + marker
+		}
 		if crop.Archetype == "risky" {
 			salvage := st.SalvageValue(g.content, &crop, g.now)
 			info += " · fails to " + money(salvage) + "c (" + itoa(int(crop.FailChancePct)) + "%)"
@@ -482,7 +487,7 @@ func (g *Game) viewPicker() string {
 			} else {
 				b.WriteString(marker + th.Value.Render(info) + "\n")
 			}
-		case st.MercyPlantEligible(g.content, crop.ID):
+		case st.MercyPlantEligible(g.content, crop.ID) && sim.SeasonalPlantable(crop.Unlock, g.now):
 			b.WriteString(marker + th.Ready.Render(info+"  FREE — the land provides") + "\n")
 		case st.Coins < cost:
 			b.WriteString(marker + th.Locked.Render(info+"  (can't afford)") + "\n")
@@ -579,6 +584,9 @@ func (g *Game) viewLand() string {
 		line := "  " + sanitizeText(crop.Name) + " — " + crop.Archetype + " · " +
 			money(st.SeedCost(g.content, &crop)) + "c · " + grow +
 			" · sells " + money(crop.SellValue) + "c"
+		if marker := seasonMarker(crop); marker != "" {
+			line += " · " + marker
+		}
 		if crop.Archetype == "risky" {
 			line += " · fails to " + money(st.SalvageValue(g.content, &crop, g.now)) + "c"
 		}
@@ -905,6 +913,17 @@ func (g *Game) viewHelpGameplay() string {
 		"% sell bonus. A full in-game day passes every 24 minutes, so the "+
 		"night window comes round often.") + "\n")
 
+	b.WriteString("\n" + th.Section.Render("Seasonal festivals") + "\n")
+	b.WriteString(g.helpBody("Halloween runs Oct 1 through Oct 31 at 23:59 UTC "+
+		"(bats by night, pumpkins by day — and a great moon all of the 31st). "+
+		"Christmas runs Nov 25 through Dec 25 at 23:59 UTC "+
+		"(stars by night only — and one great star all of Dec 25th, day and "+
+		"night). Each festival brings limited seeds that out-earn normal crops: "+
+		"plant them while the window lasts; anything already growing keeps its "+
+		"full payout afterwards.") + "\n")
+	b.WriteString(g.helpBody("Stats → c → Seasonal themes opts out of the look. "+
+		"The seeds stay buyable in-season either way.") + "\n")
+
 	return strings.TrimRight(b.String(), "\n")
 }
 
@@ -962,7 +981,8 @@ func (g *Game) tutorialContent(page int) (string, string) {
 		return "Make it your own ⚙",
 			"• Press ? any time for the full help screens.\n" +
 				"• On the Stats screen, press c to open Settings — toggle lucky\n" +
-				"  finds, the news ticker, and critter visits whenever you like.\n\n" +
+				"  finds, the news ticker, critter visits, and seasonal themes\n" +
+				"  whenever you like.\n\n" +
 				"That's everything. Have fun, and check back whenever you like!"
 	}
 }

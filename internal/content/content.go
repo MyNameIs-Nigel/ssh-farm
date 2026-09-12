@@ -12,13 +12,15 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/mynameis-nigel/ssh-farm/data"
+	"github.com/mynameis-nigel/ssh-farm/internal/season"
 )
 
 // Unlock gates a crop, tool, or zone behind a progression condition.
 type Unlock struct {
-	Kind  string `toml:"kind"`  // "start", "earnings", "prestige", "zone"
-	Value int64  `toml:"value"` // threshold for earnings/prestige kinds
-	Zone  string `toml:"zone"`  // zone id for the zone kind
+	Kind   string `toml:"kind"`   // "start", "earnings", "prestige", "zone", "season"
+	Value  int64  `toml:"value"`  // threshold for earnings/prestige kinds
+	Zone   string `toml:"zone"`   // zone id for the zone kind
+	Season string `toml:"season"` // festival key for the season kind ("halloween", "christmas")
 }
 
 // Crop is one plantable crop definition.
@@ -634,6 +636,14 @@ func validateUnlock(kind, id string, u Unlock, zoneIDs map[string]bool) error {
 	case "zone":
 		if !zoneIDs[u.Zone] {
 			return fmt.Errorf("content: %s %q unlock references unknown zone %q", kind, id, u.Zone)
+		}
+		return nil
+	case "season":
+		if !season.ValidKey(u.Season) {
+			return fmt.Errorf("content: %s %q unlock has unknown season %q", kind, id, u.Season)
+		}
+		if u.Value != 0 || u.Zone != "" {
+			return fmt.Errorf("content: %s %q season unlock takes only season (no value/zone)", kind, id)
 		}
 		return nil
 	default:

@@ -14,13 +14,16 @@ import (
 // newTeaProgram builds the per-session Bubble Tea program. It exists (instead
 // of letting the middleware call teaHandler directly) so Windows hosts can
 // append option overrides after bubbletea.MakeOptions — options apply in
-// order, and MakeOptions would otherwise win.
+// order, and MakeOptions would otherwise win. True Color is deliberately
+// forced last: the TUI's muted RGB backgrounds cannot survive ANSI-256
+// quantization, and 24-bit color support is an application requirement.
 func (srv *Server) newTeaProgram(s ssh.Session) *tea.Program {
 	model, _ := srv.teaHandler(s)
 	if model == nil {
 		return nil
 	}
 	opts := append(bubbletea.MakeOptions(s), windowsPtyOptions(s)...)
+	opts = append(opts, tea.WithColorProfile(colorprofile.TrueColor))
 	return tea.NewProgram(withMouseCellMotion(model), opts...)
 }
 

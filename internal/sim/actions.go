@@ -43,11 +43,11 @@ func Plant(s *State, c *content.Content, i int, cropID string, now int64) error 
 	if crop == nil {
 		return ErrUnknownCrop
 	}
-	if !s.Unlocked(crop.Unlock) {
+	if !s.Unlocked(crop.Unlock) || !SeasonalPlantable(crop.Unlock, now) {
 		return ErrLocked
 	}
 	cost := s.SeedCost(c, crop)
-	mercy := s.MercyPlantEligible(c, cropID)
+	mercy := s.MercyPlantEligible(c, cropID) && SeasonalPlantable(crop.Unlock, now)
 	if !mercy && s.Coins < cost {
 		return ErrCantAfford
 	}
@@ -93,7 +93,7 @@ func ReplantAll(s *State, c *content.Content, now int64) ReplantResult {
 			continue
 		}
 		crop := c.Crop(cropID)
-		if crop == nil || !s.Unlocked(crop.Unlock) {
+		if crop == nil || !s.Unlocked(crop.Unlock) || !SeasonalPlantable(crop.Unlock, now) {
 			res.Locked++
 			continue
 		}
@@ -446,3 +446,7 @@ func SetFlavor(s *State, enabled bool) { s.FlavorEnabled = enabled }
 // SetThemeSolid pins the background to one colour instead of letting it drift
 // with the day/night cycle.
 func SetThemeSolid(s *State, enabled bool) { s.ThemeSolid = enabled }
+
+// SetSeasonal toggles the Halloween/Christmas look for this save. Seeds are
+// unaffected — they stay gated by the calendar either way.
+func SetSeasonal(s *State, enabled bool) { s.SeasonalOff = !enabled }

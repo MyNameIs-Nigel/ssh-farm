@@ -62,10 +62,13 @@ the single exit point every `View()` path goes through:
 
 ### Palette
 
-Backgrounds are **ANSI-256 indices, not hex**. `wish/v2/bubbletea.MakeOptions`
-forces a colour profile and Terminal.app reports `xterm-256color`, so
-truecolour would be quantised and adjacent near-blacks could collapse onto the
-same grey. Indices render identically everywhere.
+The base day/night backgrounds are **ANSI-256 indices** and render identically
+everywhere. The TUI as a whole assumes 24-bit color support: `newTeaProgram`
+appends `tea.WithColorProfile(colorprofile.TrueColor)` after
+`wish/v2/bubbletea.MakeOptions`, preventing SSH's commonly incomplete
+environment from quantising RGB additions such as the seasonal backgrounds.
+Players do not need to forward `COLORTERM`; capability detection and fallback
+behavior are outside the TUI contract.
 
 | Role | Index | Use |
 | --- | --- | --- |

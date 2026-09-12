@@ -115,6 +115,20 @@ func TestGoldenRenders(t *testing.T) {
 		{"settings-80x24", 80, 24, func(g *Game) {
 			g.overlay = ovConfig
 		}},
+		// Festival goldens pin the seasonal palette, sky row and glyphs. The
+		// dates are fixed, so headlines and sky variants are deterministic.
+		{"farm-halloween", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = alignToPhase(festivalUnix(2024, 10, 15), theme.PhaseDay)
+		}},
+		{"farm-halloween-night", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = alignToPhase(festivalUnix(2024, 10, 15), theme.PhaseNight)
+		}},
+		{"farm-christmas-night", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = alignToPhase(festivalUnix(2024, 12, 10), theme.PhaseNight)
+		}},
+		{"farm-christmas-day", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = alignToPhase(festivalUnix(2024, 12, 25), theme.PhaseDay)
+		}},
 	}
 
 	for _, c := range cases {
