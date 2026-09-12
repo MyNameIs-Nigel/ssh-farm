@@ -165,7 +165,7 @@ func TestRejectsSessionWithoutPTY(t *testing.T) {
 	}
 }
 
-func readScreen(t *testing.T, addr, user string, signer gossh.Signer) string {
+func readRawScreen(t *testing.T, addr, user, term string, signer gossh.Signer) string {
 	t.Helper()
 	client, err := gossh.Dial("tcp", addr, clientConfig(t, user, signer))
 	if err != nil {
@@ -179,7 +179,7 @@ func readScreen(t *testing.T, addr, user string, signer gossh.Signer) string {
 	}
 	defer sess.Close()
 
-	if err := sess.RequestPty("xterm", 30, 100, gossh.TerminalModes{}); err != nil {
+	if err := sess.RequestPty(term, 30, 100, gossh.TerminalModes{}); err != nil {
 		t.Fatal(err)
 	}
 	stdout, err := sess.StdoutPipe()
@@ -192,7 +192,12 @@ func readScreen(t *testing.T, addr, user string, signer gossh.Signer) string {
 	time.Sleep(500 * time.Millisecond)
 	_ = sess.Close()
 	b, _ := io.ReadAll(stdout)
-	return stripANSI(string(b))
+	return string(b)
+}
+
+func readScreen(t *testing.T, addr, user string, signer gossh.Signer) string {
+	t.Helper()
+	return stripANSI(readRawScreen(t, addr, user, "xterm", signer))
 }
 
 func TestGameShowsTitleAndSlot(t *testing.T) {
@@ -213,6 +218,15 @@ func TestGameShowsTitleAndSlot(t *testing.T) {
 	screenOther := readScreen(t, addr, "other", signer)
 	if !strings.Contains(screenOther, "other") {
 		t.Fatalf("expected slot other in %q", screenOther)
+	}
+}
+
+func TestServerForcesTrueColorWithoutCOLORTERM(t *testing.T) {
+	t.Setenv("FARM_DEV_SEASON", "halloween")
+	_, addr := testServer(t, nil)
+	raw := readRawScreen(t, addr, "alice", "xterm-256color", testSigner(t))
+	if !strings.Contains(raw, "\x1b[48;2;") {
+		t.Fatalf("seasonal screen has no 24-bit background SGR without COLORTERM: %q", raw)
 	}
 }
 

@@ -189,8 +189,10 @@ the timestamp is a parameter, never read from a clock):
 `theme.NewWithSeason(p, solid, eventID, sn season.Season)` — `New` keeps its
 signature and delegates with `SeasonNone`, so every existing caller and test
 compiles unchanged. Seasonal backgrounds and accents are RGB colors; this
-feature deliberately assumes the terminal can render them. Capability
-detection and fallback behavior are outside this task.
+feature deliberately assumes the terminal can render them. The server forces
+Bubble Tea's True Color profile after Wish's session options, so the RGB output
+does not depend on forwarding `COLORTERM` over SSH. Capability detection and
+fallback behavior are outside this task.
 
 - Backgrounds shift through extremely muted RGB shades that remain mostly
   black. Halloween uses deep red in every phase; Christmas uses dark blue in
@@ -272,6 +274,8 @@ state, golden-deterministic.
 - [ ] Seasonal backgrounds use only near-black red (Halloween) or blue
   (Christmas), with night darkest; terminal capability detection is out of
   scope.
+- [ ] SSH sessions force Bubble Tea's True Color profile after Wish's options;
+  RGB output does not require `SendEnv COLORTERM`.
 - [ ] `Paint` width/text invariants hold for seasonal themes
   (existing test cases plus a seasonal theme instance).
 - [ ] Solid mode pins the seasonal background but keeps seasonal accents.

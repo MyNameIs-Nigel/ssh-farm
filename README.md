@@ -49,6 +49,10 @@ go test ./...                              # test
 go vet ./...                               # vet
 ```
 
+The TUI assumes a terminal with 24-bit color support. The server forces Bubble
+Tea's True Color profile for every SSH session, so players do not need to
+forward `COLORTERM` with `SendEnv`.
+
 ## Note
 
 This repo is public. The moderation **algorithm** lives here and is meant to
