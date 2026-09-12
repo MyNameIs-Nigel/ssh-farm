@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/lipgloss/v2"
+
 	"github.com/mynameis-nigel/ssh-farm/internal/tui/theme"
 )
 
@@ -32,6 +34,7 @@ func seasonalGame(t *testing.T, w, h int, now int64) *Game {
 	g := goldenGame(t, w, h)
 	g.now = now
 	g.snap.Now = now
+	g.SetTrueColor(true)
 	return g
 }
 
@@ -193,8 +196,11 @@ func TestSeasonMarker(t *testing.T) {
 			}
 			continue
 		}
-		if !strings.Contains(m, "gone ") {
-			t.Errorf("seasonal crop %q marker = %q, want an expiry", crop.ID, m)
+		if !strings.HasSuffix(m, " seasonal") {
+			t.Errorf("seasonal crop %q marker = %q, want compact seasonal label", crop.ID, m)
+		}
+		if strings.Contains(m, "gone ") {
+			t.Errorf("seasonal crop %q marker = %q, expiry belongs in Help", crop.ID, m)
 		}
 	}
 }
@@ -209,8 +215,8 @@ func TestSeasonalSeedsInPickerOnlyInSeason(t *testing.T) {
 	if strings.Contains(picker, "Snowbell") {
 		t.Fatalf("october picker should not list Snowbell:\n%s", picker)
 	}
-	if !strings.Contains(picker, "gone Nov 1") {
-		t.Fatalf("october picker should carry the expiry:\n%s", picker)
+	if strings.Contains(picker, "gone ") {
+		t.Fatalf("picker expiry copy can overflow the viewport:\n%s", picker)
 	}
 	off := seasonalGame(t, 100, 35, festivalUnix(2024, 11, 14))
 	off.overlay = ovPicker
@@ -224,6 +230,31 @@ func TestSeasonalSeedsInPickerOnlyInSeason(t *testing.T) {
 	dark.overlay = ovPicker
 	if darkPicker := stripAnsi(dark.viewPicker()); !strings.Contains(darkPicker, "Lanternberry") {
 		t.Fatalf("disabled look should still list in-season seeds:\n%s", darkPicker)
+	}
+}
+
+func TestSkyRendersAboveFrameAndFitsViewport(t *testing.T) {
+	g := seasonalGame(t, canvasMaxWidth, canvasMaxHeight, alignToPhase(festivalUnix(2024, 10, 15), theme.PhaseNight))
+	if strings.Contains(stripAnsi(g.viewHeader()), "🦇") {
+		t.Fatal("sky must not be part of the framed header")
+	}
+	rendered := stripAnsi(g.composeCanvas(g.screenBody(), false))
+	lines := strings.Split(rendered, "\n")
+	if !strings.Contains(lines[0], "🦇") || !strings.Contains(lines[1], "╭") {
+		t.Fatalf("first two rows should be sky then frame border:\n%s", rendered)
+	}
+	if got := lipgloss.Height(rendered); got > g.height {
+		t.Fatalf("seasonal canvas height = %d, exceeds %d-row viewport", got, g.height)
+	}
+}
+
+func TestSeasonalHelpOwnsExactEndTimes(t *testing.T) {
+	g := seasonalGame(t, 100, 38, festivalUnix(2024, 10, 15))
+	help := stripAnsi(g.viewHelpGameplay())
+	for _, cutoff := range []string{"Oct 31 at 23:59 UTC", "Dec 25 at 23:59 UTC"} {
+		if !strings.Contains(help, cutoff) {
+			t.Errorf("seasonal Help missing cutoff %q", cutoff)
+		}
 	}
 }
 

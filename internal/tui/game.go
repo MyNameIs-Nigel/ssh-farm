@@ -155,6 +155,7 @@ type Game struct {
 
 	idleTimeout int64
 	lastInput   int64
+	trueColor   bool
 
 	hits        *hitbox.Registry
 	layout      frameLayout
@@ -172,8 +173,12 @@ func (g *Game) theme() theme.Theme {
 		eventID = st.EventID
 	}
 	solid := st != nil && st.ThemeSolid
-	return theme.NewWithSeason(theme.PhaseAt(g.now), solid, eventID, g.season())
+	return theme.NewWithSeason(theme.PhaseAt(g.now), solid, eventID, g.season(), g.trueColor)
 }
+
+// SetTrueColor records the SSH client's detected color capability. Festival
+// palette overrides require it; seasonal content and layout do not.
+func (g *Game) SetTrueColor(enabled bool) { g.trueColor = enabled }
 
 func NewGame(id identity.SessionIdentity, res game.AttachResult, c *content.Content, board *leaderboard.Engine, width, height int, now int64, idleTimeout int64) *Game {
 	g := &Game{

@@ -105,11 +105,10 @@ func (g *Game) viewHeader() string {
 	}
 	header := left + strings.Repeat(" ", gap) + right
 
-	// Extra header rows, in priority order. They live here rather than in
-	// composeCanvas because coords.go:computeLayout calls viewHeader and so
-	// picks their height up automatically — a row added to composeCanvas
-	// would silently shift every mouse hitbox below it.
-	for _, row := range []string{g.viewEventBar(), g.viewSky(), g.viewBanner()} {
+	// Extra framed header rows, in priority order. The seasonal sky is the one
+	// deliberate exception: composeCanvas renders it outside the top border
+	// and coords.go reserves its row independently.
+	for _, row := range []string{g.viewEventBar(), g.viewBanner()} {
 		if row != "" {
 			header += "\n" + row
 		}
@@ -915,8 +914,9 @@ func (g *Game) viewHelpGameplay() string {
 		"night window comes round often.") + "\n")
 
 	b.WriteString("\n" + th.Section.Render("Seasonal festivals") + "\n")
-	b.WriteString(g.helpBody("October wears Halloween (bats by night, pumpkins by "+
-		"day — and a great moon all of the 31st). Nov 25–Dec 25 wears Christmas "+
+	b.WriteString(g.helpBody("Halloween runs Oct 1 through Oct 31 at 23:59 UTC "+
+		"(bats by night, pumpkins by day — and a great moon all of the 31st). "+
+		"Christmas runs Nov 25 through Dec 25 at 23:59 UTC "+
 		"(stars by night only — and one great star all of Dec 25th, day and "+
 		"night). Each festival brings limited seeds that out-earn normal crops: "+
 		"plant them while the window lasts; anything already growing keeps its "+

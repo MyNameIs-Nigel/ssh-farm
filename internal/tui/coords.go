@@ -25,8 +25,12 @@ const doubleClickMS = 400
 func (g *Game) computeLayout() frameLayout {
 	th := g.theme()
 	cw, ch := g.canvasSize()
+	skyH := 0
+	if text, _ := g.seasonalSky(); text != "" {
+		skyH = 1
+	}
 	ox := (g.width - cw) / 2
-	oy := (g.height - ch) / 2
+	oy := (g.height-(ch+skyH))/2 + skyH
 	cxi := g.contentWidth()
 	cy := oy + 1 // below top border
 

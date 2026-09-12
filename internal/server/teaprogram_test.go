@@ -7,6 +7,28 @@ import (
 	"testing"
 )
 
+func TestSupportsTrueColor(t *testing.T) {
+	cases := []struct {
+		name string
+		env  []string
+		term string
+		want bool
+	}{
+		{"true color", []string{"COLORTERM=truecolor"}, "xterm-256color", true},
+		{"24 bit alias", []string{"COLORTERM=24bit"}, "xterm-256color", true},
+		{"ansi 256", nil, "xterm-256color", false},
+		{"ansi", nil, "xterm", false},
+		{"unknown", nil, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := supportsTrueColor(tc.env, tc.term); got != tc.want {
+				t.Errorf("supportsTrueColor(%q, %q) = %v, want %v", tc.env, tc.term, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestCursorDownWriterRewritesNewlines checks the byte-level transform: every
 // \n becomes ESC[B and all other bytes pass through unchanged, including when
 // the input is split across multiple Write calls (the writer must be

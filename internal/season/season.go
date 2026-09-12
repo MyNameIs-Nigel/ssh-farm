@@ -7,7 +7,11 @@
 // (wall-clock unix, the same counter theme.PhaseAt already reads) via AtUnix.
 package season
 
-import "time"
+import (
+	"os"
+	"strings"
+	"time"
+)
 
 // Season is which festival skin is active, if any.
 type Season int
@@ -47,6 +51,24 @@ func At(t time.Time) Season {
 
 // AtUnix reports the season active at a wall-clock unix timestamp.
 func AtUnix(now int64) Season { return At(time.Unix(now, 0)) }
+
+// ActiveAtUnix reports the season to use while the game is running. In
+// development, FARM_DEV_SEASON may be set to "halloween" or "christmas" to
+// exercise that festival outside its calendar window. Any other value,
+// including an unset variable, leaves the real UTC calendar in control.
+//
+// At and AtUnix deliberately remain pure calendar functions for callers that
+// need the real date (and for deterministic tests).
+func ActiveAtUnix(now int64) Season {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("FARM_DEV_SEASON"))) {
+	case "halloween":
+		return SeasonHalloween
+	case "christmas":
+		return SeasonChristmas
+	default:
+		return AtUnix(now)
+	}
+}
 
 // Name is the player-facing label for a season ("" when none is active).
 func (s Season) Name() string {

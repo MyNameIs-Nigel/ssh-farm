@@ -64,6 +64,18 @@ ones — a stub list must never be mistaken for a working filter. Production set
 `FARM_REQUIRE_MODERATION=true`, which turns a missing or malformed list into a
 refusal to boot.
 
+For local seasonal-theme testing outside the festival dates, set
+`FARM_DEV_SEASON` before starting the server:
+
+```bash
+FARM_DEV_SEASON=halloween go run ./cmd/ssh-farm
+FARM_DEV_SEASON=christmas go run ./cmd/ssh-farm
+```
+
+It forces the corresponding skin and seasonal seeds for that process only.
+With the variable unset (or set to any other value), the normal UTC calendar
+windows apply.
+
 
 ## Licence
 

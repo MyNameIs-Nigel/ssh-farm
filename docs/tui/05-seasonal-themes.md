@@ -7,7 +7,8 @@ golden harness), tui/04 (in-game clock) · **Blocks:** nothing
 
 Make the farm feel alive at the edges of the year. For the whole of October
 the game wears a Halloween skin, and from November 25th through December 25th
-it wears a Christmas skin: recoloured canvas and accents, a seasonal sky row,
+it wears a Christmas skin: subtly recoloured canvas and accents on True Color
+terminals, a seasonal sky row,
 reskinned text (title glyph, headlines, critter names), and limited-time
 seasonal seeds that pay above the normal profit curve. A single
 "Seasonal themes" toggle on the Settings overlay opts out of the *look*;
@@ -42,6 +43,11 @@ Seasons are **real calendar dates in UTC**, derived from the model's tick
 Each lasts about one month. Outside both windows the season is None and every
 render path behaves exactly as today.
 
+For local development, `FARM_DEV_SEASON=halloween` or
+`FARM_DEV_SEASON=christmas` forces that festival's skin and seed availability
+for the running process. The variable is unset in normal deployments, where
+the UTC calendar continues to control seasons.
+
 ## Deliverables
 
 - `internal/season/` — `season.go` (pure calendar logic on `time.Time` plus
@@ -54,7 +60,8 @@ render path behaves exactly as today.
   `SeasonalEnabled()`, `SetSeasonal`, `Session.SetSeasonal`, seasonal gating
   in `Plant` / `ReplantAll` / auto-sow tick / picker visibility; persistence
   across rebirth
-- `internal/tui/theme/` — `NewWithSeason` constructor, seasonal palettes and
+- `internal/tui/theme/` — `NewWithSeason` constructor, True Color-gated
+  seasonal palettes and
   `Sky`/`SkyBright` styles (built in `New` too, so the all-styles background
   test keeps holding)
 - `internal/tui/` — `season.go` (`g.season()`, `viewSky`, headline pool,
@@ -179,20 +186,22 @@ the timestamp is a parameter, never read from a clock):
 
 ### Theme changes
 
-`theme.NewWithSeason(p, solid, eventID, sn season.Season)` — `New` keeps its
-signature and delegates with `SeasonNone`, so every existing caller and test
-compiles unchanged.
+`theme.NewWithSeason(p, solid, eventID, sn season.Season, trueColor bool)` —
+`New` keeps its signature and delegates with `SeasonNone`, so every existing
+caller and test compiles unchanged. The SSH session's detected color profile
+supplies `trueColor`; only an exact True Color profile enables festival color
+overrides. ANSI, ANSI-256, monochrome, and unknown profiles retain the normal
+day/night palette and accents. Seasonal glyphs, copy, and sky content are not
+color-profile gated.
 
-- Backgrounds shift per season (still ANSI-256, still near-black readable
-  under fg `253`):
-  - Halloween: dawn `52` (oxblood), day `94` (dark amber), dusk `53`
-    (dark magenta), night `16` (pitch black).
-  - Christmas: dawn `17` (midnight blue), day `22` (pine), dusk `23`
-    (frost teal), night `16` (pitch black, so the stars pop).
-- Accents (lose to a live random event's accent, which keeps its existing
-  priority): Halloween frame `208` (pumpkin), title `208`, section `183`
-  (ghost lilac); Christmas frame `120` (pine light), title `210` (berry),
-  section `159` (ice).
+- On True Color terminals only, backgrounds shift through extremely muted RGB
+  shades that remain mostly black. Halloween uses deep red in every phase;
+  Christmas uses dark blue in every phase. Night is the darkest tint. Neither
+  palette introduces amber, magenta, green, teal, or other canvas hues.
+- Seasonal frame, title, section, and sky accents are also applied only under
+  True Color. They stay restrained within the same red-only Halloween and
+  blue-only Christmas families, and lose to a live random event's accent,
+  which keeps its existing priority.
 - `Sky` / `SkyBright` styles are constructed in `New` (neutral defaults) and
   tinted in `NewWithSeason` — every style still carries a background in every
   constructor, which `TestEveryStyleCarriesABackground` enforces.
@@ -205,18 +214,20 @@ compiles unchanged.
 ```go
 sn := season.SeasonNone
 if st != nil && st.SeasonalEnabled() {
-    sn = season.AtUnix(g.now)
+    sn = season.ActiveAtUnix(g.now)
 }
-return theme.NewWithSeason(theme.PhaseAt(g.now), solid, eventID, sn)
+return theme.NewWithSeason(theme.PhaseAt(g.now), solid, eventID, sn, g.trueColor)
 ```
 
-### The sky row (`viewSky`, via `viewHeader`)
+### The sky row (`viewSky`, outside the frame)
 
-One row, emitted from `viewHeader()` beside the event bar and banner — the
-tui/03 placement rule (anything routed through the header is mirrored into
-`coords.go:computeLayout` for free; a row added in `composeCanvas` would
-silently shift every hitbox). Empty string when season is None or themes are
-off, so header height is unchanged eleven months of the year.
+One row emitted by `composeCanvas()` immediately above the frame's top border,
+not inside `viewHeader()` or the framed content area. The frame shrinks by one
+row when necessary so sky + frame never exceed the terminal viewport, and
+`coords.go:computeLayout` accounts for the frame's shifted origin so mouse
+hitboxes stay aligned. Empty string when season is None or themes are off, so
+the normal frame position and dimensions are unchanged eleven months of the
+year.
 
 - Christmas night (in-game `PhaseNight`, not the 25th): a deterministic star
   field picked by day-of-year from three variants, e.g.
@@ -242,10 +253,12 @@ state, golden-deterministic.
   Halloween crow→bat, rabbit→ghost, mole→gremlin; Christmas crow→robin,
   rabbit→hare, mole→mouse. Applied in plot cards, compact rows, visit/shoo
   notices. Rewards and mechanics untouched.
-- Picker + Land catalog rows for seasonal crops carry a `🎃`/`🎄` marker and
-  a "gone Nov 1" / "gone Dec 26" suffix so the window is visible at the point
-  of purchase.
-- Help gains a "Seasonal festivals" section (windows, toggle location,
+- Picker + Land catalog rows for seasonal crops carry a compact `🎃 seasonal`
+  / `🎄 seasonal` marker. Expiry copy is deliberately omitted so the picker
+  and catalog cannot overflow narrower viewports.
+- Help gains a "Seasonal festivals" section with exact end times (Halloween
+  ends after Oct 31 at 23:59 UTC; Christmas ends after Dec 25 at 23:59 UTC),
+  plus the toggle location,
   seed premium + keep-after-season rule, sky notes); tutorial page 3 gains
   seasonal themes in its settings line. All copy flows through the existing
   wrap helpers.
@@ -258,8 +271,11 @@ state, golden-deterministic.
   night (bats+moon), Christmas night (stars), Christmas Day (big star, day
   phase); existing goldens byte-identical (their fixture date, Nov 14, is
   outside both windows).
-- [ ] `Paint` width/text invariants hold for seasonal themes (existing test
-  cases plus a seasonal theme instance).
+- [ ] ANSI/ANSI-256/unknown profiles use the normal palette during festivals;
+  True Color profiles use only near-black red (Halloween) or blue (Christmas)
+  backgrounds, with night darkest.
+- [ ] `Paint` width/text invariants hold for seasonal True Color themes
+  (existing test cases plus a seasonal theme instance).
 - [ ] Solid mode pins the seasonal background but keeps seasonal accents.
 - [ ] `Plant` out-of-season → `ErrLocked`; in-season plants; planted crops
   harvest full value after the window closes.
@@ -267,8 +283,11 @@ state, golden-deterministic.
   auto-sow tick leaves the plot empty after the last in-season harvest.
 - [ ] Picker/catalog hide out-of-season seeds; show them with markers
   in-season even with themes toggled off.
-- [ ] Sky row: absent off-season and when toggled off; stars only at
-  Christmas night; big star all of Dec 25; big moon all of Oct 31.
+- [ ] Sky row: outside and immediately above the frame, absent off-season and
+  when toggled off; stars only at Christmas night; big star all of Dec 25;
+  big moon all of Oct 31; total output never exceeds the viewport.
+- [ ] Seasonal picker/catalog markers contain no expiry suffix; Help states
+  both precise UTC cutoffs.
 - [ ] New save fields omitted at defaults (v1 parity goldens byte-identical,
   no `StateVersion` bump); setting persists across rebirth.
 - [ ] Settings golden regen covers the 5th row; config click/wheel tests

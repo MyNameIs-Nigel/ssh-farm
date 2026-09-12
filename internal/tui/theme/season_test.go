@@ -17,31 +17,47 @@ func allPhases() []Phase {
 	return []Phase{PhaseDawn, PhaseDay, PhaseDusk, PhaseNight}
 }
 
-// TestSeasonalBackgroundsDifferFromPlain: the festival has to be visible on
-// the canvas itself, not only in the accents.
-func TestSeasonalBackgroundsDifferFromPlain(t *testing.T) {
+// TestSeasonalColorsRequireTrueColor protects terminals whose palettes would
+// quantize subtle RGB tints into the harsh ANSI colors this feature replaced.
+func TestSeasonalColorsRequireTrueColor(t *testing.T) {
 	for _, sn := range allSeasons() {
 		for _, p := range allPhases() {
-			plain := New(p, false, "").Bg
-			during := NewWithSeason(p, false, "", sn).Bg
-			if plain == during {
-				t.Errorf("season %v phase %v: background unchanged (%v)", sn, p, plain)
+			plain := New(p, false, "")
+			limited := NewWithSeason(p, false, "", sn, false)
+			if limited.Bg != plain.Bg {
+				t.Errorf("season %v phase %v: limited-color background = %v, want normal %v", sn, p, limited.Bg, plain.Bg)
+			}
+			if limited.Frame.GetBorderTopForeground() != plain.Frame.GetBorderTopForeground() {
+				t.Errorf("season %v phase %v: limited-color frame should keep normal accent", sn, p)
+			}
+			if during := NewWithSeason(p, false, "", sn, true).Bg; during == plain.Bg {
+				t.Errorf("season %v phase %v: True Color background unchanged (%v)", sn, p, plain.Bg)
 			}
 		}
 	}
 }
 
-// TestSeasonalBackgroundsDistinctPerPhase: if two phases collapsed onto the
-// same canvas the tint would read as a bug, not a season.
-func TestSeasonalBackgroundsDistinctPerPhase(t *testing.T) {
+// TestSeasonalBackgroundsStayInOneMutedHue verifies both the requested color
+// families and that night is the darkest point in each festival cycle.
+func TestSeasonalBackgroundsStayInOneMutedHue(t *testing.T) {
 	for _, sn := range allSeasons() {
-		for _, p := range allPhases() {
-			bg := NewWithSeason(p, false, "", sn).Bg
-			for _, q := range allPhases() {
-				if q != p && NewWithSeason(q, false, "", sn).Bg == bg {
-					t.Errorf("season %v: phase %v reuses phase %v's background", sn, p, q)
-				}
+		brightness := func(c color.Color) uint32 {
+			r, g, b, _ := c.RGBA()
+			if sn == season.SeasonHalloween && !(r > g && g == b) {
+				t.Errorf("halloween background RGB = %04x/%04x/%04x, want red-only tint", r, g, b)
 			}
+			if sn == season.SeasonChristmas && !(b > r && b > g) {
+				t.Errorf("christmas background RGB = %04x/%04x/%04x, want blue-only tint", r, g, b)
+			}
+			return r + g + b
+		}
+		for _, p := range allPhases() {
+			brightness(NewWithSeason(p, false, "", sn, true).Bg)
+		}
+		day := brightness(NewWithSeason(PhaseDay, false, "", sn, true).Bg)
+		night := brightness(NewWithSeason(PhaseNight, false, "", sn, true).Bg)
+		if night >= day {
+			t.Errorf("season %v: night brightness %d, want darker than day %d", sn, night, day)
 		}
 	}
 }
@@ -52,7 +68,7 @@ func TestSolidPinsTheSeasonalBackground(t *testing.T) {
 	want := New(PhaseDawn, true, "").Bg
 	for _, sn := range allSeasons() {
 		for _, p := range allPhases() {
-			if got := NewWithSeason(p, true, "", sn).Bg; got != want {
+			if got := NewWithSeason(p, true, "", sn, true).Bg; got != want {
 				t.Errorf("season %v phase %v: solid background = %v, want pinned %v", sn, p, got, want)
 			}
 		}
@@ -65,7 +81,7 @@ func TestEventBeatsSeason(t *testing.T) {
 	for _, sn := range allSeasons() {
 		for _, p := range allPhases() {
 			plain := New(p, false, "market_day")
-			festive := NewWithSeason(p, false, "market_day", sn)
+			festive := NewWithSeason(p, false, "market_day", sn, true)
 			if festive.Bg != plain.Bg {
 				t.Errorf("season %v phase %v: event lift lost the background", sn, p)
 			}
@@ -82,7 +98,7 @@ func TestSeasonalFrameAccentAppliesWithoutEvents(t *testing.T) {
 	plain := New(PhaseDay, false, "").Frame.GetBorderTopForeground()
 	var accs []color.Color
 	for _, sn := range allSeasons() {
-		got := NewWithSeason(PhaseDay, false, "", sn).Frame.GetBorderTopForeground()
+		got := NewWithSeason(PhaseDay, false, "", sn, true).Frame.GetBorderTopForeground()
 		if got == plain {
 			t.Errorf("season %v: frame accent unchanged from plain", sn)
 		}
@@ -101,7 +117,7 @@ func TestSeasonalFrameAccentAppliesWithoutEvents(t *testing.T) {
 func TestSeasonalStylesCarryBackgrounds(t *testing.T) {
 	for _, sn := range append(allSeasons(), season.SeasonNone) {
 		for _, solid := range []bool{false, true} {
-			th := NewWithSeason(PhaseNight, solid, "", sn)
+			th := NewWithSeason(PhaseNight, solid, "", sn, true)
 			for name, st := range styleFields(t, th) {
 				if bg := st.GetBackground(); bg == (lipgloss.NoColor{}) {
 					t.Errorf("season %v solid %v: style %s has no background", sn, solid, name)
@@ -117,7 +133,7 @@ func TestSeasonalPaintKeepsInvariants(t *testing.T) {
 	in := "before · ✦ · after\nsecond 🦇 line"
 	for _, sn := range allSeasons() {
 		for _, p := range allPhases() {
-			th := NewWithSeason(p, false, "", sn)
+			th := NewWithSeason(p, false, "", sn, true)
 			got := th.Paint(in)
 			if stripAnsi(got) != stripAnsi(in) {
 				t.Errorf("season %v phase %v: Paint changed the text", sn, p)

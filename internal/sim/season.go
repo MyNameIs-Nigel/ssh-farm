@@ -14,7 +14,7 @@ func SeasonalPlantable(u content.Unlock, now int64) bool {
 	if u.Kind != "season" {
 		return true
 	}
-	return season.AtUnix(now).Key() == u.Season
+	return season.ActiveAtUnix(now).Key() == u.Season
 }
 
 // VisibleCropsAt returns the crops that should appear in pickers and

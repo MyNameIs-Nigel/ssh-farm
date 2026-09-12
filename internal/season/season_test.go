@@ -41,6 +41,25 @@ func TestAtCoversBothWindows(t *testing.T) {
 	}
 }
 
+func TestActiveAtUnixHonorsDevelopmentOverride(t *testing.T) {
+	now := date(2024, 9, 15).Unix()
+
+	t.Setenv("FARM_DEV_SEASON", "halloween")
+	if got := ActiveAtUnix(now); got != SeasonHalloween {
+		t.Fatalf("halloween override = %v, want %v", got, SeasonHalloween)
+	}
+
+	t.Setenv("FARM_DEV_SEASON", " Christmas ")
+	if got := ActiveAtUnix(now); got != SeasonChristmas {
+		t.Fatalf("christmas override = %v, want %v", got, SeasonChristmas)
+	}
+
+	t.Setenv("FARM_DEV_SEASON", "spring")
+	if got := ActiveAtUnix(now); got != SeasonNone {
+		t.Fatalf("unknown override = %v, want calendar result %v", got, SeasonNone)
+	}
+}
+
 func TestSpecialDayIsOnlyTheTwoShowpieces(t *testing.T) {
 	for _, d := range []time.Time{date(2024, 10, 31), date(2030, 10, 31)} {
 		if !SpecialDay(d) {

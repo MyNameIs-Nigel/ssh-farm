@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -19,7 +20,7 @@ func (g *Game) season() season.Season {
 	if st == nil || !st.SeasonalEnabled() {
 		return season.SeasonNone
 	}
-	return season.AtUnix(g.now)
+	return season.ActiveAtUnix(g.now)
 }
 
 // titleGlyph is the farm glyph opening the header row: the usual wheat,
@@ -56,22 +57,37 @@ var (
 
 // viewSky renders the seasonal sky row: stars on Christmas nights, bats and
 // moonlight on Halloween nights, pumpkins by Halloween day, and the big
-// showpiece (moon on Oct 31, star on Dec 25) all day and night. It is emitted
-// from viewHeader — the tui/03 placement rule — so hitbox layout follows for
-// free. Empty off-season, when themes are off, and on clear Christmas days.
+// showpiece (moon on Oct 31, star on Dec 25) all day and night. composeCanvas
+// emits it immediately above the frame, while canvasSize and computeLayout
+// reserve the row. Empty off-season, when themes are off, and on clear
+// Christmas days.
 func (g *Game) viewSky() string {
-	sn := g.season()
-	if sn == season.SeasonNone {
+	text, bright := g.seasonalSky()
+	if text == "" {
 		return ""
 	}
 	th := g.theme()
+	style := th.Sky
+	if bright {
+		style = th.SkyBright
+	}
+	w, _ := g.canvasSize()
+	styled := style.Render(text)
+	return strings.Repeat(" ", max((w-lipgloss.Width(styled))/2, 0)) + styled
+}
+
+// seasonalSky returns unstyled sky content so layout can reserve its row
+// without recursing through viewSky -> canvasSize -> viewSky.
+func (g *Game) seasonalSky() (text string, bright bool) {
+	sn := g.season()
+	if sn == season.SeasonNone {
+		return "", false
+	}
 	t := time.Unix(g.now, 0).UTC()
 	night := theme.PhaseAt(g.now) == theme.PhaseNight
 
-	var text string
-	bright := false
 	switch {
-	case season.SpecialDay(t):
+	case season.At(t) == sn && season.SpecialDay(t):
 		bright = true
 		if sn == season.SeasonHalloween {
 			text = "🌕 ⋯ HALLOWEEN NIGHT ⋯ 🌕"
@@ -81,18 +97,14 @@ func (g *Game) viewSky() string {
 	case sn == season.SeasonChristmas && night:
 		text = starFields[t.YearDay()%len(starFields)]
 	case sn == season.SeasonChristmas:
-		return "" // clear skies by day; the stars are a night show
+		return "", false // clear skies by day; the stars are a night show
 	case night:
 		text = batFields[t.YearDay()%len(batFields)]
 	default:
 		text = pumpkinFields[t.YearDay()%len(pumpkinFields)]
 	}
 
-	style := th.Sky
-	if bright {
-		style = th.SkyBright
-	}
-	return lipgloss.PlaceHorizontal(g.contentWidth(), lipgloss.Center, style.Render(text))
+	return text, bright
 }
 
 // --- Seasonal headlines ----------------------------------------------------
@@ -158,21 +170,9 @@ func (g *Game) critterName(raw string) string {
 
 // --- Seasonal seed markers -------------------------------------------------
 
-// seasonEndLabel tells the buyer when a seasonal seed vanishes: the morning
-// after the window closes.
-func seasonEndLabel(u content.Unlock) string {
-	switch u.Season {
-	case "halloween":
-		return "gone Nov 1"
-	case "christmas":
-		return "gone Dec 26"
-	default:
-		return "limited time"
-	}
-}
-
-// seasonMarker decorates a seasonal crop row with its festival glyph and
-// expiry, e.g. "🎃 seasonal — gone Nov 1". Empty for ordinary crops.
+// seasonMarker decorates a seasonal crop row with a compact festival label.
+// Exact cutoff times live in Help, where they can wrap without breaking the
+// picker or Land catalog viewport.
 func seasonMarker(crop content.Crop) string {
 	if crop.Unlock.Kind != "season" {
 		return ""
@@ -181,5 +181,5 @@ func seasonMarker(crop content.Crop) string {
 	if crop.Unlock.Season == "christmas" {
 		sn = season.SeasonChristmas
 	}
-	return sn.Glyph() + " seasonal — " + seasonEndLabel(crop.Unlock)
+	return sn.Glyph() + " seasonal"
 }

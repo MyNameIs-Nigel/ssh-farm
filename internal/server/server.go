@@ -165,15 +165,19 @@ func (srv *Server) teaHandler(s ssh.Session) (tui.Model, []tui.ProgramOption) {
 		return tui.NewErrScreen(), nil
 	}
 	width, height := 80, 24
+	term := ""
 	if pty, _, ok := s.Pty(); ok {
 		width, height = pty.Window.Width, pty.Window.Height
+		term = pty.Term
 	}
 	// Idle disconnect is enforced inside the UI: the once-a-second render
 	// keeps the transport busy, so a connection-level idle timer would
 	// never fire. Only key presses count as activity.
 	idleSecs := int64(srv.cfg.IdleTimeout / time.Second)
 	now := time.Now().Unix()
-	return tui.NewGame(state.id, state.res, srv.games.Content(), srv.board, width, height, now, idleSecs), nil
+	g := tui.NewGame(state.id, state.res, srv.games.Content(), srv.board, width, height, now, idleSecs)
+	g.SetTrueColor(supportsTrueColor(s.Environ(), term))
+	return g, nil
 }
 
 // ListenAndServe starts accepting SSH connections.
