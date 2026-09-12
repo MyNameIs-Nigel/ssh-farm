@@ -27,8 +27,11 @@ func TestSeasonalColorsRequireTrueColor(t *testing.T) {
 			if limited.Bg != plain.Bg {
 				t.Errorf("season %v phase %v: limited-color background = %v, want normal %v", sn, p, limited.Bg, plain.Bg)
 			}
-			if limited.Frame.GetBorderTopForeground() != plain.Frame.GetBorderTopForeground() {
-				t.Errorf("season %v phase %v: limited-color frame should keep normal accent", sn, p)
+			if limited.Frame.GetBorderTopForeground() == plain.Frame.GetBorderTopForeground() {
+				t.Errorf("season %v phase %v: limited-color frame lost its seasonal accent", sn, p)
+			}
+			if limited.Title.GetForeground() == plain.Title.GetForeground() {
+				t.Errorf("season %v phase %v: limited-color title lost its seasonal accent", sn, p)
 			}
 			if during := NewWithSeason(p, false, "", sn, true).Bg; during == plain.Bg {
 				t.Errorf("season %v phase %v: True Color background unchanged (%v)", sn, p, plain.Bg)

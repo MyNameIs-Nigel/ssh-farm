@@ -7,8 +7,8 @@ golden harness), tui/04 (in-game clock) · **Blocks:** nothing
 
 Make the farm feel alive at the edges of the year. For the whole of October
 the game wears a Halloween skin, and from November 25th through December 25th
-it wears a Christmas skin: subtly recoloured canvas and accents on True Color
-terminals, a seasonal sky row,
+it wears a Christmas skin: a subtly recoloured canvas on True Color terminals,
+seasonal accents on every color terminal, a seasonal sky row,
 reskinned text (title glyph, headlines, critter names), and limited-time
 seasonal seeds that pay above the normal profit curve. A single
 "Seasonal themes" toggle on the Settings overlay opts out of the *look*;
@@ -61,7 +61,7 @@ the UTC calendar continues to control seasons.
   in `Plant` / `ReplantAll` / auto-sow tick / picker visibility; persistence
   across rebirth
 - `internal/tui/theme/` — `NewWithSeason` constructor, True Color-gated
-  seasonal palettes and
+  seasonal backgrounds, portable seasonal accents, and
   `Sky`/`SkyBright` styles (built in `New` too, so the all-styles background
   test keeps holding)
 - `internal/tui/` — `season.go` (`g.season()`, `viewSky`, headline pool,
@@ -189,17 +189,18 @@ the timestamp is a parameter, never read from a clock):
 `theme.NewWithSeason(p, solid, eventID, sn season.Season, trueColor bool)` —
 `New` keeps its signature and delegates with `SeasonNone`, so every existing
 caller and test compiles unchanged. The SSH session's detected color profile
-supplies `trueColor`; only an exact True Color profile enables festival color
-overrides. ANSI, ANSI-256, monochrome, and unknown profiles retain the normal
-day/night palette and accents. Seasonal glyphs, copy, and sky content are not
-color-profile gated.
+supplies `trueColor`; only an exact True Color profile enables festival
+background overrides. ANSI, ANSI-256, monochrome, and unknown profiles retain
+the normal day/night canvas background. Seasonal accents, glyphs, copy, and
+sky content are not color-profile gated; the renderer down-samples accent
+colors to the client's available profile.
 
 - On True Color terminals only, backgrounds shift through extremely muted RGB
   shades that remain mostly black. Halloween uses deep red in every phase;
   Christmas uses dark blue in every phase. Night is the darkest tint. Neither
   palette introduces amber, magenta, green, teal, or other canvas hues.
-- Seasonal frame, title, section, and sky accents are also applied only under
-  True Color. They stay restrained within the same red-only Halloween and
+- Seasonal frame, title, section, and sky accents apply under every color
+  profile. They stay restrained within the same red-only Halloween and
   blue-only Christmas families, and lose to a live random event's accent,
   which keeps its existing priority.
 - `Sky` / `SkyBright` styles are constructed in `New` (neutral defaults) and
@@ -271,9 +272,10 @@ state, golden-deterministic.
   night (bats+moon), Christmas night (stars), Christmas Day (big star, day
   phase); existing goldens byte-identical (their fixture date, Nov 14, is
   outside both windows).
-- [ ] ANSI/ANSI-256/unknown profiles use the normal palette during festivals;
-  True Color profiles use only near-black red (Halloween) or blue (Christmas)
-  backgrounds, with night darkest.
+- [ ] ANSI/ANSI-256/unknown profiles use the normal background during
+  festivals while retaining seasonal accents; True Color profiles use only
+  near-black red (Halloween) or blue (Christmas) backgrounds, with night
+  darkest.
 - [ ] `Paint` width/text invariants hold for seasonal True Color themes
   (existing test cases plus a seasonal theme instance).
 - [ ] Solid mode pins the seasonal background but keeps seasonal accents.

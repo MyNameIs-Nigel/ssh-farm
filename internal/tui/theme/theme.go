@@ -3,8 +3,9 @@
 // background survive lipgloss's nested styles.
 //
 // The normal backgrounds use ANSI-256 indices for consistent rendering. The
-// optional festival tints use RGB only after the SSH session has positively
-// detected True Color support; limited-color terminals keep the normal theme.
+// optional festival background tints use RGB only after the SSH session has
+// positively detected True Color support; limited-color terminals keep the
+// normal canvas while the renderer down-samples seasonal accents for them.
 package theme
 
 import (
@@ -182,10 +183,11 @@ func New(p Phase, solid bool, eventID string) Theme {
 }
 
 // NewWithSeason builds the theme for a phase while a festival skin is
-// active. Precedence is deliberate: solid pins the canvas background (as
-// with the cycle and the event lift), a live random event wins the frame
-// accent and the background lift, and the festival takes everything else.
-// Pass season.SeasonNone off-season.
+// active. trueColor gates only the festival canvas background; seasonal
+// accents remain active on limited-color terminals. Precedence is deliberate:
+// solid pins the canvas background (as with the cycle and the event lift), a
+// live random event wins the frame accent and background lift, and the
+// festival takes everything else. Pass season.SeasonNone off-season.
 func NewWithSeason(p Phase, solid bool, eventID string, sn season.Season, trueColor bool) Theme {
 	if p < 0 || int(p) >= phaseCount {
 		p = PhaseDawn
@@ -215,7 +217,7 @@ func NewWithSeason(p Phase, solid bool, eventID string, sn season.Season, trueCo
 	text := func(c string) lipgloss.Style { return base.Foreground(lipgloss.Color(c)) }
 
 	frameAccent := lipgloss.Color("65")
-	if tint, ok := seasonFrameAccent[sn]; ok && trueColor {
+	if tint, ok := seasonFrameAccent[sn]; ok {
 		frameAccent = lipgloss.Color(tint)
 	}
 	if eventID != "" {
@@ -231,11 +233,11 @@ func NewWithSeason(p Phase, solid bool, eventID string, sn season.Season, trueCo
 
 	titleColor, sectionColor := "114", "151"
 	skyColor, skyBrightColor := "250", "229"
-	switch {
-	case trueColor && sn == season.SeasonHalloween:
+	switch sn {
+	case season.SeasonHalloween:
 		titleColor, sectionColor = "#c06b6b", "#aa7777"
 		skyColor, skyBrightColor = "#9b5555", "#d18b8b"
-	case trueColor && sn == season.SeasonChristmas:
+	case season.SeasonChristmas:
 		titleColor, sectionColor = "#8398bd", "#7189b4"
 		skyColor, skyBrightColor = "#667da8", "#a9bce0"
 	}
