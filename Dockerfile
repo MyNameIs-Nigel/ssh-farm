@@ -3,7 +3,15 @@
 # ---- Build stage: compile a static, cgo-free binary -------------------------
 # The pure-Go SQLite driver (modernc.org/sqlite) and embedded content files
 # mean the result is a single self-contained executable.
-FROM golang:1.26.6-alpine3.22 AS build
+#
+# The builder's alpine (3.23) intentionally no longer matches the runtime
+# stage's (3.22): the golang image only publishes the two most recent alpine
+# variants, and by the time 1.26.6 shipped — the patch carrying the
+# encoding/asn1 fix, GO-2026-5972 — the 3.22 variant was gone. The mismatch
+# is harmless here and nowhere near the shipped artifact: CGO_ENABLED=0 means
+# the binary links no libc, so the builder's userland contributes nothing to
+# the image beyond the Go toolchain that produced it.
+FROM golang:1.26.6-alpine3.23 AS build
 
 WORKDIR /src
 
