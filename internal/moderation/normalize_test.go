@@ -20,11 +20,11 @@ func TestFoldLeet(t *testing.T) {
 
 func TestStripSeparators(t *testing.T) {
 	cases := map[string]string{
-		"s-l-u-r":    "slur",
-		"s_l_u_r":    "slur",
-		"s l u r":    "slur",
+		"s-l-u-r":     "slur",
+		"s_l_u_r":     "slur",
+		"s l u r":     "slur",
 		"no-sep here": "nosephere",
-		"already":    "already",
+		"already":     "already",
 	}
 	for in, want := range cases {
 		if got := stripSeparators(in); got != want {

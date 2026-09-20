@@ -131,6 +131,6 @@ type resolverSession struct {
 	env  []string
 }
 
-func (r *resolverSession) User() string        { return r.user }
+func (r *resolverSession) User() string             { return r.user }
 func (r *resolverSession) PublicKey() ssh.PublicKey { return r.pub }
-func (r *resolverSession) Environ() []string   { return r.env }
+func (r *resolverSession) Environ() []string        { return r.env }

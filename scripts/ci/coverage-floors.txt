@@ -1,0 +1,42 @@
+# Coverage floors — the ratchet.
+#
+# Format: <package path relative to the module root> <minimum percent>
+#
+# Rules of engagement:
+#   * A floor may be RAISED freely. CI prints the suggestion whenever a
+#     package sits 3+ points above its floor; take it.
+#   * A floor may only be LOWERED in a PR that says why, in the PR body, with
+#     a reviewer on it. That is the entire mechanism — there is no override
+#     flag, because a lowered floor should cost a conversation.
+#   * A new package with no entry here FAILS the gate. Untracked coverage is
+#     how coverage quietly evaporates: it is added once, nobody watches it,
+#     and it drifts to nothing. Declare a floor, even if that floor is 0.
+#
+# Floors are set one point below the measured value at the time they were
+# written, so ordinary statement-count churn does not trip the gate.
+# internal/sim gets a wider band: sim_test.go has a sampled-event case that
+# legitimately skips when no event rolls in the window, which moves its
+# statement count run to run.
+#
+# Baseline measured 2026-09-20 on go1.26.4 (`go test -covermode=atomic ./...`).
+
+TOTAL                                  71.0
+
+cmd/restore-check                       0.0   # thin main(); exercised by the durability drills, not unit tests
+cmd/ssh-farm                           45.0
+internal/config                        56.0
+internal/content                       71.0
+internal/game                          67.0
+internal/gameclock                     99.0
+internal/identity                      83.0
+internal/leaderboard                   96.0
+internal/log                            0.0   # log shim over charm.land/log; no logic of its own
+internal/moderation                    94.0
+internal/moderation/cmd/gen-denylist    0.0   # operator tool, runs against the private corpus off-CI
+internal/season                        99.0
+internal/server                        72.0
+internal/sim                           74.0
+internal/store                         75.0
+internal/tui                           75.0
+internal/tui/hitbox                    74.0
+internal/tui/theme                     89.0
