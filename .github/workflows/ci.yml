@@ -133,6 +133,21 @@ jobs:
         # NOTICE already carries an Apache-2.0 obligation for the bundled
         # litestream binary; a copyleft dependency arriving unnoticed is a
         # licensing problem, not a packaging one.
+        #
+        # ┌─ ACTION REQUIRED ────────────────────────────────────────────────┐
+        # │ This step cannot work until Dependency graph is enabled:         │
+        # │   Settings -> Advanced Security -> Dependency graph              │
+        # │ Until then it fails with "Dependency review is not supported on  │
+        # │ this repository", which is a repository setting talking, not a   │
+        # │ finding about the diff — so it is non-blocking for now.          │
+        # │                                                                  │
+        # │ Enable it and DELETE the continue-on-error line below. The same  │
+        # │ toggle is what turns on Dependabot security alerts, so the       │
+        # │ dependabot.yml added alongside this only does half its job until │
+        # │ it is on: it will raise version bumps, but nothing will tell you │
+        # │ a dependency you already have has become vulnerable.             │
+        # └──────────────────────────────────────────────────────────────────┘
+        continue-on-error: true
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high

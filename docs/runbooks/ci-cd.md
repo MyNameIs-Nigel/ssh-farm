@@ -237,6 +237,17 @@ Several gates above mean nothing unless the repository requires them.
   (`packages: write`, `id-token: write`) request it per job, and only
   `release.yml` does.
 
+**Settings → Advanced Security → Dependency graph: enable it.** Two things in
+this pipeline are inert without it. `ci.yml`'s dependency-review step fails
+with "Dependency review is not supported on this repository" — a repository
+setting talking, not a finding about the diff — and is marked
+`continue-on-error` until the toggle is on; delete that line once it is. The
+same toggle turns on Dependabot **security alerts**, so until then
+`dependabot.yml` only does half its job: it will raise version bumps on a
+schedule, but nothing will tell you that a dependency you already have has
+become vulnerable. `govulncheck` in CI covers the reachable subset of that and
+is the stronger signal, but it only runs when something triggers a workflow.
+
 **Settings → Environments → `production`:** add required reviewers if you want
 a human gate between a green `main` and a live deploy. The `deploy` job already
 targets this environment, so the approval prompt appears with no workflow
