@@ -3,7 +3,7 @@
 # ---- Build stage: compile a static, cgo-free binary -------------------------
 # The pure-Go SQLite driver (modernc.org/sqlite) and embedded content files
 # mean the result is a single self-contained executable.
-FROM golang:1.26.4-alpine3.22 AS build
+FROM golang:1.26.6-alpine3.22 AS build
 
 WORKDIR /src
 
