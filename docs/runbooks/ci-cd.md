@@ -70,29 +70,44 @@ checking that the tests still bite. Green CI cannot distinguish a correct
 implementation from an implementation whose tests have stopped looking at it.
 
 Each sentinel injects a specific realistic bug, asserts the named test
-**fails**, and reverts. Four run today:
+**fails**, and reverts. Five run today:
 
 | Sentinel | Injects | Must be caught by |
 | --- | --- | --- |
 | `leaderboard-tie-off-by-one` | `rank = i + 1` → `rank = i` | `TestRankMathTable`, the property test |
 | `moderation-leet-fold-dropped` | the leet fold never fires | `TestMustBlockCorpusIsDeniedByEveryEvasionClass` |
 | `sim-parity-payout-drift` | one extra coin per harvest | `TestScriptedSequenceMatchesV1Golden` |
-| `sim-grow-time-drift` | one extra second per crop | three sim unit tests |
+| `sim-grow-time-drift` | one extra second per crop | `TestScriptedSequenceMatchesV1Golden` |
+| `sim-gift-rate-drift` | gift interval doubled | the online and offline gift-rate tests |
 
 This is deliberately a short hand-written list, not general mutation testing: a
 full mutation run is slow, noisy with equivalent mutants, and needs triage
-nobody has time for. Four sentinels that each encode a real acceptance
+nobody has time for. Five sentinels that each encode a real acceptance
 criterion beat four hundred generated mutants that get ignored.
 
-> **Known gap, found by the harness on its first run.** `docs/tests/01` claims
-> "any sim edit fails at least one **parity** test". For a grow-time edit that
-> is true of the sim *unit* suite but **not** of the v1 parity goldens: the
-> scripted sequence advances 300s against crops that mature well inside that
-> window, so a second of drift is absorbed before the first assertion. The sim
-> is not unguarded — nine unit tests catch it — but the goldens specifically do
-> not. Tightening the scripted fixture to harvest at the exact ready tick would
-> close it. The sentinel is aimed at the tests that genuinely hold, with this
-> noted inline, rather than at the tests the docs assume hold.
+> **Two gaps the harness found, both now closed.** Its first run turned up a
+> grow-time edit that the sim *unit* suite caught but the v1 parity goldens did
+> not: the scripted sequence advanced 300s against crops that mature well
+> inside that window, so a second of drift was absorbed before the first
+> assertion — while `docs/tests/01` claims "any sim edit fails at least one
+> **parity** test". The scripted fixture now harvests each crop on the exact
+> tick it matures and carries a self-running auto-sow plot whose replant cursor
+> is grow-derived, so drift in either direction breaks the replay. The goldens
+> were regenerated against the real v1 module per
+> `internal/sim/testdata/v1/README.md`, and `sim-grow-time-drift` is aimed at
+> the parity golden the docs assume holds.
+>
+> Aiming it there raised the second gap: no golden can pin the **gift arrival
+> rate**, because the scripted sequence's 50,000s advance saturates the
+> per-tick chance at 100% and the gift lands whatever the interval is. The only
+> instrument watching it was `TestOnlineGiftArrivalRateMatchesInterval`, whose
+> band was half-to-double — so an interval off by a factor of two, the single
+> most likely rate bug, sat exactly on its own tolerance edge and passed. The
+> offline interval, the one every catch-up on connect runs against, had no test
+> at all. That band (and the matching one in the event-rate test) is now ±25%,
+> roughly three standard deviations of sampling noise,
+> `TestOfflineGiftArrivalRateMatchesInterval` covers the other branch, and
+> `sim-gift-rate-drift` holds both.
 
 ### The everyday gates
 
@@ -146,7 +161,7 @@ fleet's to own.
 
 **The smoke test reads the SSH banner.** `internal/server` feeds
 `internal/version.Version` into wish's `Version` option, so the identification
-string on the wire is literally `SSH-2.0-2.4.0` — and the arcade router already
+string on the wire is literally `SSH-2.0-2.4.1` — and the arcade router already
 health-probes it. Checking that one line proves the process started, bound its
 port, finished enough init to accept TCP, *and* is the build just shipped. The
 previous check — `sleep 10` then `docker compose ps --status running` — proved

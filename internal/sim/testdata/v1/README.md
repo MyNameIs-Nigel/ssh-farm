@@ -15,7 +15,7 @@ ported sim computes byte-identical results to v1 for the same inputs.
 | `max_land.json` | Every purchasable plot bought out (3 start + 7 bought = 10, the non-greenhouse cap). |
 | `mid_rebirth.json` | A save that has rebirthed once and spent Starseeds on two upgrades. |
 | `offline_pending.json` | Two plots planted (one queued for auto-harvest) and never advanced — a save exactly as it looks the moment before catch-up runs on load. |
-| `scripted_start.json` / `scripted_end.json` | A paired before/after snapshot around a scripted action+advance sequence (see below). `ssh-farm`'s parity test decodes `scripted_start.json`, replays the exact same sim calls, and asserts the result is `reflect.DeepEqual` to the decoded `scripted_end.json`. |
+| `scripted_start.json` / `scripted_end.json` | A paired before/after snapshot around a scripted action+advance sequence (see below). `ssh-farm`'s parity test decodes `scripted_start.json`, replays the exact same sim calls, and asserts the result is `reflect.DeepEqual` to the decoded `scripted_end.json`. The sequence is deliberately tight against grow time — see **Why the sequence has no timing slack**. |
 
 Every file is exactly the byte sequence `(*sim.State).Encode()` produced —
 the same call `DecodeState` → `Encode` uses in the round-trip tests, so
@@ -134,16 +134,28 @@ func main() {
 	// scripted_start / scripted_end: an action+advance sequence, committed
 	// both before and after, so v2 can replay the same calls and assert the
 	// result matches bit-for-bit. See the README for the exact call list.
+	//
+	// The sequence is deliberately grow-time-sensitive in both directions.
+	// Plots 0 and 1 are harvested on the exact tick their crop matures
+	// (t0+60 for turnip, t0+240 for carrot), so a grow time even one second
+	// longer turns the harvest into ErrNotMature. Plot 2 runs itself on
+	// auto-harvest + auto-sow, so its replant cursor (PlantedAt) and its
+	// harvest count — and with them the RNG stream — land on grow-derived
+	// values that shift if grow time moves either way.
 	s := sim.New(c, 777, t0)
 	must(sim.Plant(s, c, 0, "turnip", t0))
 	must(sim.Plant(s, c, 1, "carrot", t0))
+	s.Plots[2].AutoHarvest = true
+	s.Plots[2].AutoSow = true
+	must(sim.Plant(s, c, 2, "turnip", t0))
 	s.Coins += 200
 	write(dir, "scripted_start.json", s)
 
-	sim.Advance(s, c, t0+300)
-	_, err = sim.Harvest(s, c, 0, t0+300)
+	sim.Advance(s, c, t0+60)
+	_, err = sim.Harvest(s, c, 0, t0+60)
 	must(err)
-	_, err = sim.Harvest(s, c, 1, t0+300)
+	sim.Advance(s, c, t0+240)
+	_, err = sim.Harvest(s, c, 1, t0+240)
 	must(err)
 	_, err = sim.BuyPlot(s, c)
 	must(err)
@@ -162,13 +174,39 @@ func main() {
 Starting from `scripted_start.json` (already decoded), `ssh-farm`'s parity
 test must call, in order:
 
-1. `sim.Advance(s, c, startedAt+300)`
-2. `sim.Harvest(s, c, 0, startedAt+300)`
-3. `sim.Harvest(s, c, 1, startedAt+300)`
-4. `sim.BuyPlot(s, c)`
-5. `sim.SetFarmName(s, "Northfield")`
-6. `sim.Advance(s, c, startedAt+50_000)`
-7. If `s.GiftPending`, `sim.RedeemGift(s, c)`
+1. `sim.Advance(s, c, startedAt+60)`
+2. `sim.Harvest(s, c, 0, startedAt+60)`
+3. `sim.Advance(s, c, startedAt+240)`
+4. `sim.Harvest(s, c, 1, startedAt+240)`
+5. `sim.BuyPlot(s, c)`
+6. `sim.SetFarmName(s, "Northfield")`
+7. `sim.Advance(s, c, startedAt+50_000)`
+8. If `s.GiftPending`, `sim.RedeemGift(s, c)`
 
 where `startedAt` is the decoded state's `UpdatedAt` field. The result must
 be `reflect.DeepEqual` to the decoded `scripted_end.json`.
+
+## Why the sequence has no timing slack
+
+The paired golden is the only parity test that exercises the sim's *time*
+arithmetic, so it is built so that a one-second change to
+`(*State).GrowSeconds` cannot hide inside it. Two mechanisms, covering
+both directions:
+
+- **Harvest on the exact maturity tick.** Plot 0 grows turnip (60 s) and
+  plot 1 carrot (240 s), and each is harvested at exactly `startedAt+60`
+  and `startedAt+240`. A grow time even one second *longer* makes
+  `Harvest` return `ErrNotMature`, so the replay fails on the call rather
+  than on the final comparison.
+- **A self-running plot.** Plot 2 starts on auto-harvest + auto-sow, so
+  `Advance` settles its cycles itself. Its harvest count and its replant
+  cursor (`PlantedAt`, which lands on `startedAt + n*grow`) are written
+  into the saved state, and every cycle draws from the seeded RNG. A grow
+  time one second *shorter* therefore changes `plots[2].planted_at`,
+  `lifetime_harvests`, `coins` and `rng` in `scripted_end.json`.
+
+An earlier version of this sequence advanced to `startedAt+300` and
+harvested both crops there. Both crops matured well inside that window, so
+a second of drift was absorbed before the first assertion ran and the
+parity tests passed against a mutated sim. Keep the harvest ticks pinned
+to maturity when editing this fixture.
