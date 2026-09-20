@@ -121,7 +121,7 @@ jobs:
         # exists in the tree, which says this scan has been run by hand —
         # a control that depends on somebody remembering is not a control.
         # Free for public repositories; organisations need GITLEAKS_LICENSE.
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"
