@@ -33,7 +33,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
 RUN mkdir -p /out/data-dir && chown 65532:65532 /out/data-dir
 
 # ---- Litestream: pinned, pulled as a static binary --------------------------
-FROM litestream/litestream:0.5.12 AS litestream
+FROM litestream/litestream:0.5.17 AS litestream
 
 # ---- Runtime stage --------------------------------------------------------
 # alpine:3, not distroless: per the canonical fleet durability doc
