@@ -1,0 +1,17 @@
+# Fixtures that are compared BYTE-FOR-BYTE against something produced in
+# memory must never have their line endings translated on checkout.
+#
+# Without this, every golden test fails on a Windows runner and the diff is
+# baffling: the render says "…╮" and the golden says "…╮\r", identical to the
+# eye, differing by a carriage return that git inserted at checkout because
+# core.autocrlf defaults to true there. Nothing about the product is wrong —
+# the measuring instrument was modified on its way out of the repository.
+internal/tui/testdata/golden/** -text
+internal/sim/testdata/v1/**     -text
+
+# Shell scripts run on Linux hosts and inside Linux containers, including
+# scripts/deploy/remote-deploy.sh, which is shipped to the production host and
+# executed there. A CRLF shebang line fails with "bad interpreter: no such
+# file or directory", which is one of the least informative errors in Unix and
+# a spectacularly bad one to meet during a deploy.
+*.sh text eol=lf

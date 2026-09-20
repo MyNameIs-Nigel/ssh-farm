@@ -1,0 +1,18 @@
+# Default owner for everything.
+*                           @MyNameIs-Nigel
+
+# The parts where a mistake is expensive and quiet, called out so they are
+# never reviewed as ordinary diffs:
+#
+#   sim/content   — the parity promise to v1 players (docs/gameplay/01)
+#   moderation    — the reputational surface (docs/gameplay/03)
+#   CI/CD + deploy— the thing that can ship all of the above wrong, fast
+/internal/sim/                @MyNameIs-Nigel
+/internal/content/            @MyNameIs-Nigel
+/data/                        @MyNameIs-Nigel
+/internal/moderation/         @MyNameIs-Nigel
+/.github/workflows/           @MyNameIs-Nigel
+/scripts/                     @MyNameIs-Nigel
+/Dockerfile                   @MyNameIs-Nigel
+/entrypoint.sh                @MyNameIs-Nigel
+/etc/litestream.yml           @MyNameIs-Nigel
