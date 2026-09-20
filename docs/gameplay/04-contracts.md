@@ -1,6 +1,6 @@
 # Farm Gameplay 04 — Contracts
 
-**Status:** Proposed · **Depends on:** the completed base-game progression,
+**Status:** Implemented · **Depends on:** the completed base-game progression,
 gameplay/02 (leaderboard), gameplay/03 (name identity), tui/02 (board screen)
 
 ## Goal
@@ -189,10 +189,10 @@ must fit at 80×24 through wrapping or scrolling and show, in this order:
 5. a compact **RESET** list and **KEPT FOREVER** list;
 6. the warning that the previous gameplay state cannot be restored.
 
-Keyboard acceptance requires typing `START` and pressing Enter. Escape closes
-the modal unchanged. Mouse acceptance uses a deliberate select-then-activate
-`Begin contract` control after the modal has been opened; a single click can
-never reset a farm.
+Keyboard acceptance requires selecting the available contract, opening its
+terms modal, then pressing `y`; Escape closes the modal unchanged. Mouse input
+uses the same select-then-activate flow, so a single click can never reset a
+farm.
 
 Once accepted, reconnecting or going offline does not cancel the contract.
 The Contracts screen shows the active terms and progress. Completing the goal
@@ -228,9 +228,12 @@ Completion and selected style persist in the save blob. The store additionally
 denormalizes contract completion count and selected name style beside the
 existing leaderboard columns so board rebuilds never decode save blobs.
 
-The save-state version increments. Migration initializes old saves with no
-active contract and zero completions; it must not infer completions from
-lifetime earnings or rebirths.
+The contract fields are additive `omitempty` fields under save-state version
+4. This deliberately avoids rewriting old payloads and preserves the parity
+suite's byte-identical round trips. Store schema migration 6 adds and
+backfills the two leaderboard columns from JSON when present; ordinary old
+saves get no active contract and zero completions. Completion is never inferred
+from lifetime earnings or rebirths.
 
 ## Leaderboard identity and cosmetics
 
@@ -311,35 +314,35 @@ authority.
 
 ## Acceptance criteria
 
-- [ ] Exactly three contracts exist, in the fixed order documented here.
-- [ ] Contract access derives from permanent base-game completion and ignores
+- [x] Exactly three contracts exist, in the fixed order documented here.
+- [x] Contract access derives from permanent base-game completion and ignores
       temporary run state, achievements, and calendar seasons.
-- [ ] Start and abandon confirmations cannot be triggered by one accidental key
+- [x] Start and abandon confirmations cannot be triggered by one accidental key
       press or click.
-- [ ] Each start resets every listed gameplay field and preserves every listed
+- [x] Each start resets every listed gameplay field and preserves every listed
       lifetime, identity, setting, and cosmetic field.
-- [ ] Historical rebirths remain on the leaderboard while contract gameplay
+- [x] Historical rebirths remain on the leaderboard while contract gameplay
       starts from rebirth tier zero.
-- [ ] Old lifetime earnings cannot satisfy a contract; new contract earnings
+- [x] Old lifetime earnings cannot satisfy a contract; new contract earnings
       continue increasing the lifetime leaderboard value.
-- [ ] Bare Hands refuses every automation entry point and completes at 100,000
+- [x] Bare Hands refuses every automation entry point and completes at 100,000
       contract earnings.
-- [ ] Lean Season refuses plot seven and the Greenhouse, allows automation, and
+- [x] Lean Season refuses plot seven and the Greenhouse, allows automation, and
       completes at 100 cumulative earned Starseeds even when Starseeds are spent.
-- [ ] Clockwork Denied blocks automation, events, gifts, and Scarecrow effects
+- [x] Clockwork Denied blocks automation, events, gifts, and Scarecrow effects
       online and offline, then completes after five local rebirths.
-- [ ] Completion is durable and idempotent across save/reload and reconnect.
-- [ ] Abandoning restores no old economic state and leaves the same contract as
+- [x] Completion is durable and idempotent across save/reload and reconnect.
+- [x] Abandoning restores no old economic state and leaves the same contract as
       the next required contract.
-- [ ] Board snapshots carry denormalized completion/style data without decoding
+- [x] Board snapshots carry denormalized completion/style data without decoding
       save blobs.
-- [ ] Duplicate rendered names receive `(suffix)` on every matching row; unique
+- [x] Duplicate rendered names receive `(suffix)` on every matching row; unique
       named farms omit it; generic fallback names retain it.
-- [ ] Contract seals and static name styles render correctly at 80×24 and
+- [x] Contract seals and static name styles render correctly at 80×24 and
       120×40 under every theme.
-- [ ] The final wave animates without DB reads, width drift, hitbox drift, or
+- [x] The final wave animates without DB reads, width drift, hitbox drift, or
       multiple tick chains, and has a static limited-color fallback.
-- [ ] Existing saves, ranking, moderation, base rebirth behavior, and parity
+- [x] Existing saves, ranking, moderation, base rebirth behavior, and parity
       goldens remain valid when no contract is active.
 
 ## Out of scope

@@ -69,8 +69,11 @@ state.
 ```go
 type Row struct {
     Rank        int
-    DisplayName string // moderated name; empty → "FARM ·suffix" fallback (gameplay/03)
-    Suffix      string // 5-char fingerprint suffix, always shown
+    DisplayName       string // moderated name; empty → FARM fallback
+    Suffix            string // 5-char fingerprint suffix
+    ShowSuffix        bool   // duplicate display name or generic fallback
+    ContractsCompleted int   // clamped 0..3; one public seal each
+    NameStyle          string // earned static color or purple wave
     Coins       int64  // lifetime coin earnings, not current balance
     Rebirths    int64
     IsYou       bool
@@ -107,13 +110,12 @@ Get(ctx, you SaveRef) (Board, error)
   *slot multiplication* (accepted: more farms = more work, no advantage
   per farm).
 
-### Planned contracts extension
+### Contract metadata
 
-`gameplay/04-contracts.md` owns the proposed leaderboard additions: contract
-completion seals, earned name styles, and showing the fingerprint suffix only
-when a rendered display name is duplicated in the ranked population. Until
-that work lands, the current always-visible suffix remains the implemented
-behavior.
+Migration 6 denormalizes contract completion count and selected name style.
+Snapshot rebuilds moderate every display name first, then mark every member of
+a duplicate-name group with `ShowSuffix`; unnamed generic fallbacks always set
+it. The engine never decodes save blobs.
 
 ## Acceptance criteria
 

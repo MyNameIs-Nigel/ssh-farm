@@ -262,6 +262,59 @@ func TestIntentsValidateAgainstAuthoritativeState(t *testing.T) {
 	}
 }
 
+func TestContractSessionIntentsAndMetadataPersist(t *testing.T) {
+	m, path := testManager(t, PolicyTakeover, time.Hour)
+	id := ident("SHA256:contracts", "farm")
+	res := mustAttach(t, m, id, 1000)
+
+	// Arrange the permanent base-game completion prerequisite directly on
+	// the actor; simulation tests cover the prerequisite calculation itself.
+	if ok := res.Session.actor.do(func() {
+		st := res.Session.actor.state
+		st.ContractsUnlocked = true
+		st.LifetimeEarnings = 777
+		st.FarmName = "CONTRACT FARM"
+	}); !ok {
+		t.Fatal("actor stopped")
+	}
+	snap, _, err := res.Session.StartContract(1001, sim.ContractBareHands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.State.ActiveContract != sim.ContractBareHands || snap.State.LifetimeEarnings != 777 {
+		t.Fatalf("started contract state = %+v", snap.State)
+	}
+	if snap, err = res.Session.SetLeaderboardNameStyle(1002, sim.NameStyleLeaf); err != sim.ErrNameStyleLocked {
+		t.Fatalf("locked style error = %v, want %v", err, sim.ErrNameStyleLocked)
+	}
+	if snap, _, err = res.Session.AbandonContract(1003); err != nil || snap.State.ActiveContract != "" {
+		t.Fatalf("abandon result active=%q err=%v", snap.State.ActiveContract, err)
+	}
+
+	if ok := res.Session.actor.do(func() {
+		res.Session.actor.state.ContractsCompleted = 2
+	}); !ok {
+		t.Fatal("actor stopped")
+	}
+	if _, err := res.Session.SetLeaderboardNameStyle(1004, sim.NameStyleLeaf); err != nil {
+		t.Fatal(err)
+	}
+	res.Session.Detach()
+
+	st, err := store.Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	rows, err := st.LeaderboardSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ContractsCompleted != 2 || rows[0].LeaderboardNameStyle != sim.NameStyleLeaf {
+		t.Fatalf("persisted leaderboard contract metadata = %+v", rows)
+	}
+}
+
 func TestRenameFarmAppliesModerationAndRateLimit(t *testing.T) {
 	m, _ := testManager(t, PolicyTakeover, time.Hour)
 	res := mustAttach(t, m, ident("SHA256:k1", "farm"), 1000)

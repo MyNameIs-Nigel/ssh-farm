@@ -27,7 +27,9 @@ type Source interface {
 
 type rankedRow struct {
 	store.LeaderboardRow
-	Rank int
+	Rank        int
+	DisplayName string
+	ShowSuffix  bool
 }
 
 // Engine answers gameplay/02's three questions ("where am I", "who's on
@@ -160,6 +162,19 @@ func (e *Engine) rebuild(ctx context.Context) ([]rankedRow, error) {
 		filtered = append(filtered, r)
 	}
 
+	names := make([]string, len(filtered))
+	nameCounts := make(map[string]int, len(filtered))
+	for i, r := range filtered {
+		name, locked := moderation.Filter(r.FarmName)
+		if locked {
+			name = moderation.Generate(r.Fingerprint)
+		}
+		names[i] = name
+		if name != "" {
+			nameCounts[name]++
+		}
+	}
+
 	ranked := make([]rankedRow, len(filtered))
 	rank := 1
 	for i, r := range filtered {
@@ -170,7 +185,12 @@ func (e *Engine) rebuild(ctx context.Context) ([]rankedRow, error) {
 		if i > 0 && r.Coins < filtered[i-1].Coins {
 			rank = i + 1
 		}
-		ranked[i] = rankedRow{LeaderboardRow: r, Rank: rank}
+		ranked[i] = rankedRow{
+			LeaderboardRow: r,
+			Rank:           rank,
+			DisplayName:    names[i],
+			ShowSuffix:     names[i] == "" || nameCounts[names[i]] > 1,
+		}
 	}
 	return ranked, nil
 }
@@ -239,19 +259,24 @@ func isYou(r rankedRow, you SaveRef) bool {
 // deterministically-generated name rather than shown or left blank, so a
 // denylist update retroactively fixes the board without ever touching
 // storage. A save that was simply never renamed keeps its empty
-// DisplayName, which the UI (tui/02) renders as a "FARM ·suffix"
+// DisplayName, which the UI (tui/02) renders as a "FARM (suffix)"
 // placeholder — that is not a moderation case at all.
 func toRow(r rankedRow, you SaveRef) Row {
-	name, locked := moderation.Filter(r.FarmName)
-	if locked {
-		name = moderation.Generate(r.Fingerprint)
+	completed := r.ContractsCompleted
+	if completed < 0 {
+		completed = 0
+	} else if completed > 3 {
+		completed = 3
 	}
 	return Row{
-		Rank:        r.Rank,
-		DisplayName: name,
-		Suffix:      moderation.Suffix(r.Fingerprint),
-		Coins:       r.Coins,
-		Rebirths:    r.Rebirths,
-		IsYou:       isYou(r, you),
+		Rank:               r.Rank,
+		DisplayName:        r.DisplayName,
+		Suffix:             moderation.Suffix(r.Fingerprint),
+		ShowSuffix:         r.ShowSuffix,
+		ContractsCompleted: completed,
+		NameStyle:          r.LeaderboardNameStyle,
+		Coins:              r.Coins,
+		Rebirths:           r.Rebirths,
+		IsYou:              isYou(r, you),
 	}
 }

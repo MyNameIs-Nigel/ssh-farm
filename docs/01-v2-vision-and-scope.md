@@ -3,7 +3,7 @@
 This is the historical scope contract for the completed v2 port. Read it
 alongside `../../ssh-idlefarmer/CLAUDE.md` when changing behavior covered by
 the parity promise. Additive post-v2 work is documented separately; the first
-planned endgame system is `gameplay/04-contracts.md`.
+shipped endgame system is `gameplay/04-contracts.md`.
 
 ## Current state
 

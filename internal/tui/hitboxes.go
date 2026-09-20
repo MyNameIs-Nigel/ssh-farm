@@ -2,6 +2,8 @@ package tui
 
 import (
 	"charm.land/lipgloss/v2"
+
+	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 )
 
 func (g *Game) registerHitboxes() {
@@ -28,6 +30,8 @@ func (g *Game) registerHitboxes() {
 			g.registerRebirthHits()
 		case scrStarShop:
 			g.registerStarShopHits()
+		case scrContracts:
+			g.registerContractHits()
 		case scrStats:
 			g.registerStatsHits()
 		case scrBoard:
@@ -169,7 +173,7 @@ func (g *Game) registerRebirthConfirmHits() {
 }
 
 func (g *Game) registerStarShopHits() {
-	if g.snap.State.Rebirths < 1 {
+	if g.snap.State.ProgressionRebirths() < 1 && !g.snap.State.ContractsAvailable(g.content) {
 		return
 	}
 	y := g.layout.bodyY
@@ -178,6 +182,12 @@ func (g *Game) registerStarShopHits() {
 			g.addHit(g.layout.cx, y, g.layout.cw, 1, "shop:"+itoa(l.idx), l.idx)
 		}
 		y++
+	}
+}
+
+func (g *Game) registerContractHits() {
+	for i := range sim.Contracts() {
+		g.addHit(g.layout.cx, g.layout.bodyY+3+i, g.layout.cw, 1, "contract:"+itoa(i), i)
 	}
 }
 

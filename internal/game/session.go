@@ -326,6 +326,28 @@ func (s *Session) Rebirth(now int64) (int64, Snapshot, []string, error) {
 	return gain, snap, newly, err
 }
 
+// StartContract accepts the next contract in the fixed campaign order.
+func (s *Session) StartContract(now int64, id sim.ContractID) (Snapshot, []string, error) {
+	return s.intent(now, func(st *sim.State) error {
+		return sim.StartContract(st, s.actor.content(), id, now)
+	})
+}
+
+// AbandonContract discards the active attempt and returns to a fresh farm.
+func (s *Session) AbandonContract(now int64) (Snapshot, []string, error) {
+	return s.intent(now, func(st *sim.State) error {
+		return sim.AbandonContract(st, s.actor.content(), now)
+	})
+}
+
+// SetLeaderboardNameStyle selects one of the contract-earned cosmetics.
+func (s *Session) SetLeaderboardNameStyle(now int64, style string) (Snapshot, error) {
+	snap, _, err := s.intent(now, func(st *sim.State) error {
+		return sim.SetLeaderboardNameStyle(st, style)
+	})
+	return snap, err
+}
+
 // SetFlavor toggles ambient discoveries for this save.
 func (s *Session) SetFlavor(now int64, enabled bool) (Snapshot, error) {
 	snap, _, err := s.intent(now, func(st *sim.State) error {

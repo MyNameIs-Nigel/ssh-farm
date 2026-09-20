@@ -6,8 +6,8 @@ released as a beta. Most files began as task specifications and now record the
 design contract behind shipped code; their phase labels and unchecked
 acceptance lists are historical context, not a live completion tracker.
 
-New work is marked explicitly. The current proposed gameplay feature is the
-fixed three-contract endgame campaign in `gameplay/04-contracts.md`.
+The fixed three-contract endgame campaign in `gameplay/04-contracts.md` is now
+implemented.
 
 ## What v2 is
 
@@ -53,7 +53,7 @@ Identical to v1/moonminer with two additions:
 
 ## Implemented roadmap
 
-Phases 1–6 below are implemented. Phase 7 is the proposed contracts work.
+Phases 1–7 below are implemented.
 
 ```
 Phase 1 (parallel):  gameplay/01 (sim port)     framework/01 (server port + identity)
@@ -63,7 +63,7 @@ Phase 3 (parallel):  gameplay/02 (leaderboard engine)   framework/03 (deploy + C
 Phase 4:             tui/02 (leaderboard screen)        tests/01, tests/02
 Phase 5:             tui/03 (theme/event feedback)      tui/05 (seasonal themes)
 Phase 6:             tui/04 (in-game clock)
-Phase 7 (proposed):  gameplay/04 (three-contract endgame campaign)
+Phase 7:             gameplay/04 (three-contract endgame campaign)
 ```
 
 ## Document map
@@ -77,7 +77,7 @@ Phase 7 (proposed):  gameplay/04 (three-contract endgame campaign)
 | [gameplay/01-sim-port-and-parity.md](gameplay/01-sim-port-and-parity.md) | Port `internal/sim` + content verbatim; parity goldens vs v1 |
 | [gameplay/02-leaderboard-engine.md](gameplay/02-leaderboard-engine.md) | Coins ranking, schema, caching, activity window |
 | [gameplay/03-farm-names-and-moderation.md](gameplay/03-farm-names-and-moderation.md) | Display names, normalization pipeline, denylist best practices |
-| [gameplay/04-contracts.md](gameplay/04-contracts.md) | Proposed three-contract hard-reset campaign and leaderboard cosmetics |
+| [gameplay/04-contracts.md](gameplay/04-contracts.md) | Three-contract hard-reset campaign and leaderboard cosmetics |
 | [tui/01-mouse-retrofit.md](tui/01-mouse-retrofit.md) | Hitbox registry + click/wheel semantics across every v1 screen |
 | [tui/02-leaderboard-screen.md](tui/02-leaderboard-screen.md) | The board: rank header, top list, window around you |
 | [tui/03-theme-day-night-and-event-feedback.md](tui/03-theme-day-night-and-event-feedback.md) | Day/night background, solid-colour setting, size warning, event bar |

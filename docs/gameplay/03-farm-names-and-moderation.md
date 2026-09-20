@@ -50,23 +50,22 @@ statement — with a lock so it stays fixed.
   aesthetic anyway.
 - Collapse runs of spaces; trim; no leading/trailing separators; not
   purely digits/separators.
-- Uniqueness is **not** required — the always-visible fingerprint suffix
-  disambiguates (below).
+- Uniqueness is **not** required — collision-aware fingerprint suffixes
+  disambiguate duplicate display names (below).
 
 ### The suffix (identity without exposure)
 
-Every public display appends a dim suffix: the **last 5 characters of the
-key's base64 fingerprint** — e.g. `SUNNY HOLLOW ·k3v9Q`. Properties worth
+Duplicate public display names append the **last 5 characters of the key's
+base64 fingerprint** — e.g. `SUNNY HOLLOW (k3v9Q)`. Generic unnamed `FARM`
+fallbacks always include it; unique named farms omit it. Properties worth
 a code comment: stable for the life of the key, ~30 bits so collisions are
 rare and harmless (it's a discriminator, not an identifier), derived from
 the already-public-ish fingerprint so it leaks nothing, and it makes
 impersonating a famous farm pointless — the suffix won't match.
 
-The proposed contracts campaign changes only when the suffix is rendered, not
-how it is derived. After `gameplay/04-contracts.md` lands, unique names omit it
-and duplicate rendered names use `FARMNAME (k3v9Q)`. Generic fallback names
-continue to show it. The collision check happens after moderation so two names
-that are masked to the same display value are still disambiguated.
+The collision check happens across the ranked snapshot after moderation and
+fallback-name generation, so two names that resolve to the same display value
+are still disambiguated.
 
 ### Default names (safe by construction)
 

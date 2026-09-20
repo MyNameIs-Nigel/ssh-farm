@@ -24,14 +24,14 @@ actually catch.
 ```
 ┌◇ LEADERBOARD — RICHEST FARMS ────────── YOU: #13/261 ┐
 │                                                      │
-│   #1  GOLDEN MEADOWS ·x9J2k ↻ 12         ◈ 1,204,551 │
+│   #1  ◆◆ GOLDEN MEADOWS ↻ 12              ◈ 1,204,551 │
 │   #2  POTATO EMPIRE ·mQ04z ↻ 9             ◈ 981,300 │
 │   #3  CLOVER & SONS ·77aBc ↻ 9             ◈ 954,110 │
 │   …top 10…                                           │
 │  ────────────────────────────────────────────────    │
 │  #11  WINDMILL ACRES ·ff21x ↻ 2            ◈ 84,900  │
 │  #12  MAPLE HOLLOW ·b8k2N ↻ 2              ◈ 84,551  │
-│ ▸#13  SUNNY HOLLOW ·k3v9Q ↻ 1  ← YOU       ◈ 84,210  │
+│ ▸#13  SUNNY HOLLOW (k3v9Q) ↻ 1  ← YOU      ◈ 84,210  │
 │  #14  BARLEYCORN ·z0q4T ↻ 1                ◈ 83,995  │
 │  …                                                   │
 │                                                      │
@@ -45,9 +45,9 @@ actually catch.
 - **Top 10**, then a divider, then the **±3 window** around you (only when
   you're outside the top 10; gameplay/02 already dedupes). Your row:
   `▸` + highlight + `← YOU`.
-- Rows: rank (right-aligned, ties share numbers per gameplay/02), name in
-  primary text, suffix in dim (`·k3v9Q` — always shown, it's the
-  anti-impersonation signal), rebirth count (`↻ 12`), coins right-aligned
+- Rows: rank (right-aligned, ties share numbers per gameplay/02), up to three
+  contract seals, name in its selected earned style, a parenthesized suffix
+  only for duplicate names and generic fallbacks, rebirth count (`↻ 12`), coins right-aligned
   with the ◈ glyph — **lifetime coin earnings** (gameplay/02), not the
   farm's current spendable balance. Top 3 ranks may take the
   gold/cyan/violet accent treatment — tasteful, not a rainbow.
@@ -88,11 +88,9 @@ actually catch.
 - Rank computation, windows, ties → gameplay/02.
 - Name rules → gameplay/03. Rename overlay internals → tui/01.
 
-## Planned contracts extension
+## Contract cosmetics
 
-The shipped screen above describes current behavior. The three-contract
-campaign in `../gameplay/04-contracts.md` adds completion seals and selectable
-name color treatments, including a final animated gradient. It also changes
-the suffix from always-visible to collision-only. That proposal supersedes
-only the affected row-rendering details; rank, earnings, refresh, and scrolling
-behavior remain unchanged.
+The three-contract campaign in `../gameplay/04-contracts.md` is implemented:
+rows carry completion seals and selectable name colors, including a final
+animated purple gradient. The animation has its own presentation-only tick;
+rank, earnings, board refresh, and scrolling behavior remain unchanged.

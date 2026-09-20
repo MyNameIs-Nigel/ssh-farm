@@ -95,6 +95,17 @@ type State struct {
 	// byte-identical). Seasonal seeds are unaffected by it and stay gated
 	// only by the calendar.
 	SeasonalOff bool `json:"seasonal_off,omitempty"`
+
+	// Contracts are an additive post-game campaign. Zero values deliberately
+	// mean "never started" and stay omitted so old v1/v2 payloads continue to
+	// round-trip byte-identically under the parity harness.
+	ContractsUnlocked    bool       `json:"contracts_unlocked,omitempty"`
+	ContractsCompleted   int        `json:"contracts_completed,omitempty"`
+	ActiveContract       ContractID `json:"active_contract,omitempty"`
+	ContractRebirths     int64      `json:"contract_rebirths,omitempty"`
+	ContractEarnings     int64      `json:"contract_earnings,omitempty"`
+	ContractStarseeds    int64      `json:"contract_starseeds_earned,omitempty"`
+	LeaderboardNameStyle string     `json:"leaderboard_name_style,omitempty"`
 }
 
 // SeasonalEnabled reports whether the festival skins may render for this
@@ -245,6 +256,10 @@ func (s *State) credit(amount int64) {
 	s.Coins = satAdd(s.Coins, amount)
 	s.RunEarnings = satAdd(s.RunEarnings, amount)
 	s.LifetimeEarnings = satAdd(s.LifetimeEarnings, amount)
+	if s.ActiveContract != "" {
+		s.ContractEarnings = satAdd(s.ContractEarnings, amount)
+		s.checkContractCompletion()
+	}
 }
 
 // nextRand advances the save's RNG (splitmix64) and returns the next value.

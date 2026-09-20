@@ -64,7 +64,7 @@ func (g *Game) handleMouseWheel(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 		case scrMarket:
 			g.marketIdx = clamp(g.marketIdx+delta, 0, len(g.marketItems())-1)
 		case scrStarShop:
-			if g.snap.State.Rebirths >= 1 {
+			if g.snap.State.ProgressionRebirths() >= 1 || g.snap.State.ContractsAvailable(g.content) {
 				g.progressIdx = clamp(g.progressIdx+delta, 0, len(g.content.Upgrades)-1)
 			}
 		case scrHelp:
@@ -85,7 +85,7 @@ func (g *Game) dismissOverlay() (tea.Model, tea.Cmd) {
 		g.pickerAutoSow = false
 	case ovReplantWarn:
 		return g.ackReplantWarning()
-	case ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovAway:
+	case ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovAway, ovContractConfirm, ovContractReward:
 		g.overlay = ovNone
 	}
 	return g, nil
@@ -105,6 +105,7 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 			}
 			if g.scr == scrBoard {
 				g.refreshBoard()
+				return g, g.startBoardAnimation()
 			}
 		}
 	case strings.HasPrefix(id, "plot:"):
@@ -151,6 +152,13 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 			g.progressIdx = idx
 			if isDouble {
 				return g.pressKey("b")
+			}
+		}
+	case strings.HasPrefix(id, "contract:"):
+		if idx, ok := box.Data.(int); ok {
+			g.contractIdx = idx
+			if isDouble {
+				return g.pressKey("enter")
 			}
 		}
 	case id == "stats:rename":

@@ -29,9 +29,8 @@ ssh play.ssharcade.dev     # arcade menu → FARM
 ## Status
 
 **Beta — 2.4.0.** The v2 port and its arcade integration, mouse controls,
-leaderboard, durable storage, day/night clock, and seasonal themes are
-implemented. The repository is in active development; the next planned
-gameplay addition is the three-contract endgame campaign described in
+leaderboard, durable storage, day/night clock, seasonal themes, and fixed
+three-contract endgame campaign are implemented. See
 [docs/gameplay/04-contracts.md](docs/gameplay/04-contracts.md).
 
 [docs/README.md](docs/README.md) indexes the architecture, shipped feature
