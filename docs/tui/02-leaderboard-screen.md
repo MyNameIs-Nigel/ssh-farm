@@ -87,3 +87,12 @@ actually catch.
 
 - Rank computation, windows, ties → gameplay/02.
 - Name rules → gameplay/03. Rename overlay internals → tui/01.
+
+## Planned contracts extension
+
+The shipped screen above describes current behavior. The three-contract
+campaign in `../gameplay/04-contracts.md` adds completion seals and selectable
+name color treatments, including a final animated gradient. It also changes
+the suffix from always-visible to collision-only. That proposal supersedes
+only the affected row-rendering details; rank, earnings, refresh, and scrolling
+behavior remain unchanged.

@@ -62,6 +62,12 @@ rare and harmless (it's a discriminator, not an identifier), derived from
 the already-public-ish fingerprint so it leaks nothing, and it makes
 impersonating a famous farm pointless — the suffix won't match.
 
+The proposed contracts campaign changes only when the suffix is rendered, not
+how it is derived. After `gameplay/04-contracts.md` lands, unique names omit it
+and duplicate rendered names use `FARMNAME (k3v9Q)`. Generic fallback names
+continue to show it. The collision check happens after moderation so two names
+that are masked to the same display value are still disambiguated.
+
 ### Default names (safe by construction)
 
 New/unnamed farms get a generated name: `<adjective> <noun>` from curated

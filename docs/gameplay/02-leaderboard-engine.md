@@ -107,6 +107,14 @@ Get(ctx, you SaveRef) (Board, error)
   *slot multiplication* (accepted: more farms = more work, no advantage
   per farm).
 
+### Planned contracts extension
+
+`gameplay/04-contracts.md` owns the proposed leaderboard additions: contract
+completion seals, earned name styles, and showing the fingerprint suffix only
+when a rendered display name is duplicated in the ranked population. Until
+that work lands, the current always-visible suffix remains the implemented
+behavior.
+
 ## Acceptance criteria
 
 - [ ] Rank math table tests: unique values, ties (competition ranking),
