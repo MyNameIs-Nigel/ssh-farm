@@ -82,15 +82,26 @@ SENTINELS = [
         "\tg := crop.GrowSeconds * (100 - reduction) / 100",
         "\tg := crop.GrowSeconds*(100-reduction)/100 + 1",
         "./internal/sim",
-        "TestUpgradesAffectTheNextRun|TestGrowthAndHarvestOverFixedSpans|TestVeryLongAutoFarmCatchUpIsBoundedAndExact",
+        "TestScriptedSequenceMatchesV1Golden",
         "One second per crop is the smallest sim change anyone could make by "
-        "accident. NOTE: this sentinel is aimed at the sim unit tests on purpose. "
-        "The v1 parity goldens do NOT catch it — the scripted sequence advances "
-        "300s against crops that mature well inside that window, so a second of "
-        "drift is absorbed before the first assertion. docs/tests/01 claims 'any "
-        "sim edit fails at least one parity test'; for grow-time edits that is "
-        "true of the unit suite, not of the goldens. Tightening the scripted "
-        "fixture to harvest at the exact ready tick would close the gap.",
+        "accident, and docs/tests/01 claims 'any sim edit fails at least one "
+        "parity test'. The scripted golden harvests on the exact tick each crop "
+        "matures and carries a self-running auto-sow plot, so a second of drift "
+        "in either direction breaks the replay (docs/tests/01).",
+    ),
+    (
+        "sim-gift-rate-drift",
+        "internal/sim/advance.go",
+        "\tchance := elapsed * 10000 / interval\n\tif chance > 10000 {",
+        "\tchance := elapsed * 10000 / (interval * 2)\n\tif chance > 10000 {",
+        "./internal/sim",
+        "TestOnlineGiftArrivalRateMatchesInterval|TestOfflineGiftArrivalRateMatchesInterval",
+        "Gift arrival is the one sim rate no golden can pin down — the scripted "
+        "sequence's long advance saturates the per-tick chance at 100%, so the "
+        "gift lands whatever the interval is. The rate tests are the only thing "
+        "watching it, and the online one's tolerance was half-to-double, which a "
+        "factor-of-two interval bug clears by sitting exactly on the edge, while "
+        "the offline interval had no test at all.",
     ),
 ]
 
