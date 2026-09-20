@@ -3,51 +3,136 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip-deploy:
+        description: Build and publish the image but do not deploy it.
+        type: boolean
+        default: false
+
+# Never two deploys at once, and never cancel one halfway: a cancelled deploy
+# leaves the host in whatever state it had reached. Releases queue.
+concurrency:
+  group: release-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: go vet ./...
-      - run: go build ./...
-      - run: go test -race ./...
+  verify:
+    name: verify
+    uses: ./.github/workflows/verify.yml
+    with:
+      # main is already gated by the pull-request run; this is the
+      # belt-and-braces pass on the merge result itself.
+      os-matrix: '["ubuntu-latest", "windows-latest"]'
+      test-count: 2
+      build-image: false # publish below builds it for real
 
   publish:
-    needs: test
+    name: publish image
+    needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
+      id-token: write # provenance attestation
+      attestations: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      version: ${{ steps.meta.outputs.version }}
+      sha_short: ${{ steps.meta.outputs.sha_short }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
       - id: meta
-        run: echo "sha_short=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        name: derive tags
+        # internal/version.Version is the single source of truth for the
+        # release number — internal/server feeds it straight into the SSH
+        # version-exchange banner, which the arcade router health-probes. The
+        # image is tagged with it so "which build is that?" has an answer that
+        # does not require reading a commit log, and so the deploy can assert
+        # the banner it expects to see afterwards.
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^const Version = "\(.*\)"$/\1/p' internal/version/version.go)
+          if [ -z "$version" ]; then
+            echo "::error::could not read Version from internal/version/version.go"
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "sha_short=sha-$(git rev-parse --short HEAD)"
+          } >> "$GITHUB_OUTPUT"
+          echo "publishing version $version" >> "$GITHUB_STEP_SUMMARY"
+
+      - id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           push: true
+          # A layer cache turns a ~4 minute rebuild into well under a minute
+          # for the common case where only Go source changed.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # NOTICE already has to carry the bundled litestream binary's
+          # Apache-2.0 attribution. An SBOM makes that list machine-checkable
+          # instead of a thing someone remembers to update.
+          sbom: true
+          provenance: mode=max
           tags: |
             ghcr.io/mynameis-nigel/ssh-farm:latest
             ghcr.io/mynameis-nigel/ssh-farm:${{ steps.meta.outputs.sha_short }}
+            ghcr.io/mynameis-nigel/ssh-farm:${{ steps.meta.outputs.version }}
+
+      - name: attest provenance
+        # The image is pulled anonymously by anyone who wants it. Signed
+        # provenance lets a puller verify it came from this workflow, in this
+        # repository, from this commit — rather than trusting the tag.
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/mynameis-nigel/ssh-farm
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: scan published image
+        # Run the scanner's own image rather than an action: for a
+        # vulnerability scanner you actively want the current database and
+        # detection logic, so a floating tag is right here where it would
+        # not be for an action that executes in the job's context.
+        # --ignore-unfixed: an advisory with no fix available is not
+        # something a red build helps with.
+        run: |
+          docker run --rm aquasec/trivy:latest image \
+            --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed \
+            --format table \
+            ghcr.io/mynameis-nigel/ssh-farm@${{ steps.build.outputs.digest }}
 
   deploy:
+    name: deploy to production
     needs: publish
+    if: ${{ !inputs.skip-deploy }}
     runs-on: ubuntu-latest
-    environment: production
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ssh://play.ssharcade.dev
     permissions:
       id-token: write # mint the OIDC token — the only credential this job holds
       contents: read
     steps:
+      - uses: actions/checkout@v4
+
       - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           # Held in a repo variable rather than written inline: this repo is
@@ -56,34 +141,73 @@ jobs:
           role-to-assume: ${{ vars.ARCADE_DEPLOY_ROLE }}
           aws-region: us-east-1
 
-      - name: Deploy farm via SSM
+      - name: deploy farm via SSM
+        env:
+          INSTANCE_ID: ${{ vars.ARCADE_INSTANCE_ID }}
+          IMAGE_DIGEST: ghcr.io/mynameis-nigel/ssh-farm@${{ needs.publish.outputs.digest }}
+          EXPECT_VERSION: ${{ needs.publish.outputs.version }}
         run: |
           set -euo pipefail
+
+          # The deploy logic lives in scripts/deploy/remote-deploy.sh, in the
+          # repository, where it can be reviewed as a diff and run by hand
+          # during an incident. It is shipped to the host base64-encoded
+          # because a shell script with conditionals has no quoting story that
+          # survives being embedded in an SSM `commands=[...]` JSON array.
+          SCRIPT_B64=$(base64 -w0 scripts/deploy/remote-deploy.sh)
+
+          # Build the parameter document with jq rather than by hand: every
+          # value below is single-quoted inside the remote shell, and base64
+          # output cannot contain a quote, so there is no interpolation to get
+          # wrong at 3am.
+          PARAMS=$(jq -n \
+            --arg script "$SCRIPT_B64" \
+            --arg digest "$IMAGE_DIGEST" \
+            --arg version "$EXPECT_VERSION" \
+            '{commands: [
+               "set -eu",
+               "echo \($script) | base64 -d > /tmp/farm-deploy.sh",
+               "chmod +x /tmp/farm-deploy.sh",
+               "FARM_IMAGE_DIGEST=\"\($digest)\" FARM_IMAGE_REPO=ghcr.io/mynameis-nigel/ssh-farm FARM_EXPECT_VERSION=\"\($version)\" sh /tmp/farm-deploy.sh",
+               "rm -f /tmp/farm-deploy.sh"
+             ]}')
+
           CMD_ID=$(aws ssm send-command \
-            --instance-ids "${{ vars.ARCADE_INSTANCE_ID }}" \
+            --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
             --comment "deploy farm ${{ github.sha }}" \
-            --parameters 'commands=[
-              "set -e",
-              "cd /srv/ssharcade",
-              "docker compose pull farm",
-              "docker compose up -d farm",
-              "sleep 10",
-              "docker compose ps --status running --quiet farm | grep -q ."
-            ]' \
+            --parameters "$PARAMS" \
             --query Command.CommandId --output text)
 
-          # `wait` exits non-zero when the remote command failed. Swallow that so
-          # the invocation below still prints the real stdout/stderr — without the
-          # `|| true` a failed deploy gives you an exit code and no logs.
+          echo "SSM command: $CMD_ID"
+
+          # `wait` exits non-zero when the remote command failed. Swallow that
+          # so the invocation below still prints the real stdout/stderr —
+          # without the `|| true` a failed deploy gives you an exit code and
+          # no logs.
           aws ssm wait command-executed \
             --command-id "$CMD_ID" \
-            --instance-id "${{ vars.ARCADE_INSTANCE_ID }}" || true
+            --instance-id "$INSTANCE_ID" || true
 
           aws ssm get-command-invocation \
             --command-id "$CMD_ID" \
-            --instance-id "${{ vars.ARCADE_INSTANCE_ID }}" \
+            --instance-id "$INSTANCE_ID" \
             --query '{Status:Status,Out:StandardOutputContent,Err:StandardErrorContent}' \
-            --output json | tee result.json
+            --output json > result.json
 
+          jq -r '.Out' result.json
+          jq -r '.Err' result.json >&2
+
+          {
+            echo "### Deploy"
+            echo
+            echo "- image: \`$IMAGE_DIGEST\`"
+            echo "- version: \`$EXPECT_VERSION\`"
+            echo "- status: \`$(jq -r .Status result.json)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # The remote script exits non-zero if the smoke test failed, whether
+          # or not the rollback succeeded — so a red job here means "the new
+          # build is not serving", and the log above says which of the two
+          # states the host is in.
           test "$(jq -r .Status result.json)" = Success

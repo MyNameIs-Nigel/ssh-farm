@@ -1,0 +1,41 @@
+version: 2
+
+updates:
+  # Go modules. The stack is pinned hard (charm.land v2, modernc sqlite) and
+  # docs/README.md calls it "the locked stack", so these arrive weekly and
+  # grouped — a pull request per patch bump on a nine-dependency tree is how
+  # dependency updates become something people rubber-stamp.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      charm:
+        patterns: ["charm.land/*", "github.com/charmbracelet/*"]
+      golang-x:
+        patterns: ["golang.org/x/*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "no-test-needed"]
+
+  # GitHub Actions. This is the one that matters most for a repository that
+  # publishes a public image: a compromised action runs inside the job that
+  # holds packages:write and the OIDC deploy role.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: ["dependencies", "no-test-needed"]
+
+  # The Dockerfile's base images: golang, alpine, and the pinned litestream
+  # binary. An alpine patch release is exactly the update that never gets
+  # noticed by hand.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: ["dependencies", "no-test-needed"]

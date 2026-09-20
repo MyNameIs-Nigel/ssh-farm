@@ -1,0 +1,232 @@
+name: Verify
+
+# The test contract, defined once and called by both CI and Release.
+#
+# Before this existed, ci.yml and release.yml each carried their own copy of
+# `go vet && go build && go test -race`. Two copies of a gate drift, and they
+# drift in the dangerous direction: the release copy is the one nobody edits,
+# so main ends up held to a weaker standard than the branches feeding it.
+# One definition, two callers, no drift.
+
+on:
+  workflow_call:
+    inputs:
+      os-matrix:
+        description: >-
+          JSON array of runners for the test job. docs/tests/01 asks for green
+          on Windows and Linux; this is where that claim gets enforced instead
+          of asserted.
+        type: string
+        default: '["ubuntu-latest", "windows-latest"]'
+      test-count:
+        description: >-
+          How many times to run each test. docs/tests/01 asks for -count=2:
+          running twice in one process is the cheapest way to catch a test
+          that only passes because of state an earlier test left behind.
+        type: number
+        default: 2
+      build-image:
+        description: Build the container image (without pushing it).
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  # The suite is ~20s on a laptop. docs/tests/01 budgets 90s. CI runners are
+  # slower and noisier, so 90s warns and 180s fails: a budget that fires on
+  # runner weather gets raised until it means nothing.
+  SUITE_BUDGET_WARN_SECONDS: 90
+  SUITE_BUDGET_FAIL_SECONDS: 180
+
+jobs:
+  static:
+    name: static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::these files are not gofmt-clean"
+            echo "$unformatted" | sed 's/^/  /'
+            echo "fix with: gofmt -w ."
+            exit 1
+          fi
+          echo "all files are gofmt-clean"
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go vet (manual-only build tags)
+        # The decode-everything hook (internal/sim/decode_v1_db_test.go) is
+        # skipped in CI but must still COMPILE, or it rots unnoticed until the
+        # one day before a cutover when somebody actually needs it.
+        run: go vet -tags farm_test_v1_db ./...
+
+      - name: go.mod is tidy
+        # A go.sum that has drifted from go.mod is how a dependency gets added
+        # without anyone reviewing it.
+        run: go mod tidy -diff
+
+      - name: module checksums verify
+        run: go mod verify
+
+      - name: build
+        run: go build ./...
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # only-new-issues needs the merge base
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          # Introducing a linter to an existing codebase has exactly two
+          # options: a 40-file cleanup commit riding along with unrelated
+          # work, or a ratchet. This is the ratchet — new and changed code
+          # must be clean, the existing backlog (20 findings as of
+          # 2026-09-20) is visible but does not block. nightly.yml reports
+          # the full-tree count so the backlog is watched, not forgotten.
+          only-new-issues: true
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false # a Windows-only failure is exactly what we want to see
+      matrix:
+        os: ${{ fromJSON(inputs.os-matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: compile tests
+        # Separated so a compile error reads as a compile error, and so the
+        # timed run below measures test execution rather than the toolchain.
+        run: go build ./... && go test -run XXX_NONE ./... >/dev/null
+        shell: bash
+
+      - name: suite duration budget
+        # docs/tests/01: "Suite < 90 s excluding the manual build-tagged
+        # tests." An unenforced budget is a wish. A slow suite is a TDD
+        # problem specifically: the moment the red-green loop stops being
+        # fast, people stop running it and start guessing.
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          start=$(date +%s)
+          go test -count=1 ./...
+          elapsed=$(( $(date +%s) - start ))
+          echo "suite ran in ${elapsed}s" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$elapsed" -gt "${SUITE_BUDGET_FAIL_SECONDS}" ]; then
+            echo "::error::suite took ${elapsed}s, over the hard budget of ${SUITE_BUDGET_FAIL_SECONDS}s"
+            exit 1
+          fi
+          if [ "$elapsed" -gt "${SUITE_BUDGET_WARN_SECONDS}" ]; then
+            echo "::warning::suite took ${elapsed}s, over the ${SUITE_BUDGET_WARN_SECONDS}s target in docs/tests/01"
+          fi
+
+      - name: test -race -count=${{ inputs.test-count }} -shuffle=on
+        # -shuffle=on randomises order within each package. Tests that only
+        # pass in declaration order are a latent flake; finding them on a
+        # quiet Tuesday beats finding them during a cutover.
+        shell: bash
+        run: go test -race -count=${{ inputs.test-count }} -shuffle=on ./...
+
+      - name: working tree is unchanged
+        # Catches a test that writes into the repository: a golden
+        # regenerated by a stray -update, a fixture mutated in place. Those
+        # tests pass forever and assert nothing.
+        if: runner.os == 'Linux'
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::the test run modified tracked files — a test is writing into the repo"
+            exit 1
+          fi
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: measure
+        run: go test -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: enforce floors
+        run: |
+          python3 scripts/ci/coverage-gate.py coverage.out \
+            scripts/ci/coverage-floors.txt --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: upload profile
+        # ci.yml's diff-coverage job consumes this rather than re-running the
+        # whole suite to produce the same numbers a second time.
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-profile
+          path: coverage.out
+          retention-days: 7
+
+  sentinels:
+    name: sentinel mutations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: prove the suite can still fail
+        run: |
+          python3 scripts/ci/sentinel-mutations.py --summary "$GITHUB_STEP_SUMMARY"
+      - name: working tree is unchanged
+        # The harness reverts every mutation in a finally block. This is the
+        # belt to that braces: a sentinel run that left a mutation behind
+        # must never reach a later job, let alone a build.
+        run: git diff --exit-code
+
+  image:
+    name: container image
+    if: inputs.build-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: build (no push)
+        # The Dockerfile is production code. Building it only on main means
+        # discovering it is broken at the one moment you wanted to ship.
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

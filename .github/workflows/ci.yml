@@ -1,24 +1,139 @@
 name: CI
 
-# No `pull_request:` trigger, deliberately. Once these repos are public that
-# trigger would run on every fork PR from anyone on the internet. Branches pushed
-# inside the repo still get full CI through `push` below — which covers every PR
-# opened from a branch here — so the only thing dropped is running unreviewed
-# fork code automatically. Review a fork PR, then run this by hand if you want a
-# signal on it.
+# ---------------------------------------------------------------------------
+# TRIGGER CHANGE — please read before merging.
+#
+# The previous ci.yml ran on `push: branches-ignore: [main]` and deliberately
+# had no `pull_request:` trigger, to avoid running unreviewed fork code once
+# these repos went public. The instinct was right; the mechanism was aimed at
+# the wrong trigger.
+#
+#   * `pull_request` is the SAFE one. A fork PR running under `pull_request`
+#     gets a read-only GITHUB_TOKEN and NO access to repository secrets or
+#     variables. It cannot push, publish, or reach AWS. The dangerous trigger
+#     is `pull_request_target`, which runs base-repo code with full secrets —
+#     this file does not use it and should never use it.
+#   * The residual risk (a fork burning runner minutes) is what the repo
+#     setting Settings -> Actions -> "Require approval for all external
+#     contributors" is for. Turn that on; it is the correct control.
+#
+# What the push trigger could never do is test the MERGE. `push` tests the
+# branch head in isolation, so a branch that went green three weeks ago still
+# reports green today even if main has moved underneath it. `pull_request`
+# tests main-with-this-branch-applied, which is the thing actually being
+# shipped. That is the real reason for the change; fork PRs are a bonus.
+#
+# Cost of the change: pushing to a branch with no PR open no longer runs CI.
+# Open a draft PR, or use the Run workflow button. If that trade is not worth
+# it, restoring the old behaviour is one block:
+#     push:
+#       branches-ignore: [main]
+# ---------------------------------------------------------------------------
+
 on:
-  push:
-    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+  merge_group: # so a merge queue can be switched on without touching this file
   workflow_dispatch:
 
+# One run per pull request. Force-pushing five times in a row should cost one
+# CI run, not five: superseded runs are cancelled.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  test:
+  verify:
+    name: verify
+    uses: ./.github/workflows/verify.yml
+
+  test-first:
+    name: test-first discipline
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: production code changed without tests
+        env:
+          BASE: origin/${{ github.base_ref }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels) }}
+        run: sh scripts/ci/test-touched.sh "$BASE" "$LABELS"
+
+  diff-coverage:
+    name: coverage of changed lines
+    if: github.event_name == 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-profile
+      - name: measure
+        # 85% is not arbitrary: the last real feature branch on this repo
+        # (the seasonal-themes work, 390 changed statements) scores 87.9%
+        # against it. The bar is set where good work already clears it and
+        # an untested feature does not.
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          python3 scripts/ci/diff-coverage.py \
+            --profile coverage.out \
+            --base "$BASE" \
+            --min 85 \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+  supply-chain:
+    name: supply chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks needs history to scan it
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go vet ./...
-      - run: go build ./...
-      - run: go test -race ./...
+          cache: true
+
+      - name: govulncheck
+        # Reachability-based, so it reports vulnerabilities in code this
+        # module actually calls rather than every CVE in the dependency tree.
+        # That precision is what makes it safe to have block a merge.
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: gitleaks
+        # This repo is public and its threat model has a specific shape: the
+        # moderation denylist must never enter git history, and the fleet's
+        # host keys and proxy keys must never either. .gitleaksignore already
+        # exists in the tree, which says this scan has been run by hand —
+        # a control that depends on somebody remembering is not a control.
+        # Free for public repositories; organisations need GITLEAKS_LICENSE.
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+      - name: dependency review
+        if: github.event_name == 'pull_request'
+        # Blocks a PR that introduces a dependency with a known vulnerability
+        # or a licence incompatible with shipping inside the published image.
+        # NOTICE already carries an Apache-2.0 obligation for the bundled
+        # litestream binary; a copyleft dependency arriving unnoticed is a
+        # licensing problem, not a packaging one.
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0

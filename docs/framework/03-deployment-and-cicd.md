@@ -32,14 +32,42 @@ first deploy**, because it refuses to boot without one.
 
 ### CI/CD (per the fleet template)
 
-- `ci.yml`: PRs + non-main pushes → `go vet`, `go build`, `go test -race`.
-- `release.yml`: main → test → build/push
-  `ghcr.io/mynameis-nigel/ssh-farm:latest` + `:sha-<short>`. It stops there.
-  `docker compose pull farm && docker compose up -d farm` on the host is a
-  manual step (`../ssh-arcadelobby/deploy/README.md` § "Deploying by hand"):
-  the deploy job ran on a self-hosted runner on the production host, which
-  cannot survive this repo going public, and all four were removed on
-  2026-09-04.
+> **Superseded in part — see [`docs/runbooks/ci-cd.md`](../runbooks/ci-cd.md)**
+> for what actually runs today, why, and the GitHub settings it assumes. The
+> bullets below are kept because the constraints they describe (public repo,
+> no registry credential on the host, denylist-before-first-deploy) still
+> hold; the workflow shapes have moved on.
+
+- `verify.yml`: the test contract — gofmt, vet (including the manual build
+  tag), `go mod tidy -diff`, lint, `go test -race -count=2 -shuffle=on` on
+  Linux **and** Windows, coverage floors, sentinel mutations, container
+  build. Defined once and called by both workflows below, so they cannot
+  drift apart.
+- `ci.yml`: pull requests → `verify.yml` plus the TDD gates (test-first
+  discipline, coverage of changed lines) and the supply-chain gates
+  (govulncheck, gitleaks, dependency review). Note the trigger changed from
+  `push: branches-ignore: [main]` to `pull_request`: `pull_request` is the
+  safe trigger for a public repo (read-only token, no secrets — the
+  dangerous one is `pull_request_target`), and unlike `push` it tests the
+  *merge result* rather than a branch head that may be weeks behind main.
+  The header of `ci.yml` has the full reasoning.
+- `release.yml`: main → `verify.yml` → build/push
+  `ghcr.io/mynameis-nigel/ssh-farm:latest` + `:sha-<short>` + `:<version>`
+  (read from `internal/version.Version`), with an SBOM, signed build
+  provenance, and a Trivy scan → deploy.
+- **Deploys are automated again, without a self-hosted runner.** The four
+  self-hosted runners on the production host were removed on 2026-09-04
+  because they could not survive this repo going public; deploys now run
+  from a GitHub-hosted runner, which holds no long-lived credential and
+  reaches the host through an OIDC-assumed role and SSM. The deploy job
+  ships `scripts/deploy/remote-deploy.sh` to the host, which pulls the exact
+  **digest** CI tested (not whatever `:latest` points at by then), restarts
+  only `farm`, proves the new build is serving by reading the SSH banner
+  (`SSH-2.0-<version>` — the same string the arcade router probes), and
+  rolls back to the previous digest if it is not. `docker compose pull farm
+  && docker compose up -d farm` by hand
+  (`../ssh-arcadelobby/deploy/README.md` § "Deploying by hand") remains the
+  break-glass path.
 - **No registry auth needed**: the GHCR package is public, so the host pulls
   anonymously and holds no Docker credential at all. CI uses the repo-scoped
   `GITHUB_TOKEN` to publish; no extra secrets.

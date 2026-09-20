@@ -1,0 +1,184 @@
+name: Nightly
+
+# The checks that are too slow, too flaky-by-nature, or too Docker-heavy to
+# sit in front of a pull request, plus the ones that can go red with no commit
+# at all.
+#
+# That last category is the one most projects miss. A CVE disclosed against a
+# dependency, or against the alpine base of an image that has not been rebuilt
+# in six weeks, makes a SHIPPED build unsafe while every workflow stays green,
+# because nothing ran. docs/tests/02 already asks for the durability drills to
+# run "on a schedule, not just unit tests" and for quarterly restore rehearsals
+# — the scripts have been sitting in scripts/restore-drill/ waiting for
+# something to call them. This is that something.
+#
+# Failures here e-mail the repository owner through GitHub's own scheduled-
+# workflow failure notification; there is deliberately no bot opening issues,
+# because a nightly that files a duplicate issue every night gets muted.
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # 04:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  flake-hunt:
+    name: flake hunt
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: test -race -count=10 -shuffle=on
+        # A test that fails one run in twenty is invisible on a pull request
+        # and corrosive over a year: people learn to re-run red CI instead of
+        # reading it, and that habit is what lets a real failure through.
+        # Ten runs a night finds them while nobody is waiting.
+        shell: bash
+        run: go test -race -count=10 -shuffle=on -timeout 40m ./...
+
+  fuzz:
+    name: fuzz moderation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: FuzzFilterNeverPanics
+        # The seed corpus runs on every `go test`. Actual fuzzing does not,
+        # and the moderation filter is the one function in this codebase that
+        # takes arbitrary attacker-chosen input by design.
+        run: go test -run '^$' -fuzz FuzzFilterNeverPanics -fuzztime 15m ./internal/moderation
+      - name: upload crashers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashers
+          path: internal/moderation/testdata/fuzz/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  durability-drills:
+    name: durability drills
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: dev mode needs no credentials
+        # docs/tests/02: "container without S3 env runs the game (durability
+        # off, loud log warning) — dev must never require AWS." Run with
+        # --network none, so a stray S3 call cannot silently succeed.
+        run: sh scripts/restore-drill/no-credentials-check.sh
+
+      - name: restore from bucket
+        # framework/02's own acceptance criterion: fresh container, empty
+        # volume, populated bucket -> restores and serves.
+        run: sh scripts/restore-drill/run.sh
+
+      - name: kill drill with measured RPO
+        # docs/tests/02: kill without a graceful flush, delete the volume,
+        # restore, integrity_check + decode every save, and assert the
+        # measured RPO is inside budget. This is the drill that answers
+        # "what do we actually lose when the instance dies" with a number
+        # instead of a paragraph.
+        env:
+          MAX_RPO_SECONDS: "60"
+        run: sh scripts/restore-drill/kill-drill.sh
+
+      - name: restore straight from the replica
+        # Isolates the S3 replica from the container's restore-on-boot path:
+        # if this passes and the kill drill fails, the bucket is fine and
+        # entrypoint.sh is not.
+        run: sh scripts/restore-drill/restore-to-scratch.sh
+
+      - name: drill logs
+        if: failure()
+        run: docker compose -f scripts/restore-drill/docker-compose.yml logs --no-color || true
+
+  sentinels:
+    name: sentinel mutations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: python3 scripts/ci/sentinel-mutations.py --summary "$GITHUB_STEP_SUMMARY"
+
+  lint-backlog:
+    name: lint backlog
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: full-tree golangci-lint
+        # Pull requests are gated on new issues only. This counts the whole
+        # backlog every night so it stays a number somebody can watch going
+        # down, rather than an unbounded thing nobody has looked at since the
+        # linter was introduced. Advisory by design: it must never be the
+        # reason a nightly is red.
+        continue-on-error: true
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+          golangci-lint run --output.text.path stdout ./... 2>&1 | tee lint.txt || true
+          count=$(grep -cE '^\s*\* ' lint.txt || echo 0)
+          {
+            echo "### Lint backlog"
+            echo
+            echo '```'
+            tail -20 lint.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  published-image:
+    name: rescan published image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: govulncheck
+        # Green CI on the last commit says nothing about an advisory
+        # published since. This is the job that turns "we were fine when we
+        # shipped" into "we are fine today".
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: trivy against the live tag
+        # Scans what players are actually running, base-image CVEs included —
+        # the alpine layer ages whether or not anyone commits Go code.
+        #
+        # Run the scanner's own image rather than an action: for a vulnerability
+        # scanner you actively want the current database and detection logic, so
+        # a floating tag is right here where it would not be for an action that
+        # executes in the job's context.
+        run: |
+          docker run --rm aquasec/trivy:latest image \
+            --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed \
+            --format table \
+            ghcr.io/mynameis-nigel/ssh-farm:latest

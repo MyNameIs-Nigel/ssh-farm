@@ -11,7 +11,7 @@ func TestValidateAcceptsHappyNames(t *testing.T) {
 		{"L33T-Farm", "L33T-FARM"},
 		{"abc", "ABC"},
 		{"a1234567890123456789", "A1234567890123456789"}, // 20 chars, at the max
-		{"  Spaced   Out  ", "SPACED OUT"},                // trim + collapse internal runs
+		{"  Spaced   Out  ", "SPACED OUT"},               // trim + collapse internal runs
 	}
 	for _, c := range cases {
 		got, ok := Validate(c.in)
@@ -27,22 +27,22 @@ func TestValidateAcceptsHappyNames(t *testing.T) {
 
 func TestValidateRejectsBadShapes(t *testing.T) {
 	cases := map[string]string{
-		"":                     "empty",
-		"   ":                  "all whitespace",
-		"ab":                   "too short (2 chars)",
+		"":                       "empty",
+		"   ":                    "all whitespace",
+		"ab":                     "too short (2 chars)",
 		"a234567890123456789012": "too long (>20 chars)",
-		"-leading":              "leading separator",
-		"trailing-":             "trailing separator",
-		"_leading":              "leading underscore",
-		"trailing_":             "trailing underscore",
-		"12345":                 "purely digits",
-		"123-456":               "digits and separators only",
-		"---":                   "purely separators",
-		"café":                  "non-ASCII letter",
-		"名前":                    "non-ASCII (CJK)",
-		"farm!":                 "disallowed punctuation",
-		"farm@home":             "disallowed punctuation",
-		"tab\tname":             "control character",
+		"-leading":               "leading separator",
+		"trailing-":              "trailing separator",
+		"_leading":               "leading underscore",
+		"trailing_":              "trailing underscore",
+		"12345":                  "purely digits",
+		"123-456":                "digits and separators only",
+		"---":                    "purely separators",
+		"café":                   "non-ASCII letter",
+		"名前":                     "non-ASCII (CJK)",
+		"farm!":                  "disallowed punctuation",
+		"farm@home":              "disallowed punctuation",
+		"tab\tname":              "control character",
 	}
 	for in, why := range cases {
 		if _, ok := Validate(in); ok {
