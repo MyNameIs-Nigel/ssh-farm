@@ -132,7 +132,10 @@ jobs:
         # or a licence incompatible with shipping inside the published image.
         # NOTICE already carries an Apache-2.0 obligation for the bundled
         # litestream binary; a copyleft dependency arriving unnoticed is a
-        # licensing problem, not a packaging one.
+        # licensing problem, not a packaging one. Since litestream is built
+        # from source (build/litestream/go.mod), its tree is in the dependency
+        # graph too rather than hidden inside someone else's binary — so this
+        # step now reviews the licences we actually redistribute.
         #
         # ┌─ ACTION REQUIRED ────────────────────────────────────────────────┐
         # │ This step cannot work until Dependency graph is enabled:         │

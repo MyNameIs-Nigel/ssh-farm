@@ -32,8 +32,35 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
 # named volume inherits writable permissions on first use.
 RUN mkdir -p /out/data-dir && chown 65532:65532 /out/data-dir
 
-# ---- Litestream: pinned, pulled as a static binary --------------------------
-FROM litestream/litestream:0.5.12 AS litestream
+# ---- Litestream: pinned, built from source ----------------------------------
+# Upstream's prebuilt image is built against whatever Go patch release was
+# current the day that tag shipped, which made it the only thing in this image
+# we were not compiling ourselves — and, predictably, the only thing the
+# release scan ever found. 0.5.12 shipped Go 1.25.11's stdlib and a grpc /
+# x-crypto / x-net set with fixed HIGH advisories against them; `scan
+# published image` fails the release on HIGH, so a stale upstream binary was
+# holding up deploys of unrelated changes.
+#
+# Bumping the tag alone does not fix that: 0.5.17 still pins x/crypto v0.52.0,
+# x/net v0.55.0 and grpc v1.82.1, all of which have fixed HIGH advisories.
+# Building here puts litestream on the same toolchain as the game binary (so
+# stdlib fixes arrive with the builder bump above, once, for both) and lets
+# the transitive bumps that upstream has not taken yet be reviewed as a diff.
+#
+# The version and every transitive checksum live in build/litestream/go.mod
+# and go.sum — a build-only module that nothing imports. Nothing is vendored
+# and no source is patched; only dependency versions differ from upstream's.
+FROM golang:1.26.6-alpine3.23 AS litestream
+
+WORKDIR /litestream
+
+# go.mod/go.sum alone, so the dependency download caches independently of the
+# game's source tree — this stage rebuilds only when the pin changes.
+COPY build/litestream/go.mod build/litestream/go.sum ./
+RUN go mod download
+
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+        -o /out/litestream github.com/benbjohnson/litestream/cmd/litestream
 
 # ---- Runtime stage --------------------------------------------------------
 # alpine:3, not distroless: per the canonical fleet durability doc
@@ -47,7 +74,7 @@ RUN apk add --no-cache ca-certificates && \
     addgroup -g 65532 nonroot && \
     adduser -D -H -u 65532 -G nonroot nonroot
 
-COPY --from=litestream /usr/local/bin/litestream /usr/local/bin/litestream
+COPY --from=litestream /out/litestream /usr/local/bin/litestream
 COPY --from=build /out/ssh-farm /app/ssh-farm
 COPY --from=build /out/restore-check /app/restore-check
 COPY --from=build --chown=65532:65532 /out/data-dir /var/lib/farm
