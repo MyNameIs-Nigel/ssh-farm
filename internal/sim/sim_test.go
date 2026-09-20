@@ -897,8 +897,44 @@ func TestOnlineGiftArrivalRateMatchesInterval(t *testing.T) {
 	if arrivals == 0 {
 		t.Fatal("online gifts never arrive (chance floored to zero)")
 	}
-	if arrivals < want/2 || arrivals > want*2 {
-		t.Fatalf("gift arrivals = %d over %d ticks, want around %d", arrivals, ticks, want)
+	// ±25%. The band used to be half-to-double, which let the most likely
+	// rate bug of all — an interval off by a factor of two — land exactly on
+	// its own tolerance edge and pass. Sampling noise here is ~8% of want
+	// (1/sqrt(166)) and the RNG is seeded, so 25% is roughly three standard
+	// deviations of headroom while still failing a 2x drift outright.
+	if arrivals < want*3/4 || arrivals > want*5/4 {
+		t.Fatalf("gift arrivals = %d over %d ticks, want %d±25%%", arrivals, ticks, want)
+	}
+}
+
+// The offline interval governs every catch-up on connect, and until the
+// sentinel harness went looking nothing tested it — only the online one had a
+// rate test, so a change confined to the offline branch was invisible.
+func TestOfflineGiftArrivalRateMatchesInterval(t *testing.T) {
+	c := testContent(t)
+	s := newTestState(t, c)
+
+	// Each step is well over onlineTickThreshold, so every Advance takes the
+	// offline branch and rolls against OfflineIntervalSec.
+	const (
+		step   = 600
+		rounds = 10_000
+	)
+	arrivals := 0
+	for i := 0; i < rounds; i++ {
+		Advance(s, c, s.UpdatedAt+step)
+		if s.GiftPending {
+			arrivals++
+			s.GiftPending = false // unblock the next roll
+		}
+	}
+	want := rounds * step / int(c.Gifts.OfflineIntervalSec) // ~333 at 18000s
+	if arrivals == 0 {
+		t.Fatal("offline gifts never arrive")
+	}
+	if arrivals < want*3/4 || arrivals > want*5/4 {
+		t.Fatalf("gift arrivals = %d over %d offline advances of %ds, want %d±25%%",
+			arrivals, rounds, step, want)
 	}
 }
 
@@ -924,8 +960,10 @@ func TestOnlineEventRateMatchesInterval(t *testing.T) {
 	if started == 0 {
 		t.Fatal("events never start")
 	}
-	if started < want/2 || started > want*2 {
-		t.Fatalf("events started = %d over %d ticks, want around %d (mean cycle %ds)",
+	// ±25%, for the same reason as the gift-rate band above: half-to-double
+	// cannot fail a rate that is off by a factor of two.
+	if started < want*3/4 || started > want*5/4 {
+		t.Fatalf("events started = %d over %d ticks, want %d±25%% (mean cycle %ds)",
 			started, ticks, want, meanCycle)
 	}
 }
