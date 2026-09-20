@@ -74,11 +74,15 @@ func TestScriptedSequenceMatchesV1Golden(t *testing.T) {
 
 	startedAt := s.UpdatedAt
 
-	Advance(s, c, startedAt+300)
-	if _, err := Harvest(s, c, 0, startedAt+300); err != nil {
+	// Plots 0 and 1 are harvested on the exact tick their crop matures
+	// (turnip at +60, carrot at +240), so a grow time one second longer
+	// fails the harvest outright instead of being absorbed by slack.
+	Advance(s, c, startedAt+60)
+	if _, err := Harvest(s, c, 0, startedAt+60); err != nil {
 		t.Fatalf("harvest plot 0: %v", err)
 	}
-	if _, err := Harvest(s, c, 1, startedAt+300); err != nil {
+	Advance(s, c, startedAt+240)
+	if _, err := Harvest(s, c, 1, startedAt+240); err != nil {
 		t.Fatalf("harvest plot 1: %v", err)
 	}
 	if _, err := BuyPlot(s, c); err != nil {
