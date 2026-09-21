@@ -30,9 +30,23 @@ updates:
       day: monday
     labels: ["dependencies", "no-test-needed"]
 
-  # The Dockerfile's base images: golang, alpine, and the pinned litestream
-  # binary. An alpine patch release is exactly the update that never gets
-  # noticed by hand.
+  # The litestream build-only module. This used to be a docker `FROM` pin on
+  # litestream/litestream, picked up by the docker entry below; litestream is
+  # now built from source, so without this entry the pin — and every
+  # transitive dependency compiled into the binary the image ships — would
+  # silently stop being watched. Ungrouped on purpose: this tree is the one
+  # the release scan fails on, so a bump here is a release unblocker and
+  # wants to arrive as its own reviewable pull request.
+  - package-ecosystem: gomod
+    directory: /build/litestream
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "no-test-needed"]
+
+  # The Dockerfile's base images: golang and alpine. An alpine patch release
+  # is exactly the update that never gets noticed by hand.
   - package-ecosystem: docker
     directory: /
     schedule:
