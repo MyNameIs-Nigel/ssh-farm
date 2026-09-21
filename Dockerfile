@@ -11,7 +11,7 @@
 # is harmless here and nowhere near the shipped artifact: CGO_ENABLED=0 means
 # the binary links no libc, so the builder's userland contributes nothing to
 # the image beyond the Go toolchain that produced it.
-FROM golang:1.26.6-alpine3.23 AS build
+FROM golang:1.27.1-alpine3.23 AS build
 
 WORKDIR /src
 
@@ -50,7 +50,7 @@ RUN mkdir -p /out/data-dir && chown 65532:65532 /out/data-dir
 # The version and every transitive checksum live in build/litestream/go.mod
 # and go.sum — a build-only module that nothing imports. Nothing is vendored
 # and no source is patched; only dependency versions differ from upstream's.
-FROM golang:1.26.6-alpine3.23 AS litestream
+FROM golang:1.27.1-alpine3.23 AS litestream
 
 WORKDIR /litestream
 
