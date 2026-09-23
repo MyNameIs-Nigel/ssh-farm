@@ -75,7 +75,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: coverage-profile
       - name: measure
@@ -105,7 +105,7 @@ jobs:
         with:
           fetch-depth: 0 # gitleaks needs history to scan it
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -148,7 +148,7 @@ jobs:
         # exists in the tree, which says this scan has been run by hand —
         # a control that depends on somebody remembering is not a control.
         # Free for public repositories; organisations need GITLEAKS_LICENSE.
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"
@@ -178,7 +178,7 @@ jobs:
         # │ a dependency you already have has become vulnerable.             │
         # └──────────────────────────────────────────────────────────────────┘
         continue-on-error: true
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
           deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0

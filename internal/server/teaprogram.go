@@ -6,9 +6,9 @@ import (
 	"runtime"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/ssh"
 	"charm.land/wish/v2/bubbletea"
 	"github.com/charmbracelet/colorprofile"
-	"github.com/charmbracelet/ssh"
 )
 
 // newTeaProgram builds the per-session Bubble Tea program. It exists (instead

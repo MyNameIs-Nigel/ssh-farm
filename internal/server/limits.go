@@ -5,7 +5,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/charmbracelet/ssh"
+	"charm.land/ssh"
+
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
 )
 

@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/charmbracelet/ssh"
+	"charm.land/ssh"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/config"
 	"github.com/mynameis-nigel/ssh-farm/internal/content"

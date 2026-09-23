@@ -23,11 +23,20 @@ updates:
   # GitHub Actions. This is the one that matters most for a repository that
   # publishes a public image: a compromised action runs inside the job that
   # holds packages:write and the OIDC deploy role.
+  #
+  # One pull request for the lot. Every merge to main is a production deploy
+  # (release.yml), and ungrouped these arrived five at a time — all touching
+  # ci.yml, so each merge rebased the rest and re-ran their CI — which made a
+  # week of action bumps five farm restarts. The default limit of five open
+  # pull requests also meant the rest of the queue waited behind them.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
+    groups:
+      actions:
+        patterns: ["*"]
     labels: ["dependencies", "no-test-needed"]
 
   # The litestream build-only module. This used to be a docker `FROM` pin on
@@ -52,4 +61,14 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    ignore:
+      # A Go minor release is an upgrade to do on purpose, not a weekly bump.
+      # CI's setup-go reads go.mod, so bumping only the builder here ships a
+      # binary from a toolchain no test ever ran on. go.mod, both builder
+      # stages and build/litestream/go.mod move together, by hand. Patch
+      # releases, which carry the security fixes, still arrive here. Go 1.26
+      # is supported until 1.28 ships (February 2027), and govulncheck turns
+      # red on stdlib advisories if that date slips past unnoticed.
+      - dependency-name: golang
+        update-types: ["version-update:semver-minor"]
     labels: ["dependencies", "no-test-needed"]
