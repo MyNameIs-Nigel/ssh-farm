@@ -68,7 +68,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
 # a shell to seed the host key and hand off to litestream. The
 # rest of the hardening (non-root, read-only rootfs, dropped capabilities)
 # is unchanged and enforced in docker-compose.yml.
-FROM alpine:3.22
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates && \
     addgroup -g 65532 nonroot && \
