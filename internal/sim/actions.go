@@ -125,6 +125,9 @@ func ReplantAll(s *State, c *content.Content, now int64) ReplantResult {
 
 // BuyScarecrow purchases the run-scoped scarecrow that auto-shoos critters.
 func BuyScarecrow(s *State, c *content.Content) (int64, error) {
+	if s.contractBlocksScarecrow() {
+		return 0, ErrContractRestricted
+	}
 	if c.Scarecrow.Cost <= 0 {
 		return 0, ErrUnknownItem
 	}
@@ -178,6 +181,9 @@ func Harvest(s *State, c *content.Content, i int, now int64) (HarvestResult, err
 
 // BuyPlot purchases the next plot at the scaling price.
 func BuyPlot(s *State, c *content.Content) (int64, error) {
+	if s.contractCapsLand() && len(s.Plots) >= contractLeanSeasonMaxPlots {
+		return 0, ErrContractRestricted
+	}
 	cost := s.NextPlotCost(c)
 	if cost < 0 {
 		return 0, ErrMaxed
@@ -196,6 +202,9 @@ func BuyZone(s *State, c *content.Content, id string) error {
 	zone := c.ZoneByID(id)
 	if zone == nil {
 		return ErrUnknownItem
+	}
+	if s.ActiveContract == ContractLeanSeason && id == "greenhouse" {
+		return ErrContractRestricted
 	}
 	if s.Zones[id] {
 		return ErrAlreadyOwned
@@ -259,6 +268,9 @@ func UpgradePlotAuto(s *State, c *content.Content, plotIdx int, kind string) err
 	if plotIdx < 0 || plotIdx >= len(s.Plots) {
 		return ErrUnknownPlot
 	}
+	if s.contractBlocksAutomation() {
+		return ErrContractRestricted
+	}
 	plot := &s.Plots[plotIdx]
 	switch kind {
 	case "harvest":
@@ -300,6 +312,9 @@ func UpgradePlotAuto(s *State, c *content.Content, plotIdx int, kind string) err
 func SetAutoSowCrop(s *State, c *content.Content, plotIdx int, cropID string) error {
 	if plotIdx < 0 || plotIdx >= len(s.Plots) {
 		return ErrUnknownPlot
+	}
+	if s.contractBlocksAutomation() {
+		return ErrContractRestricted
 	}
 	plot := &s.Plots[plotIdx]
 	if !plot.AutoSow {
@@ -346,6 +361,9 @@ type GiftResult struct {
 
 // RedeemGift opens the pending parcel.
 func RedeemGift(s *State, c *content.Content) (GiftResult, error) {
+	if s.contractBlocksGifts() {
+		return GiftResult{}, ErrContractRestricted
+	}
 	if !s.GiftPending {
 		return GiftResult{}, ErrNoGift
 	}
@@ -353,13 +371,14 @@ func RedeemGift(s *State, c *content.Content) (GiftResult, error) {
 	s.GiftArrivedAt = 0
 
 	var res GiftResult
-	if s.Rebirths >= 1 && s.roll100() < c.Gifts.StarseedChancePct {
+	progressionRebirths := s.ProgressionRebirths()
+	if progressionRebirths >= 1 && s.roll100() < c.Gifts.StarseedChancePct {
 		base := isqrt(s.RunEarnings/c.Prestige.Divisor) + 1
 		if base < 1 {
 			base = 1
 		}
-		res.Starseeds = base + s.Rebirths
-		s.PrestigeCurrency = satAdd(s.PrestigeCurrency, res.Starseeds)
+		res.Starseeds = base + progressionRebirths
+		s.creditStarseeds(res.Starseeds)
 	} else {
 		res.Coins = giftCoinReward(s, c)
 		s.credit(res.Coins)
@@ -369,7 +388,7 @@ func RedeemGift(s *State, c *content.Content) (GiftResult, error) {
 
 func giftCoinReward(s *State, c *content.Content) int64 {
 	base := isqrt(s.RunEarnings/10) + 10
-	base += s.Rebirths * 50
+	base += s.ProgressionRebirths() * 50
 	if base < c.Gifts.CoinRewardFloor {
 		base = c.Gifts.CoinRewardFloor
 	}
@@ -422,6 +441,10 @@ func Rebirth(s *State, c *content.Content, now int64) (int64, error) {
 	}
 	gain := s.PrestigeGain(c)
 	s.PrestigeCurrency = satAdd(s.PrestigeCurrency, gain)
+	if s.ActiveContract != "" {
+		s.ContractStarseeds = satAdd(s.ContractStarseeds, gain)
+		s.ContractRebirths = satAdd(s.ContractRebirths, 1)
+	}
 	s.Rebirths++
 
 	s.Coins = startCoins(c, s.Upgrades)
@@ -437,6 +460,7 @@ func Rebirth(s *State, c *content.Content, now int64) (int64, error) {
 	s.EventStartedAt = 0
 	s.EventEndsAt = 0
 	s.UpdatedAt = now
+	s.checkContractCompletion()
 	return gain, nil
 }
 

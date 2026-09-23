@@ -104,7 +104,7 @@ func (m *Manager) Attach(ctx context.Context, id identity.SessionIdentity, publi
 			if err != nil {
 				return store.FreshSave{}, err
 			}
-			return store.FreshSave{State: payload, Version: state.Version, Coins: state.Coins, LifetimeEarnings: state.LifetimeEarnings, Rebirths: state.Rebirths, FarmName: state.FarmName}, nil
+			return store.FreshSave{State: payload, Version: state.Version, Coins: state.Coins, LifetimeEarnings: state.LifetimeEarnings, Rebirths: state.Rebirths, FarmName: state.FarmName, ContractsCompleted: state.ContractsCompleted, LeaderboardNameStyle: state.LeaderboardNameStyle}, nil
 		})
 		if err != nil {
 			return AttachResult{}, err

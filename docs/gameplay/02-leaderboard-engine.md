@@ -69,8 +69,11 @@ state.
 ```go
 type Row struct {
     Rank        int
-    DisplayName string // moderated name; empty → "FARM ·suffix" fallback (gameplay/03)
-    Suffix      string // 5-char fingerprint suffix, always shown
+    DisplayName       string // moderated name; empty → FARM fallback
+    Suffix            string // 5-char fingerprint suffix
+    ShowSuffix        bool   // duplicate display name or generic fallback
+    ContractsCompleted int   // clamped 0..3; one public seal each
+    NameStyle          string // earned static color or purple wave
     Coins       int64  // lifetime coin earnings, not current balance
     Rebirths    int64
     IsYou       bool
@@ -106,6 +109,13 @@ Get(ctx, you SaveRef) (Board, error)
 - The only manipulation surface is *names* (gameplay/03's problem) and
   *slot multiplication* (accepted: more farms = more work, no advantage
   per farm).
+
+### Contract metadata
+
+Migration 6 denormalizes contract completion count and selected name style.
+Snapshot rebuilds moderate every display name first, then mark every member of
+a duplicate-name group with `ShowSuffix`; unnamed generic fallbacks always set
+it. The engine never decodes save blobs.
 
 ## Acceptance criteria
 

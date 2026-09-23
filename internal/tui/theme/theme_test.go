@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -276,5 +277,56 @@ func TestPaintUsesTheThemeBackground(t *testing.T) {
 	day := New(PhaseDay, false, "").Paint("x")
 	if night == day {
 		t.Fatal("Paint emitted identical output for night and day — the palette is not being used")
+	}
+}
+
+// The leaderboard name styles are methods rather than fields, so the
+// anti-hole test above cannot see them; they get the same guarantee here.
+func TestLeaderboardNameStylesCarryTheCanvasBackground(t *testing.T) {
+	for _, p := range []Phase{PhaseDawn, PhaseDay, PhaseDusk, PhaseNight} {
+		th := New(p, false, "market_day")
+		styles := map[string]lipgloss.Style{}
+		for id := range leaderboardNameColors {
+			st, ok := th.LeaderboardName(id)
+			if !ok {
+				t.Fatalf("LeaderboardName(%q) not found", id)
+			}
+			styles[id] = st
+		}
+		for step := range NameWavePeriod {
+			styles["wave "+strconv.Itoa(step)] = th.NameWave(step)
+		}
+		for name, st := range styles {
+			if st.GetBackground() != th.Bg {
+				t.Errorf("phase %v: %s does not paint the canvas background", p, name)
+			}
+		}
+	}
+	if _, ok := New(PhaseDay, false, "").LeaderboardName(""); ok {
+		t.Error("the traditional style must fall through to the row's own colours")
+	}
+}
+
+// The wave runs out along the ramp and back, so neighbouring characters and
+// neighbouring frames never jump more than one stop, and any step is valid.
+func TestNameWaveIsAContinuousLoop(t *testing.T) {
+	th := New(PhaseNight, false, "")
+	stop := func(step int) int {
+		fg := th.NameWave(step).GetForeground()
+		for i, c := range nameWaveStops {
+			if lipgloss.Color(c) == fg {
+				return i
+			}
+		}
+		t.Fatalf("step %d: colour is not a ramp stop", step)
+		return -1
+	}
+	for step := -NameWavePeriod; step < 2*NameWavePeriod; step++ {
+		if d := stop(step+1) - stop(step); d != 1 && d != -1 {
+			t.Fatalf("step %d→%d jumps %d stops", step, step+1, d)
+		}
+		if stop(step) != stop(step+NameWavePeriod) {
+			t.Fatalf("step %d does not repeat after one period", step)
+		}
 	}
 }

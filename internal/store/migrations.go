@@ -78,6 +78,17 @@ var migrations = []string{
 	// mid-burst at migration time, and starting everyone with a full
 	// allowance is the generous direction to be wrong in.
 	`ALTER TABLE saves ADD COLUMN rename_burst_count INTEGER NOT NULL DEFAULT 0;`,
+
+	// v6 (gameplay/contracts): leaderboard-visible contract rewards are
+	// denormalized beside the existing ranking fields. Existing contract
+	// prototypes may already have these additive values in their JSON blob,
+	// so preserve them during rollout; all older saves correctly default to
+	// no completed contracts and the traditional name style.
+	`ALTER TABLE saves ADD COLUMN contracts_completed INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE saves ADD COLUMN leaderboard_name_style TEXT NOT NULL DEFAULT '';
+	UPDATE saves SET
+		contracts_completed = CASE WHEN json_valid(state) THEN COALESCE(json_extract(state, '$.contracts_completed'), 0) ELSE 0 END,
+		leaderboard_name_style = CASE WHEN json_valid(state) THEN COALESCE(json_extract(state, '$.leaderboard_name_style'), '') ELSE '' END;`,
 }
 
 func (st *Store) migrate(ctx context.Context) error {

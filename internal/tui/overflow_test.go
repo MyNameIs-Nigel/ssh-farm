@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
+	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 )
 
 // designGame returns a game rendered at the maximum canvas size. The canvas
@@ -60,6 +61,8 @@ func TestScreenBodiesFitContentWidth(t *testing.T) {
 		{"board-populated", func() { g.scr = scrBoard; g.lbErr = nil; g.lbBoard = wideBoardFixture() }},
 		{"help-controls", func() { g.scr = scrHelp; g.helpPage = 0 }},
 		{"help-gameplay", func() { g.scr = scrHelp; g.helpPage = 1 }},
+		{"contracts", func() { g.scr = scrContracts }},
+		{"contracts-active", func() { g.scr = scrContracts; g.snap.State.ActiveContract = sim.ContractClockworkDenied }},
 	}
 	for _, c := range cases {
 		c.setup()
@@ -108,7 +111,11 @@ func TestOverlayBoxesFitContentWidth(t *testing.T) {
 		{"config", ovConfig},
 		{"replant-warn", ovReplantWarn},
 		{"kicked", ovKicked},
+		{"contract-confirm", ovContractConfirm},
+		{"contract-reward", ovContractReward},
 	}
+	// The longest terms and reward in the campaign.
+	g.contractID, g.completedContract = sim.ContractClockworkDenied, sim.ContractLeanSeason
 	for _, o := range overlays {
 		g.overlay = o.ov
 		assertFits(t, "overlay "+o.name, g.overlayBox(), limit)
@@ -212,6 +219,8 @@ func TestScreenBodiesFitContentWidthAtStockSize(t *testing.T) {
 		{"board-error", func() { g.scr = scrBoard; g.lbErr = errBoardUnavailable }},
 		{"board-populated", func() { g.scr = scrBoard; g.lbErr = nil; g.lbBoard = wideBoardFixture() }},
 		{"help", func() { g.scr = scrHelp }},
+		{"contracts", func() { g.scr = scrContracts }},
+		{"contracts-active", func() { g.scr = scrContracts; g.snap.State.ActiveContract = sim.ContractClockworkDenied }},
 	}
 	for _, c := range cases {
 		c.setup()
@@ -236,7 +245,10 @@ func TestOverlayBoxesFitContentWidthAtStockSize(t *testing.T) {
 		{"config", ovConfig},
 		{"replant-warn", ovReplantWarn},
 		{"kicked", ovKicked},
+		{"contract-confirm", ovContractConfirm},
+		{"contract-reward", ovContractReward},
 	} {
+		g.contractID, g.completedContract = sim.ContractClockworkDenied, sim.ContractLeanSeason
 		g.overlay = o.ov
 		assertFits(t, "stock overlay "+o.name, g.overlayBox(), limit)
 	}

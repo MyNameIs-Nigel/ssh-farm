@@ -40,6 +40,12 @@ type Session struct {
 type Snapshot struct {
 	State *sim.State
 	Now   int64
+	// ContractCompleted is set on exactly the snapshot whose call finished a
+	// contract, whether an action or a tick's catch-up crossed the goal. It
+	// is an explicit signal rather than a diff against the previous snapshot
+	// because the UI's first snapshot is a placeholder, and diffing against
+	// it would announce every earned seal again on each connect.
+	ContractCompleted sim.ContractID
 }
 
 // Kicked yields the takeover/shutdown notice for this session.
@@ -72,7 +78,7 @@ func (s *Session) Advance(now int64) (Snapshot, sim.Events, error) {
 		if ev.Elapsed > 0 {
 			s.actor.dirty = true
 		}
-		snap = Snapshot{State: s.actor.state.Clone(), Now: now}
+		snap = Snapshot{State: s.actor.state.Clone(), Now: now, ContractCompleted: ev.ContractCompleted}
 	})
 	if !ok {
 		return Snapshot{}, sim.Events{}, ErrSessionClosed
@@ -86,6 +92,7 @@ func (s *Session) intent(now int64, apply func(st *sim.State) error) (Snapshot, 
 	var actErr error
 	ok := s.actor.do(func() {
 		c := s.actor.content()
+		active, done := s.actor.state.ActiveContract, s.actor.state.ContractsCompleted
 		ev := sim.Advance(s.actor.state, c, now)
 		if ev.Elapsed > 0 {
 			s.actor.dirty = true
@@ -96,6 +103,9 @@ func (s *Session) intent(now int64, apply func(st *sim.State) error) (Snapshot, 
 			newly = s.actor.state.CheckAchievements(c, now)
 		}
 		snap = Snapshot{State: s.actor.state.Clone(), Now: now}
+		if s.actor.state.ContractsCompleted > done {
+			snap.ContractCompleted = active
+		}
 	})
 	if !ok {
 		return Snapshot{}, nil, ErrSessionClosed
@@ -324,6 +334,28 @@ func (s *Session) Rebirth(now int64) (int64, Snapshot, []string, error) {
 		return rerr
 	})
 	return gain, snap, newly, err
+}
+
+// StartContract accepts the next contract in the fixed campaign order.
+func (s *Session) StartContract(now int64, id sim.ContractID) (Snapshot, []string, error) {
+	return s.intent(now, func(st *sim.State) error {
+		return sim.StartContract(st, s.actor.content(), id, now)
+	})
+}
+
+// AbandonContract discards the active attempt and returns to a fresh farm.
+func (s *Session) AbandonContract(now int64) (Snapshot, []string, error) {
+	return s.intent(now, func(st *sim.State) error {
+		return sim.AbandonContract(st, s.actor.content(), now)
+	})
+}
+
+// SetLeaderboardNameStyle selects one of the contract-earned cosmetics.
+func (s *Session) SetLeaderboardNameStyle(now int64, style string) (Snapshot, error) {
+	snap, _, err := s.intent(now, func(st *sim.State) error {
+		return sim.SetLeaderboardNameStyle(st, style)
+	})
+	return snap, err
 }
 
 // SetFlavor toggles ambient discoveries for this save.

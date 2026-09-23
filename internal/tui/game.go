@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
@@ -77,6 +78,7 @@ const (
 	scrStats
 	scrBoard
 	scrHelp
+	scrContracts // reached from StarShop; deliberately absent from screenOrder/nav
 )
 
 var screenOrder = []screen{scrFarm, scrMarket, scrLand, scrRebirth, scrStarShop, scrStats, scrBoard, scrHelp}
@@ -99,6 +101,8 @@ const (
 	ovName
 	ovConfig
 	ovReplantWarn
+	ovContractConfirm
+	ovContractReward
 	ovKicked
 )
 
@@ -111,8 +115,9 @@ type notice struct {
 }
 
 type (
-	tickMsg   time.Time
-	kickedMsg string
+	tickMsg      time.Time
+	boardAnimMsg time.Time
+	kickedMsg    string
 )
 
 // Game is the root model for one connected session.
@@ -126,23 +131,37 @@ type Game struct {
 	width  int
 	height int
 
-	scr           screen
-	overlay       overlay
-	cursor        int
-	pickerIdx     int
-	pickerAutoSow bool // picker is choosing an auto-sow queue, not planting now
-	marketIdx     int
-	upgradeIdx    int
-	progressIdx   int
-	helpPage      int
-	helpScroll    int
-	nameInput     string
+	scr               screen
+	overlay           overlay
+	cursor            int
+	pickerIdx         int
+	pickerAutoSow     bool // picker is choosing an auto-sow queue, not planting now
+	marketIdx         int
+	upgradeIdx        int
+	progressIdx       int
+	helpPage          int
+	helpScroll        int
+	nameInput         string
+	contractIdx       int
+	contractID        sim.ContractID
+	contractAbandon   bool
+	completedContract sim.ContractID
+	// pendingReward is a contract completion waiting for the screen to be
+	// free of other modals; see showPendingReward.
+	pendingReward sim.ContractID
 
-	board         *leaderboard.Engine
-	lbBoard       leaderboard.Board
-	lbErr         error
-	lbNextRefresh int64
-	lbScroll      int
+	board            *leaderboard.Engine
+	lbBoard          leaderboard.Board
+	lbErr            error
+	lbNextRefresh    int64
+	lbScroll         int
+	boardAnimPhase   int
+	boardAnimRunning bool
+	// limitedColor is set from the program's ColorProfileMsg when the
+	// terminal has fewer than 256 colours; the name wave then holds still.
+	// The server currently forces TrueColor for every session, so this is
+	// the fallback for any host that stops doing so.
+	limitedColor bool
 
 	tutorialPage int
 	tutorialSkip bool
@@ -196,6 +215,7 @@ func NewGame(id identity.SessionIdentity, res game.AttachResult, c *content.Cont
 		g.away = res.Away
 		g.overlay = ovAway
 	}
+	g.announceContract(res.Away.ContractCompleted)
 	return g
 }
 
@@ -214,6 +234,10 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
+func boardAnimCmd() tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(t time.Time) tea.Msg { return boardAnimMsg(t) })
+}
+
 func (g *Game) waitKick() tea.Cmd {
 	return func() tea.Msg {
 		reason, ok := <-g.sess.Kicked()
@@ -225,6 +249,12 @@ func (g *Game) waitKick() tea.Cmd {
 }
 
 func (g *Game) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m, cmd := g.update(msg)
+	g.showPendingReward()
+	return m, cmd
+}
+
+func (g *Game) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		g.width, g.height = msg.Width, msg.Height
@@ -256,11 +286,24 @@ func (g *Game) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		g.snap = snap
 		g.eventNotices(ev)
+		g.announceContract(snap.ContractCompleted)
 		g.pruneNotices()
 		if g.scr == scrBoard && g.now >= g.lbNextRefresh {
 			g.refreshBoard()
 		}
-		return g, tickCmd()
+		return g, tea.Batch(tickCmd(), g.startBoardAnimation())
+
+	case tea.ColorProfileMsg:
+		g.limitedColor = msg.Profile < colorprofile.ANSI256
+		return g, nil
+
+	case boardAnimMsg:
+		if !g.boardAnimates() {
+			g.boardAnimRunning = false
+			return g, nil
+		}
+		g.boardAnimPhase++
+		return g, boardAnimCmd()
 
 	case tea.KeyPressMsg:
 		g.lastInput = g.now
@@ -304,6 +347,11 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return g.handleConfigKey(key)
 	case ovReplantWarn:
 		return g.handleReplantWarnKey(key)
+	case ovContractConfirm:
+		return g.handleContractConfirmKey(key)
+	case ovContractReward:
+		g.overlay = ovNone
+		return g, nil
 	}
 
 	// Global keys.
@@ -339,18 +387,16 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "7":
 		g.scr = scrBoard
 		g.refreshBoard()
-		return g, nil
+		return g, g.startBoardAnimation()
 	case "?":
 		g.scr = scrHelp
 		g.helpPage = 0
 		g.helpScroll = 0
 		return g, nil
 	case "tab":
-		g.cycleScreen(true)
-		return g, nil
+		return g, g.cycleScreen(true)
 	case "shift+tab":
-		g.cycleScreen(false)
-		return g, nil
+		return g, g.cycleScreen(false)
 	}
 
 	switch g.scr {
@@ -393,10 +439,13 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			g.clampHelpScroll()
 		}
 	}
+	if g.scr == scrContracts {
+		return g.handleContractsKey(key)
+	}
 	return g, nil
 }
 
-func (g *Game) cycleScreen(forward bool) {
+func (g *Game) cycleScreen(forward bool) tea.Cmd {
 	for i, s := range screenOrder {
 		if s == g.scr {
 			if forward {
@@ -410,10 +459,12 @@ func (g *Game) cycleScreen(forward bool) {
 			}
 			if g.scr == scrBoard {
 				g.refreshBoard()
+				return g.startBoardAnimation()
 			}
-			return
+			return nil
 		}
 	}
+	return nil
 }
 
 func (g *Game) handleFarmKey(key string) (tea.Model, tea.Cmd) {
@@ -634,6 +685,12 @@ func (g *Game) handlePickerKey(key string) (tea.Model, tea.Cmd) {
 
 func (g *Game) handleUpgradeKey(key string) (tea.Model, tea.Cmd) {
 	st := g.snap.State
+	if st.ActiveContract == sim.ContractBareHands || st.ActiveContract == sim.ContractClockworkDenied {
+		if key == "esc" || key == "q" {
+			g.overlay = ovNone
+		}
+		return g, nil
+	}
 	switch key {
 	case "esc", "q":
 		g.overlay = ovNone
@@ -677,6 +734,10 @@ func (g *Game) handleMarketKey(key string) (tea.Model, tea.Cmd) {
 			return g, nil
 		}
 		it := items[g.marketIdx]
+		if it.lockReason != "" {
+			g.addNotice(sanitizeText(it.name) + " is " + it.lockReason + ".")
+			return g, nil
+		}
 		now := g.now
 		var (
 			snap game.Snapshot
@@ -728,20 +789,27 @@ func (g *Game) handleRebirthKey(key string) (tea.Model, tea.Cmd) {
 
 func (g *Game) handleStarShopKey(key string) (tea.Model, tea.Cmd) {
 	st := g.snap.State
-	if st.Rebirths < 1 {
+	if st.ProgressionRebirths() < 1 && !st.ContractsAvailable(g.content) {
 		return g, nil
 	}
 	ups := g.content.Upgrades
+	g.progressIdx = clamp(g.progressIdx, 0, g.starShopRowCount()-1)
 	switch key {
+	case "c":
+		g.openContracts()
 	case "up", "k":
 		if g.progressIdx > 0 {
 			g.progressIdx--
 		}
 	case "down", "j":
-		if g.progressIdx < len(ups)-1 {
+		if g.progressIdx < g.starShopRowCount()-1 {
 			g.progressIdx++
 		}
 	case "enter", "space", " ", "b":
+		if g.progressIdx == contractsRowIdx(g.content) {
+			g.openContracts()
+			return g, nil
+		}
 		if g.progressIdx >= len(ups) {
 			return g, nil
 		}
@@ -751,6 +819,88 @@ func (g *Game) handleStarShopKey(key string) (tea.Model, tea.Cmd) {
 		if err == nil {
 			g.addNotice(sanitizeText(u.Name) + " is now level " + itoa(g.snap.State.UpgradeLevel(u.ID)) + ".")
 		}
+	}
+	return g, nil
+}
+
+// contractsRowIdx is the StarShop row index of the Contracts entry, which
+// sits directly after the lifetime upgrades (gameplay/04: no ninth nav tab).
+func contractsRowIdx(c *content.Content) int { return len(c.Upgrades) }
+
+// starShopRowCount is how many StarShop rows the cursor can land on.
+func (g *Game) starShopRowCount() int {
+	if g.snap.State.ContractsAvailable(g.content) {
+		return len(g.content.Upgrades) + 1
+	}
+	return len(g.content.Upgrades)
+}
+
+// openContracts moves to the Contracts screen with the next contract (or
+// the last one, once the campaign is done) under the cursor.
+func (g *Game) openContracts() {
+	st := g.snap.State
+	if !st.ContractsAvailable(g.content) {
+		return
+	}
+	g.scr = scrContracts
+	g.contractIdx = clamp(st.ContractsCompleted, 0, len(sim.Contracts())-1)
+}
+
+func (g *Game) handleContractsKey(key string) (tea.Model, tea.Cmd) {
+	contracts := sim.Contracts()
+	switch key {
+	case "esc", "q":
+		g.scr = scrStarShop
+	case "up", "k":
+		g.contractIdx = max(g.contractIdx-1, 0)
+	case "down", "j":
+		g.contractIdx = min(g.contractIdx+1, len(contracts)-1)
+	case "enter", "space", " ":
+		if g.snap.State.ActiveContract != "" {
+			return g, nil
+		}
+		if g.contractIdx == g.snap.State.ContractsCompleted && g.contractIdx < len(contracts) {
+			g.contractID = contracts[g.contractIdx].ID
+			g.contractAbandon = false
+			g.overlay = ovContractConfirm
+		}
+	case "a", "A":
+		if g.snap.State.ActiveContract != "" {
+			g.contractID = g.snap.State.ActiveContract
+			g.contractAbandon = true
+			g.overlay = ovContractConfirm
+		}
+	}
+	return g, nil
+}
+
+func (g *Game) handleContractConfirmKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "y", "Y":
+		if g.contractAbandon {
+			snap, ach, err := g.sess.AbandonContract(g.now)
+			// The catch-up before the abandon can cross the goal, leaving
+			// nothing to abandon: the reward is the news, not a refusal.
+			won := errors.Is(err, sim.ErrNoActiveContract) && snap.ContractCompleted != ""
+			if won {
+				err = nil
+			}
+			g.applyAction(snap, ach, err)
+			if err == nil && !won {
+				g.addNotice("Contract abandoned. The farm begins fresh.")
+			}
+		} else {
+			snap, ach, err := g.sess.StartContract(g.now, g.contractID)
+			g.applyAction(snap, ach, err)
+			if err == nil {
+				g.scr = scrFarm
+				g.cursor = 0
+				g.addNotice("Contract accepted. The farm begins fresh.")
+			}
+		}
+		g.overlay = ovNone
+	case "n", "N", "esc", "q":
+		g.overlay = ovNone
 	}
 	return g, nil
 }
@@ -779,6 +929,19 @@ func (g *Game) handleStatsKey(key string) (tea.Model, tea.Cmd) {
 	case "n":
 		g.nameInput = g.snap.State.FarmName
 		g.overlay = ovName
+	case "l":
+		styles := g.snap.State.AvailableLeaderboardNameStyles()
+		if len(styles) > 1 {
+			next := 0
+			for i, style := range styles {
+				if style == g.snap.State.LeaderboardNameStyle {
+					next = (i + 1) % len(styles)
+					break
+				}
+			}
+			snap, err := g.sess.SetLeaderboardNameStyle(g.now, styles[next])
+			g.applyAction(snap, nil, err)
+		}
 	}
 	return g, nil
 }
@@ -827,6 +990,37 @@ func (g *Game) refreshBoard() {
 	}
 	g.lbNextRefresh = g.now + boardRefreshSeconds
 	g.clampBoardScroll()
+}
+
+// nameWaveStaticStep is the wave stop shown when the terminal cannot draw
+// the ramp: its most saturated purple.
+const nameWaveStaticStep = 3
+
+// boardAnimates reports whether the wave tick should run right now.
+func (g *Game) boardAnimates() bool {
+	return g.scr == scrBoard && !g.limitedColor && g.boardHasAnimatedName()
+}
+
+func (g *Game) boardHasAnimatedName() bool {
+	for _, rows := range [][]leaderboard.Row{g.lbBoard.Top, g.lbBoard.Window} {
+		for _, r := range rows {
+			if r.NameStyle == sim.NameStylePurpleWave {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// startBoardAnimation starts the wave's tick chain, at most one at a time,
+// and only while the Board is on screen: the 1 Hz tick calls this on every
+// screen, and the cached board may still hold a wave row after you leave.
+func (g *Game) startBoardAnimation() tea.Cmd {
+	if g.boardAnimRunning || !g.boardAnimates() {
+		return nil
+	}
+	g.boardAnimRunning = true
+	return boardAnimCmd()
 }
 
 // boardLine is one rendered line of the board's scrollable region, paired
@@ -890,33 +1084,75 @@ func (g *Game) boardRowLine(r leaderboard.Row, cw, rankWidth int) string {
 		rank = strings.Repeat(" ", pad) + rank
 	}
 	prefix := marker + "#" + rank + "  "
-	suffix := " ·" + r.Suffix
+	seals := strings.Repeat("◆", clamp(r.ContractsCompleted, 0, 3))
+	if seals != "" {
+		seals += " "
+	}
+	suffix := ""
+	if r.ShowSuffix {
+		suffix = " (" + r.Suffix + ")"
+	}
 	rebirth := " ↻ " + money(r.Rebirths)
 	youMarker := ""
 	if r.IsYou {
 		youMarker = "  ← YOU"
 	}
 	right := "◈ " + money(r.Coins)
-	fixedWidth := lipgloss.Width(prefix) + lipgloss.Width(suffix) + lipgloss.Width(rebirth) +
+	fixedWidth := lipgloss.Width(prefix) + lipgloss.Width(seals) + lipgloss.Width(suffix) + lipgloss.Width(rebirth) +
 		lipgloss.Width(youMarker) + lipgloss.Width(right) + 1
 	nameWidth := cw - fixedWidth
 	if nameWidth < 1 {
 		nameWidth = 1
 	}
-	left := prefix + truncate(sanitizeText(name), nameWidth) + suffix + rebirth + youMarker
-	line := alignSides(left, right, cw)
+	name = truncate(sanitizeText(name), nameWidth)
+	// Laid out unstyled first: alignSides may truncate, and truncate cuts by
+	// rune, which would split an escape sequence.
+	line := alignSides(prefix+seals+name+suffix+rebirth+youMarker, right, cw)
+
+	rowStyle := th.Value
 	switch {
 	case r.IsYou:
-		return th.Selected.Render(line)
+		rowStyle = th.Selected
 	case r.Rank == 1:
-		return th.BoardGold.Render(line)
+		rowStyle = th.BoardGold
 	case r.Rank == 2:
-		return th.BoardSilver.Render(line)
+		rowStyle = th.BoardSilver
 	case r.Rank == 3:
-		return th.BoardBronze.Render(line)
-	default:
-		return th.Value.Render(line)
+		rowStyle = th.BoardBronze
 	}
+	// An earned name style colours the name alone. Its span has to close the
+	// row's style and reopen it afterwards: a styled span nested inside one
+	// Render ends in a reset, and everything after it (suffix, rebirths, the
+	// YOU marker, the coins) would fall back to the canvas default.
+	start := len(prefix) + len(seals)
+	end := start + len(name)
+	if r.NameStyle == sim.NameStyleTraditional || end > len(line) || line[start:end] != name {
+		return rowStyle.Render(line)
+	}
+	return rowStyle.Render(line[:start]) + g.renderBoardName(name, r.NameStyle, rowStyle) + rowStyle.Render(line[end:])
+}
+
+// renderBoardName applies a contract-earned name style. The result is
+// exactly as wide as name, so alignment and hitboxes never move between
+// animation frames. Unknown styles fall back to the row's own treatment.
+func (g *Game) renderBoardName(name, style string, rowStyle lipgloss.Style) string {
+	th := g.theme()
+	if s, ok := th.LeaderboardName(style); ok {
+		return s.Render(name)
+	}
+	if style != sim.NameStylePurpleWave {
+		return rowStyle.Render(name)
+	}
+	if g.limitedColor {
+		// A 16-colour terminal would quantise the ramp into a flicker
+		// between two unrelated colours; one steady purple reads better.
+		return th.NameWave(nameWaveStaticStep).Render(name)
+	}
+	var b strings.Builder
+	for i, r := range []rune(name) {
+		b.WriteString(th.NameWave(i + g.boardAnimPhase).Render(string(r)))
+	}
+	return b.String()
 }
 
 // boardHeaderLine is the one line that must never scroll away: the title
@@ -1097,11 +1333,38 @@ func (g *Game) applyAction(snap game.Snapshot, ach []string, err error) {
 		g.addNotice("Hmm: " + err.Error() + ".")
 		if snap.State != nil {
 			g.snap = snap
+			// The catch-up before a refused action can still cross a goal
+			// (abandoning just as the last coins land, say).
+			g.announceContract(snap.ContractCompleted)
 		}
 		return
 	}
 	g.snap = snap
+	g.announceContract(snap.ContractCompleted)
 	g.achievementNotices(ach)
+}
+
+// announceContract queues the reward for a contract the latest call
+// completed. It is shown by showPendingReward rather than here: the handler
+// that made the call often closes its own modal afterwards (rebirth's
+// confirm, the only way Clockwork Denied can finish), and would close the
+// reward along with it.
+func (g *Game) announceContract(id sim.ContractID) {
+	if id != "" {
+		g.pendingReward = id
+	}
+}
+
+// showPendingReward opens a queued contract reward once nothing else is on
+// screen, so it follows the welcome-back summary or whatever modal the
+// winning action came from. It runs after every Update.
+func (g *Game) showPendingReward() {
+	if g.pendingReward == "" || g.overlay != ovNone {
+		return
+	}
+	g.completedContract = g.pendingReward
+	g.pendingReward = ""
+	g.overlay = ovContractReward
 }
 
 func (g *Game) achievementNotices(ids []string) {
@@ -1192,6 +1455,7 @@ type marketItem struct {
 	locked         bool
 	gate           content.Unlock
 	level, maxLvl  int
+	lockReason     string
 }
 
 func (g *Game) marketItems() []marketItem {
@@ -1217,16 +1481,20 @@ func (g *Game) marketItems() []marketItem {
 		})
 	}
 	if g.content.Scarecrow.Cost > 0 {
+		blocked := st.ActiveContract == sim.ContractClockworkDenied
 		items = append(items, marketItem{
 			id: "scarecrow", name: "Scarecrow",
 			desc: "Auto-shoos critters for coins; trickles a little while you're away.",
 			cost: g.content.Scarecrow.Cost, kind: "scarecrow", owned: st.Scarecrow,
+			locked: blocked, lockReason: "disabled by Clockwork Denied",
 		})
 	}
 	for _, z := range g.content.Zones {
+		blocked := st.ActiveContract == sim.ContractLeanSeason && z.ID == "greenhouse"
 		items = append(items, marketItem{
 			id: z.ID, name: z.Name, desc: z.Description, cost: z.Cost, kind: "zone",
-			owned: st.Zones[z.ID], locked: !st.Unlocked(z.Unlock), gate: z.Unlock,
+			owned: st.Zones[z.ID], locked: blocked || !st.Unlocked(z.Unlock), gate: z.Unlock,
+			lockReason: map[bool]string{true: "disabled by Lean Season"}[blocked],
 		})
 	}
 	return items
@@ -1313,6 +1581,8 @@ func (g *Game) marketItemRow(i int, it marketItem, st *sim.State) string {
 		switch {
 		case it.owned:
 			return marker + th.Ready.Render("✓ "+line+"  owned")
+		case it.locked:
+			return marker + th.Locked.Render(line+"  🔒 "+it.lockReason)
 		case st.Coins < it.cost:
 			return marker + th.Locked.Render(line+"  "+money(it.cost)+"c")
 		default:
@@ -1326,7 +1596,11 @@ func (g *Game) marketItemRow(i int, it marketItem, st *sim.State) string {
 		case it.locked:
 			// The gate reason is the first thing to go on a narrow terminal:
 			// the item name matters more than why it is locked.
-			return marker + th.Locked.Render(fitWidth(line+"  🔒 "+g.gateText(it.gate),
+			reason := it.lockReason
+			if reason == "" {
+				reason = g.gateText(it.gate)
+			}
+			return marker + th.Locked.Render(fitWidth(line+"  🔒 "+reason,
 				g.contentWidth()-lipgloss.Width(marker)))
 		case st.Coins < it.cost:
 			return marker + th.Locked.Render(line+"  (can't afford)")
@@ -1349,7 +1623,7 @@ const noShopItem = -1
 func (g *Game) starShopLines() []starShopLine {
 	th := g.theme()
 	st := g.snap.State
-	if st.Rebirths < 1 {
+	if st.ProgressionRebirths() < 1 && !st.ContractsAvailable(g.content) {
 		hint := centerWrap(g.contentWidth(), "The cosmos keeps its deeper rewards for those who begin anew.")
 		return []starShopLine{
 			{text: th.Section.Render("StarShop"), idx: noShopItem},
@@ -1364,7 +1638,7 @@ func (g *Game) starShopLines() []starShopLine {
 	lines = append(lines, starShopLine{text: th.Section.Render("StarShop — " + g.starseedLabel()), idx: noShopItem})
 	lines = append(lines, starShopLine{idx: noShopItem})
 	lines = append(lines, starShopLine{text: "  Balance: " + th.Value.Render("✦ "+money(st.PrestigeCurrency)), idx: noShopItem})
-	lines = append(lines, starShopLine{text: "  Rebirths: " + th.Value.Render(money(st.Rebirths)), idx: noShopItem})
+	lines = append(lines, starShopLine{text: "  Rebirths this run: " + th.Value.Render(money(st.ProgressionRebirths())), idx: noShopItem})
 	lines = append(lines, starShopLine{idx: noShopItem})
 	lines = append(lines, starShopLine{text: th.Section.Render("Lifetime upgrades"), idx: noShopItem})
 
@@ -1388,9 +1662,41 @@ func (g *Game) starShopLines() []starShopLine {
 		}
 		lines = append(lines, starShopLine{text: row, idx: i})
 	}
+	if st.ContractsAvailable(g.content) {
+		marker := "  "
+		idx := contractsRowIdx(g.content)
+		if g.progressIdx == idx {
+			marker = th.Selected.Render("▸ ")
+		}
+		lines = append(lines, starShopLine{idx: noShopItem})
+		lines = append(lines, starShopLine{
+			text: marker + th.Ready.Render(alignSides("◆ Contracts — "+g.contractsSummary(), "open ›", lineWidth)),
+			idx:  idx,
+		})
+	}
 	return lines
+}
+
+// contractsSummary is the StarShop Contracts row's one-line status.
+func (g *Game) contractsSummary() string {
+	st := g.snap.State
+	switch {
+	case st.ActiveContract != "":
+		return contractName(st.ActiveContract) + " " + g.contractProgress(st.ActiveContract)
+	case st.ContractsCompleted >= len(sim.Contracts()):
+		return "campaign complete"
+	default:
+		return itoa(st.ContractsCompleted) + "/" + itoa(len(sim.Contracts())) + " complete"
+	}
 }
 
 func itoa(n int) string {
 	return money(int64(n))
+}
+
+func contractName(id sim.ContractID) string {
+	if contract, ok := sim.ContractByID(id); ok {
+		return contract.Name
+	}
+	return "this contract"
 }

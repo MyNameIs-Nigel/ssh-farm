@@ -1,7 +1,16 @@
 # ssh-farm — V2 Vision & Scope
 
-Shared context for every task; not itself a task. Read alongside
-`../../ssh-idlefarmer/CLAUDE.md` (the v1 architecture summary).
+This is the historical scope contract for the completed v2 port. Read it
+alongside `../../ssh-idlefarmer/CLAUDE.md` when changing behavior covered by
+the parity promise. Additive post-v2 work is documented separately; the first
+shipped endgame system is `gameplay/04-contracts.md`.
+
+## Current state
+
+The port, arcade identity, mouse support, lifetime-earnings leaderboard,
+moderated farm names, Litestream durability, painted day/night interface,
+in-game clock, and seasonal themes are implemented. The current release is a
+beta. The original cutover sequence remains below as operational history.
 
 ## Why a v2
 
@@ -70,7 +79,7 @@ SQLite write to a versioned S3 bucket within ~1s and auto-restoring on
 boot when the local DB is missing. ssh-farm is the first implementation;
 moonminer and the router adopt the same pattern.
 
-## Cutover plan (v1 → v2, summarized; details in framework/03)
+## Original cutover plan (v1 → v2; details in framework/03)
 
 1. v2 ships to the fleet compose as service `farm` alongside `idlefarmer`
    (both visible in the arcade during the beta window, v2 labeled `FARM
@@ -81,10 +90,13 @@ moonminer and the router adopt the same pattern.
 3. `games.toml` swap: `idlefarmer` entry removed, `farm` renamed plainly;
    v1 container retired after a safe soak (its DB archived to S3).
 
-## Explicit non-goals for v2.0
+## Explicit non-goals for the original v2.0 port
 
 - New crops/mechanics/balance changes (parity first — file TODOs).
 - Cross-game currency or arcade-wide profiles.
 - Web viewer for the leaderboard (fun later; the bucket + schema make it
   possible without touching the game).
 - Multi-region/multi-host scaling.
+
+The contracts campaign is intentionally post-v2.0. It extends progression
+without changing the base-game balance used by imported saves.

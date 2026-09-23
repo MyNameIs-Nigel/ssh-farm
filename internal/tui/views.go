@@ -44,6 +44,10 @@ func (g *Game) overlayBox() string {
 		return g.viewConfig()
 	case ovReplantWarn:
 		return g.viewReplantWarn()
+	case ovContractConfirm:
+		return g.viewContractConfirm()
+	case ovContractReward:
+		return g.viewContractReward()
 	case ovKicked:
 		return g.viewKicked()
 	}
@@ -68,6 +72,8 @@ func (g *Game) screenBody() string {
 		return g.viewBoard()
 	case scrHelp:
 		return g.viewHelp()
+	case scrContracts:
+		return g.viewContracts()
 	}
 	return ""
 }
@@ -184,7 +190,7 @@ func (g *Game) navLabels() []navLabel {
 		{s: scrMarket, text: "2 Market"},
 		{s: scrLand, text: "3 Land"},
 		{s: scrRebirth, text: "4 Rebirth"},
-		{s: scrStarShop, text: "5 StarShop", lock: g.snap.State.Rebirths < 1},
+		{s: scrStarShop, text: "5 StarShop", lock: g.snap.State.ProgressionRebirths() < 1 && !g.snap.State.ContractsAvailable(g.content)},
 		{s: scrStats, text: "6 Stats"},
 		{s: scrBoard, text: "7 Board"},
 		{s: scrHelp, text: g.helpNavLabel(), warn: g.undersized()},
@@ -250,6 +256,10 @@ func (g *Game) viewFooter() string {
 		hints = "↑/↓ select · enter toggle · esc/q close"
 	case g.overlay == ovReplantWarn:
 		hints = "press any key to continue"
+	case g.overlay == ovContractConfirm:
+		hints = "y confirm · n/esc/q cancel"
+	case g.overlay == ovContractReward:
+		hints = "press any key to continue"
 	case g.overlay == ovTutorial:
 		hints = "s toggle skip · enter continue · ←/→ pages"
 	case g.overlay == ovAway:
@@ -264,6 +274,13 @@ func (g *Game) viewFooter() string {
 		hints = "R rebirth · q quit"
 	case g.scr == scrStarShop:
 		hints = "↑/↓ select · enter buy · q quit"
+		if g.snap.State.ContractsAvailable(g.content) {
+			hints = "↑/↓ select · enter buy · c contracts · q quit"
+		}
+	case g.scr == scrContracts:
+		hints = "↑/↓ inspect · enter accept · a abandon active · esc back"
+	case g.scr == scrStats && len(g.snap.State.AvailableLeaderboardNameStyles()) > 1:
+		hints = "n name farm · l board style · c config · q quit"
 	case g.scr == scrStats:
 		hints = "n name farm · c config · q quit"
 	case g.scr == scrBoard:
@@ -503,6 +520,11 @@ func (g *Game) viewUpgrade() string {
 	st := g.snap.State
 	var b strings.Builder
 	b.WriteString(th.Section.Render("Plot automation") + "\n\n")
+	if st.ActiveContract == sim.ContractBareHands || st.ActiveContract == sim.ContractClockworkDenied {
+		b.WriteString(th.Locked.Render("🔒 Disabled by "+contractName(st.ActiveContract)+".") + "\n")
+		b.WriteString(th.Hint.Render("Manual planting and harvesting are part of this contract."))
+		return th.Box.Render(b.String())
+	}
 	hCost := st.PlotAutoHarvestCost(g.content)
 	sCost := g.content.PlotAutomation.AutoSowCost
 	for i, plot := range st.Plots {
@@ -570,7 +592,11 @@ func (g *Game) viewLand() string {
 	b.WriteString("  Plots owned: " + th.Value.Render(itoa(len(st.Plots))) + "\n")
 	cost := st.NextPlotCost(g.content)
 	if cost < 0 {
-		b.WriteString("  " + th.Hint.Render("The farm is as big as it can get — zones add more room.") + "\n")
+		if st.ActiveContract == sim.ContractLeanSeason && len(st.Plots) >= 6 {
+			b.WriteString("  " + th.Locked.Render("🔒 Lean Season caps this farm at six plots.") + "\n")
+		} else {
+			b.WriteString("  " + th.Hint.Render("The farm is as big as it can get — zones add more room.") + "\n")
+		}
 	} else {
 		b.WriteString("  Next plot: " + th.Value.Render(money(cost)+" coins") + "\n")
 		if st.Coins >= cost {
@@ -615,7 +641,7 @@ func (g *Game) viewRebirth() string {
 	b.WriteString(th.Section.Render("  Lost: ") + th.Value.Render("coins, plots, crops, multipliers, zones, plot automation") + "\n")
 
 	b.WriteString("\n" + th.Section.Render("Next rebirth unlocks") + "\n")
-	nextTier := st.Rebirths + 1
+	nextTier := st.ProgressionRebirths() + 1
 	found := false
 	for _, crop := range g.content.Crops {
 		if crop.Unlock.Kind == "prestige" && crop.Unlock.Value == nextTier {
@@ -635,6 +661,153 @@ func (g *Game) viewStarShop() string {
 		parts[i] = l.text
 	}
 	return strings.TrimRight(strings.Join(parts, "\n"), "\n")
+}
+
+// contractsIntro is everything above the Contracts screen's three rows.
+// registerContractHits offsets the rows by its height, so the hint is
+// wrapped here rather than reflowed later, where a narrow terminal would
+// push the rows down without moving their hitboxes.
+func (g *Game) contractsIntro() string {
+	th := g.theme()
+	hint := wrapIndent(g.contentWidth(), "", "Three one-time challenges. Each attempt resets the farm, not its legacy.")
+	return th.Section.Render("CONTRACTS") + "\n" + th.Hint.Render(hint) + "\n\n"
+}
+
+func (g *Game) viewContracts() string {
+	th := g.theme()
+	st := g.snap.State
+	contracts := sim.Contracts()
+	var b strings.Builder
+	b.WriteString(g.contractsIntro())
+	for i, contract := range contracts {
+		marker := "  "
+		if i == g.contractIdx {
+			marker = "▸ "
+		}
+		status := "LOCKED"
+		switch {
+		case i < st.ContractsCompleted:
+			status = "✓ COMPLETE"
+		case st.ActiveContract == contract.ID:
+			status = "ACTIVE — " + g.contractProgress(contract.ID)
+		case i == st.ContractsCompleted && st.ActiveContract == "":
+			status = "READY"
+		}
+		line := fitWidth(marker+itoa(i+1)+". "+sanitizeText(contract.Name)+"  ["+status+"]", g.contentWidth())
+		if i == g.contractIdx {
+			b.WriteString(th.Selected.Render(line))
+		} else if i < st.ContractsCompleted {
+			b.WriteString(th.Ready.Render(line))
+		} else {
+			b.WriteString(th.Value.Render(line))
+		}
+		b.WriteString("\n")
+	}
+	selected := contracts[clamp(g.contractIdx, 0, len(contracts)-1)]
+	b.WriteString("\n" + th.Value.Render(sanitizeText(selected.Premise)) + "\n")
+	b.WriteString("  Goal: " + th.Ready.Render(sanitizeText(selected.Goal)) + "\n")
+	b.WriteString("  Reward: " + th.Value.Render(sanitizeText(selected.Reward)) + "\n")
+	if st.ActiveContract != "" {
+		b.WriteString("\n" + th.Warn.Render("Press a to abandon the active attempt. Progress will be lost."))
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func (g *Game) contractProgress(id sim.ContractID) string {
+	st := g.snap.State
+	switch id {
+	case sim.ContractBareHands:
+		return money(st.ContractEarnings) + "/100,000 coins"
+	case sim.ContractLeanSeason:
+		return money(st.ContractStarseeds) + "/100 Starseeds"
+	case sim.ContractClockworkDenied:
+		return money(st.ContractRebirths) + "/5 rebirths"
+	}
+	return ""
+}
+
+// Contract modal button labels. registerContractConfirmHits measures these
+// same strings, so a click lands exactly on what is drawn.
+const (
+	contractPromptGap = "    "
+	contractCancel    = "n cancel"
+)
+
+// What a contract start or abandon resets and keeps (gameplay/04 "The hard
+// reset"), compressed to fit one modal line each at 80 columns.
+const (
+	contractResetList = "coins, crops, land, Starseeds, upgrades, automation"
+	contractKeptList  = "name, settings, achievements, seals, lifetime stats"
+)
+
+func contractAcceptLabel(abandon bool) string {
+	if abandon {
+		return "y abandon and reset"
+	}
+	return "y accept and reset"
+}
+
+// viewContractConfirm renders the accept/abandon modal. It has to fit a stock
+// 80×24 terminal, whose body leaves about fourteen rows once a notice or an
+// event bar takes its line, so the box drops the usual vertical padding and
+// every term takes one labelled line, in gameplay/04's order: name and
+// premise, goal, disabled systems, reward, what resets, what is kept, and
+// the warning that the farm cannot be restored.
+func (g *Game) viewContractConfirm() string {
+	th := g.theme()
+	contract, _ := sim.ContractByID(g.contractID)
+	// Overlays are clipped to contentWidth-4; the box border and its
+	// one-cell padding take four more.
+	width := max(g.contentWidth()-8, 20)
+	// Two label columns: the contract's own terms are short-labelled so a
+	// long reward still fits on one line, and the reset summary aligns under
+	// its widest label, KEPT FOREVER.
+	const termW, summaryW = len("Reward  "), len("KEPT FOREVER  ")
+	field := func(labelW int, label, value string) string {
+		lines := strings.Split(wrapIndent(width-labelW, "", value), "\n")
+		for i := range lines {
+			pad := strings.Repeat(" ", labelW)
+			if i == 0 {
+				pad = th.Section.Render(label) + strings.Repeat(" ", labelW-len(label))
+			}
+			lines[i] = pad + th.Value.Render(lines[i])
+		}
+		return strings.Join(lines, "\n")
+	}
+	var b strings.Builder
+	if g.contractAbandon {
+		b.WriteString(th.Section.Render("Abandon "+sanitizeText(contract.Name)+"?") + "\n")
+		b.WriteString(th.Value.Render(wrapIndent(width, "", "This attempt ends and the farm starts over as an ordinary one.")) + "\n\n")
+		b.WriteString(field(summaryW, "RESET", contractResetList) + "\n")
+		b.WriteString(field(summaryW, "KEPT FOREVER", contractKeptList) + "\n")
+		b.WriteString(field(summaryW, "NEXT", sanitizeText(contract.Name)+" stays the next contract.") + "\n\n")
+	} else {
+		b.WriteString(th.Section.Render("Accept "+sanitizeText(contract.Name)+"?") + "\n")
+		b.WriteString(th.Hint.Render(wrapIndent(width, "", sanitizeText(contract.Premise))) + "\n")
+		b.WriteString(field(termW, "Goal", sanitizeText(contract.Goal)) + "\n")
+		for i, rule := range contract.Restrictions {
+			label := ""
+			if i == 0 {
+				label = "Rules"
+			}
+			b.WriteString(field(termW, label, sanitizeText(rule)) + "\n")
+		}
+		b.WriteString(field(termW, "Reward", sanitizeText(contract.Reward)) + "\n\n")
+		b.WriteString(field(summaryW, "RESET", contractResetList) + "\n")
+		b.WriteString(field(summaryW, "KEPT FOREVER", contractKeptList) + "\n")
+	}
+	b.WriteString(th.Warn.Render("⚠ Your current farm cannot be restored.") + "\n")
+	b.WriteString(th.Ready.Render(contractAcceptLabel(g.contractAbandon)) + contractPromptGap + th.Hint.Render(contractCancel))
+	return th.Box.Padding(0, 1).Render(b.String())
+}
+
+func (g *Game) viewContractReward() string {
+	th := g.theme()
+	contract, _ := sim.ContractByID(g.completedContract)
+	return th.Box.Render(th.Section.Render("CONTRACT COMPLETE ◆") + "\n\n" +
+		th.Ready.Render(sanitizeText(contract.Name)) + "\n" +
+		th.Value.Render(sanitizeText(contract.Reward)) + "\n\n" +
+		th.Hint.Render("Your new flair is ready on the leaderboard."))
 }
 
 func (g *Game) viewRebirthConfirm() string {
@@ -673,6 +846,16 @@ func (g *Game) viewStats() string {
 	b.WriteString("  Earnings: " + th.Value.Render(money(st.LifetimeEarnings)+" coins") + "\n")
 	b.WriteString("  Harvests: " + th.Value.Render(money(st.LifetimeHarvests)) + "\n")
 	b.WriteString("  Rebirths: " + th.Value.Render(money(st.Rebirths)) + "  ·  " + g.starseedLabel() + ": " + th.Value.Render("✦ "+money(st.PrestigeCurrency)) + "\n")
+	// The campaign stays out of sight until it can be entered, and "l" is
+	// only offered once there is a second style to switch to.
+	if st.ContractsAvailable(g.content) {
+		line := "  Contracts: " + th.Value.Render(itoa(st.ContractsCompleted)+"/"+itoa(len(sim.Contracts()))) +
+			"  ·  Board style: " + th.Value.Render(nameStyleLabel(st.LeaderboardNameStyle))
+		if len(st.AvailableLeaderboardNameStyles()) > 1 {
+			line += th.Hint.Render("  (l to change)")
+		}
+		b.WriteString(line + "\n")
+	}
 
 	b.WriteString("\n" + th.Section.Render("Achievements") + "\n")
 	for _, a := range g.content.Achievements {
@@ -1126,4 +1309,11 @@ func totalCount(m map[string]int) int {
 		t += n
 	}
 	return t
+}
+
+func nameStyleLabel(style string) string {
+	if style == "" {
+		return "traditional"
+	}
+	return strings.ReplaceAll(style, "_", " ")
 }

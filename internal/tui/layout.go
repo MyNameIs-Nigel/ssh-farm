@@ -122,5 +122,5 @@ func (g *Game) composeCanvas(body string, centerBody bool) string {
 // preserveBodyLines reports screens whose body text already has explicit
 // line breaks and horizontal alignment that lipgloss.Width would reflow.
 func (g *Game) preserveBodyLines() bool {
-	return g.scr == scrStarShop && g.snap.State.Rebirths < 1
+	return g.scr == scrStarShop && g.snap.State.ProgressionRebirths() < 1 && !g.snap.State.ContractsAvailable(g.content)
 }

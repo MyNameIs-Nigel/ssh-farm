@@ -28,18 +28,20 @@ ssh play.ssharcade.dev     # arcade menu → FARM
 
 ## Status
 
-**Planning.** `docs/` is the complete build plan:
-[docs/README.md](docs/README.md) is the index. This plan leans on the
-sibling repos hard — v1 (`../ssh-idlefarmer`) is the source being ported,
-`../ssh-moonminer/docs/` defines the shared TUI/input contracts, and
-`../ssh-arcadelobby/docs/` owns the fleet protocol, deployment, and the
-data-durability pattern.
+**Beta — 2.5.0.** The v2 port and its arcade integration, mouse controls,
+leaderboard, durable storage, day/night clock, seasonal themes, and fixed
+three-contract endgame campaign are implemented. See
+[docs/gameplay/04-contracts.md](docs/gameplay/04-contracts.md).
 
-## Stack (planned)
+[docs/README.md](docs/README.md) indexes the architecture, shipped feature
+specifications, operational runbooks, and proposed work. The older phase
+labels and unchecked acceptance lists are retained as design history, not as
+the current project status.
 
-Same as the fleet (see `../ssh-moonminer/docs/README.md`): Go 1.26+,
-wish v2, bubbletea v2 + lipgloss v2, modernc sqlite — plus **Litestream**
-wrapping the container for S3 replication.
+## Stack
+
+Go 1.26, wish v2, bubbletea v2 + lipgloss v2, modernc SQLite, and
+**Litestream** wrapping the container for S3 replication.
 
 ## Commands
 

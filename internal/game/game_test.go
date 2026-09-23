@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -259,6 +260,97 @@ func TestIntentsValidateAgainstAuthoritativeState(t *testing.T) {
 	snap, _, _ := res.Session.Advance(1001)
 	if snap.State.Coins != 25 {
 		t.Fatal("refused intents must not change state")
+	}
+}
+
+func TestContractSessionIntentsAndMetadataPersist(t *testing.T) {
+	m, path := testManager(t, PolicyTakeover, time.Hour)
+	id := ident("SHA256:contracts", "farm")
+	res := mustAttach(t, m, id, 1000)
+
+	// Arrange the permanent base-game completion prerequisite directly on
+	// the actor; simulation tests cover the prerequisite calculation itself.
+	if ok := res.Session.actor.do(func() {
+		st := res.Session.actor.state
+		st.ContractsUnlocked = true
+		st.LifetimeEarnings = 777
+		st.FarmName = "CONTRACT FARM"
+	}); !ok {
+		t.Fatal("actor stopped")
+	}
+	snap, _, err := res.Session.StartContract(1001, sim.ContractBareHands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.State.ActiveContract != sim.ContractBareHands || snap.State.LifetimeEarnings != 777 {
+		t.Fatalf("started contract state = %+v", snap.State)
+	}
+	if _, err = res.Session.SetLeaderboardNameStyle(1002, sim.NameStyleLeaf); !errors.Is(err, sim.ErrNameStyleLocked) {
+		t.Fatalf("locked style error = %v, want %v", err, sim.ErrNameStyleLocked)
+	}
+	if snap, _, err = res.Session.AbandonContract(1003); err != nil || snap.State.ActiveContract != "" {
+		t.Fatalf("abandon result active=%q err=%v", snap.State.ActiveContract, err)
+	}
+
+	if ok := res.Session.actor.do(func() {
+		res.Session.actor.state.ContractsCompleted = 2
+	}); !ok {
+		t.Fatal("actor stopped")
+	}
+	if _, err := res.Session.SetLeaderboardNameStyle(1004, sim.NameStyleLeaf); err != nil {
+		t.Fatal(err)
+	}
+	res.Session.Detach()
+
+	st, err := store.Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	rows, err := st.LeaderboardSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ContractsCompleted != 2 || rows[0].LeaderboardNameStyle != sim.NameStyleLeaf {
+		t.Fatalf("persisted leaderboard contract metadata = %+v", rows)
+	}
+}
+
+// A contract can finish inside the catch-up that precedes every call (a
+// Bare Hands scarecrow bounty), so both the tick path and an intent must
+// say so explicitly — exactly once.
+func TestSnapshotsReportContractCompletedOnce(t *testing.T) {
+	m, _ := testManager(t, PolicyTakeover, time.Hour)
+	res := mustAttach(t, m, ident("SHA256:contract-done", "farm"), 1000)
+	armBareHands := func() {
+		t.Helper()
+		if ok := res.Session.actor.do(func() {
+			st := res.Session.actor.state
+			st.ActiveContract = sim.ContractBareHands
+			st.ContractEarnings = 99_999
+			st.Scarecrow = true
+			st.Plots[0] = sim.Plot{Critter: "crow"}
+		}); !ok {
+			t.Fatal("actor stopped")
+		}
+	}
+
+	armBareHands()
+	snap, _, err := res.Session.Advance(1001)
+	if err != nil || snap.ContractCompleted != sim.ContractBareHands {
+		t.Fatalf("tick snapshot ContractCompleted = %q, err = %v", snap.ContractCompleted, err)
+	}
+	if snap, _, _ = res.Session.Advance(1002); snap.ContractCompleted != "" {
+		t.Fatalf("next tick re-reported %q", snap.ContractCompleted)
+	}
+
+	// The same crossing inside an intent's catch-up, on a no-op action.
+	if ok := res.Session.actor.do(func() { res.Session.actor.state.ContractsCompleted = 0 }); !ok {
+		t.Fatal("actor stopped")
+	}
+	armBareHands()
+	if snap, err = res.Session.SetLeaderboardNameStyle(1003, sim.NameStyleTraditional); err != nil || snap.ContractCompleted != sim.ContractBareHands {
+		t.Fatalf("intent snapshot ContractCompleted = %q, err = %v", snap.ContractCompleted, err)
 	}
 }
 

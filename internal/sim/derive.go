@@ -8,12 +8,13 @@ import (
 )
 
 // VisibleCrops returns crops that should appear in pickers and catalogs.
-// Prestige-locked crops with unlock value V are hidden until Rebirths >= V-1.
+// Prestige-locked crops with unlock value V are hidden until the active
+// progression's rebirth count reaches V-1.
 func VisibleCrops(s *State, c *content.Content) []content.Crop {
 	var out []content.Crop
 	for _, crop := range c.Crops {
 		if crop.Unlock.Kind == "prestige" && crop.Unlock.Value > 1 {
-			if s.Rebirths < crop.Unlock.Value-1 {
+			if s.ProgressionRebirths() < crop.Unlock.Value-1 {
 				continue
 			}
 		}
@@ -138,7 +139,7 @@ func (s *State) sellMultiplied(c *content.Content, base int64, cropID string, no
 }
 
 func (s *State) activeEvent(c *content.Content) *content.Event {
-	if s.EventID == "" {
+	if s.EventID == "" || s.contractBlocksEvents() {
 		return nil
 	}
 	return c.EventByID(s.EventID)
@@ -222,6 +223,9 @@ func startCoins(c *content.Content, upgrades map[string]int) int64 {
 // NextPlotCost returns the price of the next plot, or -1 when the farm is at
 // the purchasable cap.
 func (s *State) NextPlotCost(c *content.Content) int64 {
+	if s.contractCapsLand() && len(s.Plots) >= contractLeanSeasonMaxPlots {
+		return -1
+	}
 	if c.Start.Plots+s.PurchasedPlots >= c.Land.MaxPlots {
 		return -1
 	}
@@ -358,7 +362,7 @@ func (s *State) Unlocked(u content.Unlock) bool {
 	case "earnings":
 		return s.LifetimeEarnings >= u.Value
 	case "prestige":
-		return s.Rebirths >= u.Value
+		return s.ProgressionRebirths() >= u.Value
 	case "zone":
 		return s.Zones[u.Zone]
 	default:

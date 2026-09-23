@@ -28,6 +28,10 @@ type Events struct {
 	CritterVisits  []string
 	ScarecrowCoins int64
 	AwayVignettes  []string
+	// ContractCompleted names the contract whose goal this Advance crossed
+	// (a Bare Hands scarecrow bounty, say), so a live tick or the offline
+	// catch-up can announce it the way an action does.
+	ContractCompleted ContractID
 }
 
 // Empty reports whether nothing noteworthy happened.
@@ -36,7 +40,8 @@ func (e *Events) Empty() bool {
 		e.Discoveries == 0 && len(e.Achievements) == 0 &&
 		len(e.FailedHarvests) == 0 && e.GoldenHarvests == 0 &&
 		!e.GiftArrived && e.EventStarted == "" && e.EventEnded == "" &&
-		len(e.CritterVisits) == 0 && e.ScarecrowCoins == 0
+		len(e.CritterVisits) == 0 && e.ScarecrowCoins == 0 &&
+		e.ContractCompleted == ""
 }
 
 // Advance simulates the state from its UpdatedAt to the given timestamp.
@@ -52,8 +57,17 @@ func Advance(s *State, c *content.Content, to int64) Events {
 	from := s.UpdatedAt
 	elapsed := to - from
 	ev.Elapsed = elapsed
+	activeContract, contractsDone := s.ActiveContract, s.ContractsCompleted
 
 	online := elapsed <= onlineTickThreshold
+
+	// Clockwork Denied removes event effects even if a defensive/corrupt save
+	// somehow enters the contract with one already running.
+	if s.contractBlocksEvents() && s.EventID != "" {
+		s.EventID = ""
+		s.EventStartedAt = 0
+		s.EventEndsAt = 0
+	}
 
 	// Expire finished events.
 	if s.EventID != "" && to >= s.EventEndsAt {
@@ -64,14 +78,16 @@ func Advance(s *State, c *content.Content, to int64) Events {
 	}
 
 	// Roll gifts and events before plot simulation.
-	if online {
+	if online && !s.contractBlocksEvents() {
 		s.rollOnlineEvent(c, elapsed, to, &ev)
 	}
-	s.rollGiftArrival(c, elapsed, online, to, &ev)
+	if !s.contractBlocksGifts() {
+		s.rollGiftArrival(c, elapsed, online, to, &ev)
+	}
 
 	// Offline scarecrow trickle: a small passive income while away, far lower
 	// than the critter bounties it would collect online.
-	if s.Scarecrow && !online && c.Scarecrow.OfflineCoinsPerHour > 0 {
+	if s.Scarecrow && !s.contractBlocksScarecrow() && !online && c.Scarecrow.OfflineCoinsPerHour > 0 {
 		gained := satMul(c.Scarecrow.OfflineCoinsPerHour, elapsed) / 3600
 		if gained > 0 {
 			s.credit(gained)
@@ -84,7 +100,7 @@ func Advance(s *State, c *content.Content, to int64) Events {
 		if plot.Crop == "" {
 			if online {
 				// A standing scarecrow shoos any critter already loitering.
-				if s.Scarecrow && plot.Critter != "" {
+				if s.Scarecrow && !s.contractBlocksScarecrow() && plot.Critter != "" {
 					reward := s.rollRange(c.Critters.ShooRewardMin, c.Critters.ShooRewardMax)
 					s.credit(reward)
 					ev.ScarecrowCoins = satAdd(ev.ScarecrowCoins, reward)
@@ -101,7 +117,7 @@ func Advance(s *State, c *content.Content, to int64) Events {
 		grow := s.GrowSeconds(c, crop)
 		matureAt := plot.PlantedAt + grow
 
-		if !plot.AutoHarvest {
+		if !plot.AutoHarvest || s.contractBlocksAutomation() {
 			if matureAt > from && matureAt <= to {
 				ev.Matured[crop.ID]++
 			}
@@ -190,6 +206,9 @@ func Advance(s *State, c *content.Content, to int64) Events {
 
 	s.UpdatedAt = to
 	ev.Achievements = s.CheckAchievements(c, to)
+	if s.ContractsCompleted > contractsDone {
+		ev.ContractCompleted = activeContract
+	}
 
 	if !online && elapsed > 60 {
 		ev.AwayVignettes = awayVignettes(s, c, &ev)

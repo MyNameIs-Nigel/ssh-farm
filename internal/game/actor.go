@@ -91,8 +91,9 @@ func (a *actor) persist(reason string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = a.mgr.store.PersistSave(ctx, a.key.fingerprint, a.key.slot,
-		payload, a.state.Version, a.state.UpdatedAt, a.state.Coins, a.state.LifetimeEarnings, a.state.Rebirths, a.state.FarmName)
+	err = a.mgr.store.PersistSaveWithContracts(ctx, a.key.fingerprint, a.key.slot,
+		payload, a.state.Version, a.state.UpdatedAt, a.state.Coins, a.state.LifetimeEarnings, a.state.Rebirths, a.state.FarmName,
+		a.state.ContractsCompleted, a.state.LeaderboardNameStyle)
 	if err != nil {
 		a.mgr.logger.Error("persist save failed",
 			"reason", reason, "fingerprint", a.key.fingerprint, "slot", a.key.slot, "error", err)

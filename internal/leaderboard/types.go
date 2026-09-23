@@ -28,9 +28,12 @@ type Row struct {
 	// means the farm was simply never renamed — the UI shows its own
 	// "FARM ·suffix" placeholder for that case (not a moderation outcome).
 	DisplayName string
-	// Suffix is the 5-character fingerprint suffix, always shown alongside
-	// DisplayName to disambiguate same-named farms.
-	Suffix string
+	// Suffix is the 5-character fingerprint suffix used to disambiguate
+	// same-named farms and the generic unnamed FARM fallback.
+	Suffix             string
+	ShowSuffix         bool
+	ContractsCompleted int
+	NameStyle          string
 	// Coins is lifetime coin earnings, not the save's current spendable
 	// balance (rebirth resets the balance but never this figure) — the
 	// metric the board ranks and displays.

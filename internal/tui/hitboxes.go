@@ -2,6 +2,8 @@ package tui
 
 import (
 	"charm.land/lipgloss/v2"
+
+	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 )
 
 func (g *Game) registerHitboxes() {
@@ -28,6 +30,8 @@ func (g *Game) registerHitboxes() {
 			g.registerRebirthHits()
 		case scrStarShop:
 			g.registerStarShopHits()
+		case scrContracts:
+			g.registerContractHits()
 		case scrStats:
 			g.registerStatsHits()
 		case scrBoard:
@@ -41,6 +45,8 @@ func (g *Game) registerHitboxes() {
 		g.registerUpgradeHits()
 	case ovRebirthConfirm:
 		g.registerRebirthConfirmHits()
+	case ovContractConfirm:
+		g.registerContractConfirmHits()
 	case ovName:
 		g.registerNameHits()
 	case ovConfig:
@@ -168,8 +174,26 @@ func (g *Game) registerRebirthConfirmHits() {
 	g.addHit(cx+16, cy+4, 10, 1, "rebirth:cancel", nil)
 }
 
+// registerContractConfirmHits places the modal's two buttons from the box's
+// real size, mirroring composeCanvas: the box is clipped to contentWidth-4
+// by bodyH, then centred in the body (lipgloss.Place puts the odd cell of
+// slack after the box, so the offset rounds down).
+func (g *Game) registerContractConfirmHits() {
+	box := g.viewContractConfirm()
+	w := min(lipgloss.Width(box), g.layout.cw-4)
+	h := lipgloss.Height(box)
+	if h > g.layout.bodyH {
+		return // the prompt row is clipped off; keyboard still works
+	}
+	x := g.layout.cx + (g.layout.cw-w)/2 + 2 // border + one cell of padding
+	y := g.layout.bodyY + (g.layout.bodyH-h)/2 + h - 2
+	accept := lipgloss.Width(contractAcceptLabel(g.contractAbandon))
+	g.addHit(x, y, accept, 1, "contract:accept", nil)
+	g.addHit(x+accept+len(contractPromptGap), y, lipgloss.Width(contractCancel), 1, "contract:cancel", nil)
+}
+
 func (g *Game) registerStarShopHits() {
-	if g.snap.State.Rebirths < 1 {
+	if g.snap.State.ProgressionRebirths() < 1 && !g.snap.State.ContractsAvailable(g.content) {
 		return
 	}
 	y := g.layout.bodyY
@@ -178,6 +202,13 @@ func (g *Game) registerStarShopHits() {
 			g.addHit(g.layout.cx, y, g.layout.cw, 1, "shop:"+itoa(l.idx), l.idx)
 		}
 		y++
+	}
+}
+
+func (g *Game) registerContractHits() {
+	y := g.layout.bodyY + lipgloss.Height(g.contractsIntro()) - 1
+	for i := range sim.Contracts() {
+		g.addHit(g.layout.cx, y+i, g.layout.cw, 1, "contract:"+itoa(i), i)
 	}
 }
 

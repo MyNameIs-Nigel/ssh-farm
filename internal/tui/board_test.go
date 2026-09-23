@@ -119,6 +119,7 @@ func TestBoardRowLineKeepsRebirthCountSeparatedFromCoins(t *testing.T) {
 		Rank:        123,
 		DisplayName: "TWENTY CHARACTER NAME",
 		Suffix:      "wX9zK",
+		ShowSuffix:  true,
 		Coins:       9_876_543_210,
 		Rebirths:    1_234,
 		IsYou:       true,
@@ -129,7 +130,7 @@ func TestBoardRowLineKeepsRebirthCountSeparatedFromCoins(t *testing.T) {
 	if w := lipgloss.Width(plain); w != 52 {
 		t.Fatalf("line width = %d, want 52:\n%q", w, plain)
 	}
-	for _, want := range []string{"#123", "·wX9zK", "↻ 1,234", "← YOU", "◈ 9,876,543,210"} {
+	for _, want := range []string{"#123", "(wX9zK)", "↻ 1,234", "← YOU", "◈ 9,876,543,210"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("expected %q to survive truncation, got:\n%q", want, plain)
 		}

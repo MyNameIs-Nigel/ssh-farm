@@ -20,7 +20,7 @@
 #
 # Baseline measured 2026-09-20 on go1.26.4 (`go test -covermode=atomic ./...`).
 
-TOTAL                                  71.0
+TOTAL                                  73.0
 
 cmd/restore-check                       0.0   # thin main(); exercised by the durability drills, not unit tests
 cmd/ssh-farm                           45.0
@@ -35,8 +35,8 @@ internal/moderation                    94.0
 internal/moderation/cmd/gen-denylist    0.0   # operator tool, runs against the private corpus off-CI
 internal/season                        99.0
 internal/server                        72.0
-internal/sim                           74.0
+internal/sim                           78.0
 internal/store                         75.0
-internal/tui                           75.0
+internal/tui                           77.0
 internal/tui/hitbox                    74.0
 internal/tui/theme                     89.0
