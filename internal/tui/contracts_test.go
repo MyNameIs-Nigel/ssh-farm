@@ -373,3 +373,54 @@ func TestEveryStaticNameStyleHasAThemeColour(t *testing.T) {
 		}
 	}
 }
+
+// Clockwork Denied can only finish on a rebirth, and a rebirth is taken
+// from its confirm modal: the handler closing that modal must not also
+// close the reward the rebirth just opened.
+func TestFinalClockworkRebirthShowsTheReward(t *testing.T) {
+	g, now := contractSave(t, func(st *sim.State) {
+		st.ContractsCompleted = 2
+		st.ActiveContract = sim.ContractClockworkDenied
+		st.ContractRebirths = 4
+		st.RunEarnings = 1_000_000
+	})
+	g, _ = tick(t, g, now+1)
+	if !g.snap.State.CanRebirth(g.content) {
+		t.Fatal("fixture cannot rebirth")
+	}
+	g = press(t, g, `4`, `R`, `y`)
+	if g.snap.State.ContractsCompleted != 3 {
+		t.Fatalf("completed = %d, want the third contract recorded", g.snap.State.ContractsCompleted)
+	}
+	if g.overlay != ovContractReward || g.completedContract != sim.ContractClockworkDenied {
+		t.Fatalf("overlay = %v, completed = %q; want the Clockwork Denied reward", g.overlay, g.completedContract)
+	}
+}
+
+// Pressing y to abandon just as the goal lands: the catch-up before the
+// abandon completes the contract, so there is nothing left to abandon.
+// The player should see the reward, not a refusal.
+func TestAbandonThatLosesTheRaceToTheGoalShowsTheReward(t *testing.T) {
+	g, now := contractSave(t, func(st *sim.State) {
+		st.ActiveContract = sim.ContractBareHands
+		st.ContractEarnings = 99_999
+		st.Scarecrow = true
+		st.Plots[0] = sim.Plot{Critter: "crow"}
+	})
+	g, _ = tick(t, g, now) // load the save; no time passes, so nothing is shooed yet
+	g.scr = scrContracts
+	g = press(t, g, `a`)
+	if g.overlay != ovContractConfirm || !g.contractAbandon {
+		t.Fatalf("abandon prompt not open: overlay = %v", g.overlay)
+	}
+	g.now = now + 1 // the scarecrow's bounty lands in the abandon's catch-up
+	g = press(t, g, `y`)
+	if g.overlay != ovContractReward || g.completedContract != sim.ContractBareHands {
+		t.Fatalf("overlay = %v, completed = %q; want the Bare Hands reward", g.overlay, g.completedContract)
+	}
+	for _, n := range g.notices {
+		if strings.Contains(n.text, "Hmm") || strings.Contains(n.text, "abandoned") {
+			t.Fatalf("a won contract should not read as a failed or completed abandon: %q", n.text)
+		}
+	}
+}

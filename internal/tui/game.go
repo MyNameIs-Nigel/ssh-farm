@@ -146,8 +146,8 @@ type Game struct {
 	contractID        sim.ContractID
 	contractAbandon   bool
 	completedContract sim.ContractID
-	// pendingReward holds a completion that arrived while another modal
-	// (the welcome-back summary) had the screen; it opens when that closes.
+	// pendingReward is a contract completion waiting for the screen to be
+	// free of other modals; see showPendingReward.
 	pendingReward sim.ContractID
 
 	board            *leaderboard.Engine
@@ -249,6 +249,12 @@ func (g *Game) waitKick() tea.Cmd {
 }
 
 func (g *Game) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m, cmd := g.update(msg)
+	g.showPendingReward()
+	return m, cmd
+}
+
+func (g *Game) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		g.width, g.height = msg.Width, msg.Height
@@ -327,7 +333,7 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case ovTutorial:
 		return g.handleTutorialKey(key)
 	case ovAway:
-		g.closeAway()
+		g.overlay = ovNone
 		return g, nil
 	case ovPicker:
 		return g.handlePickerKey(key)
@@ -873,8 +879,14 @@ func (g *Game) handleContractConfirmKey(key string) (tea.Model, tea.Cmd) {
 	case "y", "Y":
 		if g.contractAbandon {
 			snap, ach, err := g.sess.AbandonContract(g.now)
+			// The catch-up before the abandon can cross the goal, leaving
+			// nothing to abandon: the reward is the news, not a refusal.
+			won := errors.Is(err, sim.ErrNoActiveContract) && snap.ContractCompleted != ""
+			if won {
+				err = nil
+			}
 			g.applyAction(snap, ach, err)
-			if err == nil {
+			if err == nil && !won {
 				g.addNotice("Contract abandoned. The farm begins fresh.")
 			}
 		} else {
@@ -1332,34 +1344,27 @@ func (g *Game) applyAction(snap game.Snapshot, ach []string, err error) {
 	g.achievementNotices(ach)
 }
 
-// announceContract opens the reward modal for a contract the latest call
-// completed. It replaces whatever modal is open (an abandon prompt for the
-// contract just won is moot), except the two that must stay on screen: the
-// kick notice, and the welcome-back summary, which hands over when closed.
+// announceContract queues the reward for a contract the latest call
+// completed. It is shown by showPendingReward rather than here: the handler
+// that made the call often closes its own modal afterwards (rebirth's
+// confirm, the only way Clockwork Denied can finish), and would close the
+// reward along with it.
 func (g *Game) announceContract(id sim.ContractID) {
-	if id == "" {
-		return
-	}
-	switch g.overlay {
-	case ovKicked:
-		return
-	case ovAway:
+	if id != "" {
 		g.pendingReward = id
-		return
 	}
-	g.completedContract = id
-	g.overlay = ovContractReward
 }
 
-// closeAway dismisses the welcome-back summary, handing over to a contract
-// reward that was earned while the player was offline.
-func (g *Game) closeAway() {
-	g.overlay = ovNone
-	if g.pendingReward != "" {
-		g.completedContract = g.pendingReward
-		g.pendingReward = ""
-		g.overlay = ovContractReward
+// showPendingReward opens a queued contract reward once nothing else is on
+// screen, so it follows the welcome-back summary or whatever modal the
+// winning action came from. It runs after every Update.
+func (g *Game) showPendingReward() {
+	if g.pendingReward == "" || g.overlay != ovNone {
+		return
 	}
+	g.completedContract = g.pendingReward
+	g.pendingReward = ""
+	g.overlay = ovContractReward
 }
 
 func (g *Game) achievementNotices(ids []string) {

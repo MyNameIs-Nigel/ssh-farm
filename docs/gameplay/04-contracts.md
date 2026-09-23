@@ -213,10 +213,18 @@ next hard reset.
 A goal can be crossed outside any action: a Bare Hands scarecrow bounty on a
 live tick, or its offline trickle while away. `sim.Events.ContractCompleted` and
 `game.Snapshot.ContractCompleted` carry the completion explicitly, so the reward
-modal opens on a tick too. A completion earned offline opens once the
-welcome-back summary is dismissed. The UI never infers completion by diffing
+modal opens on a tick too. The UI never infers completion by diffing
 snapshots, because its first snapshot is a placeholder, and diffing against it
 would re-announce every earned seal on each connect.
+
+The reward is queued and shown once no other modal is open, not opened by
+the action handler itself. The action that wins a contract usually comes from
+a modal that closes itself afterwards: rebirth's confirm is the only way
+Clockwork Denied can finish, and often how Lean Season does. Opened directly,
+the reward would close with that modal. The queue also puts an offline win
+after the welcome-back summary. If an abandon's catch-up crosses the goal,
+there is nothing left to abandon, so the player sees the reward rather than
+a refusal.
 
 A player may abandon an active contract from its details modal. Abandoning
 does not restore the pre-contract farm: it clears the contract and starts a

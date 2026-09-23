@@ -85,9 +85,7 @@ func (g *Game) dismissOverlay() (tea.Model, tea.Cmd) {
 		g.pickerAutoSow = false
 	case ovReplantWarn:
 		return g.ackReplantWarning()
-	case ovAway:
-		g.closeAway()
-	case ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovContractConfirm, ovContractReward:
+	case ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovAway, ovContractConfirm, ovContractReward:
 		g.overlay = ovNone
 	}
 	return g, nil
@@ -200,7 +198,7 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 	case id == "tutorial:skip":
 		return g.pressKey("s")
 	case id == "away:dismiss":
-		g.closeAway()
+		g.overlay = ovNone
 	case id == "replant:dismiss":
 		return g.ackReplantWarning()
 	case id == "upgrade:auto-harvest":
