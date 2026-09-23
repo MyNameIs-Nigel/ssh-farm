@@ -58,8 +58,10 @@ campaign is visible without revealing every final target before it matters.
 
 At 80 columns the existing navigation strip is already full. Contracts do not
 add a ninth tab. Once eligible, the StarShop gains a `Contracts` row after its
-lifetime upgrades; activating it opens the Contracts screen while preserving
-the normal nav strip and Back behavior.
+lifetime upgrades, showing campaign or active-contract progress; activating it
+(Enter, or a double-click) or pressing `c` anywhere in the StarShop opens the
+Contracts screen while preserving the normal nav strip and Back behavior. The
+Stats contract line likewise appears only once the campaign can be entered.
 
 ## The hard reset
 
@@ -191,14 +193,30 @@ must fit at 80×24 through wrapping or scrolling and show, in this order:
 
 Keyboard acceptance requires selecting the available contract, opening its
 terms modal, then pressing `y`; Escape closes the modal unchanged. Mouse input
-uses the same select-then-activate flow, so a single click can never reset a
-farm.
+uses the same select-then-activate flow — click to select, double-click to
+open the terms, then double-click the modal's accept button, exactly like
+rebirth's — so a single click can never reset a farm.
+
+At 80×24 the body can shrink to about fourteen rows (a notice and an event bar
+each take one), so the modal uses a slim box and gives each term one labelled
+line rather than a paragraph. Each list is one line — RESET: coins, crops,
+land, Starseeds, upgrades, automation; KEPT FOREVER: name, settings,
+achievements, seals, lifetime stats. The overflow tests hold every contract's
+modal to that size.
 
 Once accepted, reconnecting or going offline does not cancel the contract.
 The Contracts screen shows the active terms and progress. Completing the goal
 immediately records the completion, clears its restrictions, and opens a reward
 modal. The current farm state remains; starting the next contract performs the
 next hard reset.
+
+A goal can be crossed outside any action: a Bare Hands scarecrow bounty on a
+live tick, or its offline trickle while away. `sim.Events.ContractCompleted` and
+`game.Snapshot.ContractCompleted` carry the completion explicitly, so the reward
+modal opens on a tick too. A completion earned offline opens once the
+welcome-back summary is dismissed. The UI never infers completion by diffing
+snapshots, because its first snapshot is a placeholder, and diffing against it
+would re-announce every earned seal on each connect.
 
 A player may abandon an active contract from its details modal. Abandoning
 does not restore the pre-contract farm: it clears the contract and starts a
@@ -269,10 +287,15 @@ case it exists to solve.
 ### Static colors
 
 Contract 2 unlocks a small curated set of semantic name colors. Store a stable
-style ID, not a hex value. Theme code maps that ID to a readable color for the
-current day/night, event, solid-background, and seasonal palette. Color choice
+style ID, not a hex value. Theme code (`theme.LeaderboardName`) maps that ID to
+a readable color; because every day/night, event, solid, and seasonal canvas
+is near-black, one bright tone per style reads under all of them. Color choice
 lives with the farm save and is configured from Stats alongside naming and
 other presentation settings.
+
+A styled name is its own span between two spans in the row's style. Nesting it
+inside one row-wide `Render` would end it in an SGR reset, and the suffix,
+rebirths, `YOU` marker, and coins after it would lose the row's highlight.
 
 ### Animated final style
 
@@ -291,7 +314,12 @@ Animation is presentation-only:
   do not move;
 - use one synchronized phase for deterministic rendering;
 - fall back to a static purple treatment when the active color profile cannot
-  render the gradient cleanly;
+  render the gradient cleanly. The ramp (`theme.NameWave`) is built from
+  xterm-256 indices, not RGB: the server forces the TrueColor profile on every
+  session, so hex colours would reach 256-colour terminals as 24-bit escapes,
+  while an index renders the same on both. A profile below 256 colours, as
+  reported by Bubble Tea's `ColorProfileMsg`, holds the name on one purple and
+  starts no tick chain;
 - honor a future reduced-motion setting if one is added.
 
 ## Enforcement rules

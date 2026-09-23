@@ -28,6 +28,10 @@ type Events struct {
 	CritterVisits  []string
 	ScarecrowCoins int64
 	AwayVignettes  []string
+	// ContractCompleted names the contract whose goal this Advance crossed
+	// (a Bare Hands scarecrow bounty, say), so a live tick or the offline
+	// catch-up can announce it the way an action does.
+	ContractCompleted ContractID
 }
 
 // Empty reports whether nothing noteworthy happened.
@@ -36,7 +40,8 @@ func (e *Events) Empty() bool {
 		e.Discoveries == 0 && len(e.Achievements) == 0 &&
 		len(e.FailedHarvests) == 0 && e.GoldenHarvests == 0 &&
 		!e.GiftArrived && e.EventStarted == "" && e.EventEnded == "" &&
-		len(e.CritterVisits) == 0 && e.ScarecrowCoins == 0
+		len(e.CritterVisits) == 0 && e.ScarecrowCoins == 0 &&
+		e.ContractCompleted == ""
 }
 
 // Advance simulates the state from its UpdatedAt to the given timestamp.
@@ -52,6 +57,7 @@ func Advance(s *State, c *content.Content, to int64) Events {
 	from := s.UpdatedAt
 	elapsed := to - from
 	ev.Elapsed = elapsed
+	activeContract, contractsDone := s.ActiveContract, s.ContractsCompleted
 
 	online := elapsed <= onlineTickThreshold
 
@@ -200,6 +206,9 @@ func Advance(s *State, c *content.Content, to int64) Events {
 
 	s.UpdatedAt = to
 	ev.Achievements = s.CheckAchievements(c, to)
+	if s.ContractsCompleted > contractsDone {
+		ev.ContractCompleted = activeContract
+	}
 
 	if !online && elapsed > 60 {
 		ev.AwayVignettes = awayVignettes(s, c, &ev)

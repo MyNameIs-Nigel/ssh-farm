@@ -65,7 +65,7 @@ func (g *Game) handleMouseWheel(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 			g.marketIdx = clamp(g.marketIdx+delta, 0, len(g.marketItems())-1)
 		case scrStarShop:
 			if g.snap.State.ProgressionRebirths() >= 1 || g.snap.State.ContractsAvailable(g.content) {
-				g.progressIdx = clamp(g.progressIdx+delta, 0, len(g.content.Upgrades)-1)
+				g.progressIdx = clamp(g.progressIdx+delta, 0, g.starShopRowCount()-1)
 			}
 		case scrHelp:
 			g.helpScroll = max(g.helpScroll+delta, 0)
@@ -85,7 +85,9 @@ func (g *Game) dismissOverlay() (tea.Model, tea.Cmd) {
 		g.pickerAutoSow = false
 	case ovReplantWarn:
 		return g.ackReplantWarning()
-	case ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovAway, ovContractConfirm, ovContractReward:
+	case ovAway:
+		g.closeAway()
+	case ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovContractConfirm, ovContractReward:
 		g.overlay = ovNone
 	}
 	return g, nil
@@ -154,6 +156,14 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 				return g.pressKey("b")
 			}
 		}
+	case id == "contract:accept":
+		// Same deliberate double-click as rebirth:confirm: a single click
+		// can never reset a farm.
+		if isDouble {
+			return g.pressKey("y")
+		}
+	case id == "contract:cancel":
+		g.overlay = ovNone
 	case strings.HasPrefix(id, "contract:"):
 		if idx, ok := box.Data.(int); ok {
 			g.contractIdx = idx
@@ -190,7 +200,7 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 	case id == "tutorial:skip":
 		return g.pressKey("s")
 	case id == "away:dismiss":
-		g.overlay = ovNone
+		g.closeAway()
 	case id == "replant:dismiss":
 		return g.ackReplantWarning()
 	case id == "upgrade:auto-harvest":

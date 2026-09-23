@@ -333,3 +333,39 @@ func TestPayloadUpgradeV4InitializesContractsWithoutInferringCompletion(t *testi
 		t.Fatalf("migration inferred contract state: %+v", s)
 	}
 }
+
+// Bare Hands allows the Scarecrow, so its bounties (online) and its trickle
+// (offline) can cross the goal inside Advance rather than in an action. The
+// caller has no other way to learn the contract finished there.
+func TestAdvanceReportsContractCompletedDuringCatchUp(t *testing.T) {
+	c := realContent(t)
+	for _, tc := range []struct {
+		name    string
+		elapsed int64
+		setup   func(s *State)
+	}{
+		{"online scarecrow bounty", 1, func(s *State) { s.Plots[0].Critter = "crow" }},
+		{"offline scarecrow trickle", 3600, func(*State) {}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := contractReadyState(t, c)
+			if err := StartContract(s, c, ContractBareHands, 10); err != nil {
+				t.Fatal(err)
+			}
+			s.Scarecrow = true
+			s.ContractEarnings = contractBareHandsEarnings - 1
+			tc.setup(s)
+
+			ev := Advance(s, c, 10+tc.elapsed)
+			if ev.ContractCompleted != ContractBareHands || s.ContractsCompleted != 1 {
+				t.Fatalf("ContractCompleted = %q, completed = %d", ev.ContractCompleted, s.ContractsCompleted)
+			}
+			if ev.Empty() {
+				t.Fatal("a completed contract must make the away summary non-empty")
+			}
+			if again := Advance(s, c, 20+tc.elapsed); again.ContractCompleted != "" {
+				t.Fatalf("second Advance re-reported %q", again.ContractCompleted)
+			}
+		})
+	}
+}

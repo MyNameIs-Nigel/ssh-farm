@@ -281,6 +281,52 @@ func NewWithSeason(p Phase, solid bool, eventID string, sn season.Season) Theme 
 	}
 }
 
+// leaderboardNameColors maps the static leaderboard name styles a player
+// earns from Contract 2 (gameplay/04) to foregrounds. Styles are stored as
+// IDs, never colours, so this table is the one place a colour is chosen.
+// Every canvas background is near-black under every phase, event lift, and
+// festival tint, so one bright tone per style stays readable throughout.
+var leaderboardNameColors = map[string]string{
+	"leaf":   "120",
+	"gold":   "220",
+	"sky":    "117",
+	"rose":   "211",
+	"violet": "183",
+}
+
+// nameWaveStops is the purple ramp Contract 3's animated name travels
+// through. Every stop is an xterm-256 index rather than RGB: the server
+// forces the TrueColor profile, so hex colours reach every client as 24-bit
+// escapes, while an index is sent as-is and a 256-colour terminal draws the
+// same wave a truecolour one does.
+var nameWaveStops = [...]string{"97", "98", "134", "135", "141", "177", "183"}
+
+// NameWavePeriod is how many animation steps one full wave takes.
+const NameWavePeriod = 2 * (len(nameWaveStops) - 1)
+
+// LeaderboardName returns the style for a static leaderboard name style ID,
+// or false for the traditional treatment and any ID it does not know.
+func (t Theme) LeaderboardName(style string) (lipgloss.Style, bool) {
+	c, ok := leaderboardNameColors[style]
+	if !ok {
+		return lipgloss.Style{}, false
+	}
+	return lipgloss.NewStyle().Background(t.Bg).Foreground(lipgloss.Color(c)).Bold(true), true
+}
+
+// NameWave returns the style at step along the animated name's ramp. The
+// ramp runs out and back, so consecutive steps never jump in colour.
+func (t Theme) NameWave(step int) lipgloss.Style {
+	step %= NameWavePeriod
+	if step < 0 {
+		step += NameWavePeriod
+	}
+	if step >= len(nameWaveStops) {
+		step = NameWavePeriod - step
+	}
+	return lipgloss.NewStyle().Background(t.Bg).Foreground(lipgloss.Color(nameWaveStops[step])).Bold(true)
+}
+
 // sgr is the sequence that re-establishes the theme's colours.
 func (t Theme) sgr() string {
 	return "\x1b[" + sgrColor("38", t.fgIdx) + ";" + sgrColor("48", t.bgIdx) + "m"

@@ -4,13 +4,13 @@ package tui
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
@@ -146,6 +146,9 @@ type Game struct {
 	contractID        sim.ContractID
 	contractAbandon   bool
 	completedContract sim.ContractID
+	// pendingReward holds a completion that arrived while another modal
+	// (the welcome-back summary) had the screen; it opens when that closes.
+	pendingReward sim.ContractID
 
 	board            *leaderboard.Engine
 	lbBoard          leaderboard.Board
@@ -154,6 +157,11 @@ type Game struct {
 	lbScroll         int
 	boardAnimPhase   int
 	boardAnimRunning bool
+	// limitedColor is set from the program's ColorProfileMsg when the
+	// terminal has fewer than 256 colours; the name wave then holds still.
+	// The server currently forces TrueColor for every session, so this is
+	// the fallback for any host that stops doing so.
+	limitedColor bool
 
 	tutorialPage int
 	tutorialSkip bool
@@ -207,6 +215,7 @@ func NewGame(id identity.SessionIdentity, res game.AttachResult, c *content.Cont
 		g.away = res.Away
 		g.overlay = ovAway
 	}
+	g.announceContract(res.Away.ContractCompleted)
 	return g
 }
 
@@ -271,14 +280,19 @@ func (g *Game) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		g.snap = snap
 		g.eventNotices(ev)
+		g.announceContract(snap.ContractCompleted)
 		g.pruneNotices()
 		if g.scr == scrBoard && g.now >= g.lbNextRefresh {
 			g.refreshBoard()
 		}
 		return g, tea.Batch(tickCmd(), g.startBoardAnimation())
 
+	case tea.ColorProfileMsg:
+		g.limitedColor = msg.Profile < colorprofile.ANSI256
+		return g, nil
+
 	case boardAnimMsg:
-		if g.scr != scrBoard || !g.boardHasAnimatedName() {
+		if !g.boardAnimates() {
 			g.boardAnimRunning = false
 			return g, nil
 		}
@@ -313,7 +327,7 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case ovTutorial:
 		return g.handleTutorialKey(key)
 	case ovAway:
-		g.overlay = ovNone
+		g.closeAway()
 		return g, nil
 	case ovPicker:
 		return g.handlePickerKey(key)
@@ -773,21 +787,23 @@ func (g *Game) handleStarShopKey(key string) (tea.Model, tea.Cmd) {
 		return g, nil
 	}
 	ups := g.content.Upgrades
+	g.progressIdx = clamp(g.progressIdx, 0, g.starShopRowCount()-1)
 	switch key {
 	case "c":
-		if st.ContractsAvailable(g.content) {
-			g.scr = scrContracts
-			g.contractIdx = clamp(st.ContractsCompleted, 0, len(sim.Contracts())-1)
-		}
+		g.openContracts()
 	case "up", "k":
 		if g.progressIdx > 0 {
 			g.progressIdx--
 		}
 	case "down", "j":
-		if g.progressIdx < len(ups)-1 {
+		if g.progressIdx < g.starShopRowCount()-1 {
 			g.progressIdx++
 		}
 	case "enter", "space", " ", "b":
+		if g.progressIdx == contractsRowIdx(g.content) {
+			g.openContracts()
+			return g, nil
+		}
 		if g.progressIdx >= len(ups) {
 			return g, nil
 		}
@@ -799,6 +815,29 @@ func (g *Game) handleStarShopKey(key string) (tea.Model, tea.Cmd) {
 		}
 	}
 	return g, nil
+}
+
+// contractsRowIdx is the StarShop row index of the Contracts entry, which
+// sits directly after the lifetime upgrades (gameplay/04: no ninth nav tab).
+func contractsRowIdx(c *content.Content) int { return len(c.Upgrades) }
+
+// starShopRowCount is how many StarShop rows the cursor can land on.
+func (g *Game) starShopRowCount() int {
+	if g.snap.State.ContractsAvailable(g.content) {
+		return len(g.content.Upgrades) + 1
+	}
+	return len(g.content.Upgrades)
+}
+
+// openContracts moves to the Contracts screen with the next contract (or
+// the last one, once the campaign is done) under the cursor.
+func (g *Game) openContracts() {
+	st := g.snap.State
+	if !st.ContractsAvailable(g.content) {
+		return
+	}
+	g.scr = scrContracts
+	g.contractIdx = clamp(st.ContractsCompleted, 0, len(sim.Contracts())-1)
 }
 
 func (g *Game) handleContractsKey(key string) (tea.Model, tea.Cmd) {
@@ -941,6 +980,15 @@ func (g *Game) refreshBoard() {
 	g.clampBoardScroll()
 }
 
+// nameWaveStaticStep is the wave stop shown when the terminal cannot draw
+// the ramp: its most saturated purple.
+const nameWaveStaticStep = 3
+
+// boardAnimates reports whether the wave tick should run right now.
+func (g *Game) boardAnimates() bool {
+	return g.scr == scrBoard && !g.limitedColor && g.boardHasAnimatedName()
+}
+
 func (g *Game) boardHasAnimatedName() bool {
 	for _, rows := range [][]leaderboard.Row{g.lbBoard.Top, g.lbBoard.Window} {
 		for _, r := range rows {
@@ -952,8 +1000,11 @@ func (g *Game) boardHasAnimatedName() bool {
 	return false
 }
 
+// startBoardAnimation starts the wave's tick chain, at most one at a time,
+// and only while the Board is on screen: the 1 Hz tick calls this on every
+// screen, and the cached board may still hold a wave row after you leave.
 func (g *Game) startBoardAnimation() tea.Cmd {
-	if g.boardAnimRunning || !g.boardHasAnimatedName() {
+	if g.boardAnimRunning || !g.boardAnimates() {
 		return nil
 	}
 	g.boardAnimRunning = true
@@ -1041,48 +1092,53 @@ func (g *Game) boardRowLine(r leaderboard.Row, cw, rankWidth int) string {
 	if nameWidth < 1 {
 		nameWidth = 1
 	}
-	styledName := g.renderBoardName(truncate(sanitizeText(name), nameWidth), r.NameStyle)
-	left := prefix + seals + styledName + suffix + rebirth + youMarker
-	line := alignSides(left, right, cw)
+	name = truncate(sanitizeText(name), nameWidth)
+	// Laid out unstyled first: alignSides may truncate, and truncate cuts by
+	// rune, which would split an escape sequence.
+	line := alignSides(prefix+seals+name+suffix+rebirth+youMarker, right, cw)
+
+	rowStyle := th.Value
 	switch {
 	case r.IsYou:
-		return th.Selected.Render(line)
+		rowStyle = th.Selected
 	case r.Rank == 1:
-		return th.BoardGold.Render(line)
+		rowStyle = th.BoardGold
 	case r.Rank == 2:
-		return th.BoardSilver.Render(line)
+		rowStyle = th.BoardSilver
 	case r.Rank == 3:
-		return th.BoardBronze.Render(line)
-	default:
-		return th.Value.Render(line)
+		rowStyle = th.BoardBronze
 	}
+	// An earned name style colours the name alone. Its span has to close the
+	// row's style and reopen it afterwards: a styled span nested inside one
+	// Render ends in a reset, and everything after it (suffix, rebirths, the
+	// YOU marker, the coins) would fall back to the canvas default.
+	start := len(prefix) + len(seals)
+	end := start + len(name)
+	if r.NameStyle == sim.NameStyleTraditional || end > len(line) || line[start:end] != name {
+		return rowStyle.Render(line)
+	}
+	return rowStyle.Render(line[:start]) + g.renderBoardName(name, r.NameStyle, rowStyle) + rowStyle.Render(line[end:])
 }
 
-func (g *Game) renderBoardName(name, style string) string {
+// renderBoardName applies a contract-earned name style. The result is
+// exactly as wide as name, so alignment and hitboxes never move between
+// animation frames. Unknown styles fall back to the row's own treatment.
+func (g *Game) renderBoardName(name, style string, rowStyle lipgloss.Style) string {
 	th := g.theme()
-	color := map[string]string{
-		sim.NameStyleLeaf: "120", sim.NameStyleGold: "220", sim.NameStyleSky: "117",
-		sim.NameStyleRose: "211", sim.NameStyleViolet: "183",
-	}[style]
-	if color != "" {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Background(th.Bg).Bold(true).Render(name)
+	if s, ok := th.LeaderboardName(style); ok {
+		return s.Render(name)
 	}
 	if style != sim.NameStylePurpleWave {
-		return name
+		return rowStyle.Render(name)
+	}
+	if g.limitedColor {
+		// A 16-colour terminal would quantise the ramp into a flicker
+		// between two unrelated colours; one steady purple reads better.
+		return th.NameWave(nameWaveStaticStep).Render(name)
 	}
 	var b strings.Builder
-	runes := []rune(name)
-	for i, r := range runes {
-		wave := (i + g.boardAnimPhase) % 12
-		if wave > 6 {
-			wave = 12 - wave
-		}
-		t := float64(wave) / 6
-		rr := int(145 + 80*t)
-		gg := int(85 + 55*t)
-		bb := int(205 + 45*t)
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", rr, gg, bb))).Background(th.Bg).Bold(true)
-		b.WriteString(style.Render(string(r)))
+	for i, r := range []rune(name) {
+		b.WriteString(th.NameWave(i + g.boardAnimPhase).Render(string(r)))
 	}
 	return b.String()
 }
@@ -1265,16 +1321,45 @@ func (g *Game) applyAction(snap game.Snapshot, ach []string, err error) {
 		g.addNotice("Hmm: " + err.Error() + ".")
 		if snap.State != nil {
 			g.snap = snap
+			// The catch-up before a refused action can still cross a goal
+			// (abandoning just as the last coins land, say).
+			g.announceContract(snap.ContractCompleted)
 		}
 		return
 	}
-	previous := g.snap.State.ContractsCompleted
 	g.snap = snap
-	if snap.State.ContractsCompleted > previous && snap.State.ContractsCompleted <= len(sim.Contracts()) {
-		g.completedContract = sim.Contracts()[snap.State.ContractsCompleted-1].ID
+	g.announceContract(snap.ContractCompleted)
+	g.achievementNotices(ach)
+}
+
+// announceContract opens the reward modal for a contract the latest call
+// completed. It replaces whatever modal is open (an abandon prompt for the
+// contract just won is moot), except the two that must stay on screen: the
+// kick notice, and the welcome-back summary, which hands over when closed.
+func (g *Game) announceContract(id sim.ContractID) {
+	if id == "" {
+		return
+	}
+	switch g.overlay {
+	case ovKicked:
+		return
+	case ovAway:
+		g.pendingReward = id
+		return
+	}
+	g.completedContract = id
+	g.overlay = ovContractReward
+}
+
+// closeAway dismisses the welcome-back summary, handing over to a contract
+// reward that was earned while the player was offline.
+func (g *Game) closeAway() {
+	g.overlay = ovNone
+	if g.pendingReward != "" {
+		g.completedContract = g.pendingReward
+		g.pendingReward = ""
 		g.overlay = ovContractReward
 	}
-	g.achievementNotices(ach)
 }
 
 func (g *Game) achievementNotices(ids []string) {
@@ -1549,9 +1634,6 @@ func (g *Game) starShopLines() []starShopLine {
 	lines = append(lines, starShopLine{idx: noShopItem})
 	lines = append(lines, starShopLine{text: "  Balance: " + th.Value.Render("✦ "+money(st.PrestigeCurrency)), idx: noShopItem})
 	lines = append(lines, starShopLine{text: "  Rebirths this run: " + th.Value.Render(money(st.ProgressionRebirths())), idx: noShopItem})
-	if st.ContractsAvailable(g.content) {
-		lines = append(lines, starShopLine{text: "  " + th.Ready.Render("[c] Contracts — "+itoa(st.ContractsCompleted)+"/3 complete"), idx: noShopItem})
-	}
 	lines = append(lines, starShopLine{idx: noShopItem})
 	lines = append(lines, starShopLine{text: th.Section.Render("Lifetime upgrades"), idx: noShopItem})
 
@@ -1575,7 +1657,32 @@ func (g *Game) starShopLines() []starShopLine {
 		}
 		lines = append(lines, starShopLine{text: row, idx: i})
 	}
+	if st.ContractsAvailable(g.content) {
+		marker := "  "
+		idx := contractsRowIdx(g.content)
+		if g.progressIdx == idx {
+			marker = th.Selected.Render("▸ ")
+		}
+		lines = append(lines, starShopLine{idx: noShopItem})
+		lines = append(lines, starShopLine{
+			text: marker + th.Ready.Render(alignSides("◆ Contracts — "+g.contractsSummary(), "open ›", lineWidth)),
+			idx:  idx,
+		})
+	}
 	return lines
+}
+
+// contractsSummary is the StarShop Contracts row's one-line status.
+func (g *Game) contractsSummary() string {
+	st := g.snap.State
+	switch {
+	case st.ActiveContract != "":
+		return contractName(st.ActiveContract) + " " + g.contractProgress(st.ActiveContract)
+	case st.ContractsCompleted >= len(sim.Contracts()):
+		return "campaign complete"
+	default:
+		return itoa(st.ContractsCompleted) + "/" + itoa(len(sim.Contracts())) + " complete"
+	}
 }
 
 func itoa(n int) string {

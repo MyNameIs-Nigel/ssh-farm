@@ -315,6 +315,44 @@ func TestContractSessionIntentsAndMetadataPersist(t *testing.T) {
 	}
 }
 
+// A contract can finish inside the catch-up that precedes every call (a
+// Bare Hands scarecrow bounty), so both the tick path and an intent must
+// say so explicitly — exactly once.
+func TestSnapshotsReportContractCompletedOnce(t *testing.T) {
+	m, _ := testManager(t, PolicyTakeover, time.Hour)
+	res := mustAttach(t, m, ident("SHA256:contract-done", "farm"), 1000)
+	armBareHands := func() {
+		t.Helper()
+		if ok := res.Session.actor.do(func() {
+			st := res.Session.actor.state
+			st.ActiveContract = sim.ContractBareHands
+			st.ContractEarnings = 99_999
+			st.Scarecrow = true
+			st.Plots[0] = sim.Plot{Critter: "crow"}
+		}); !ok {
+			t.Fatal("actor stopped")
+		}
+	}
+
+	armBareHands()
+	snap, _, err := res.Session.Advance(1001)
+	if err != nil || snap.ContractCompleted != sim.ContractBareHands {
+		t.Fatalf("tick snapshot ContractCompleted = %q, err = %v", snap.ContractCompleted, err)
+	}
+	if snap, _, _ = res.Session.Advance(1002); snap.ContractCompleted != "" {
+		t.Fatalf("next tick re-reported %q", snap.ContractCompleted)
+	}
+
+	// The same crossing inside an intent's catch-up, on a no-op action.
+	if ok := res.Session.actor.do(func() { res.Session.actor.state.ContractsCompleted = 0 }); !ok {
+		t.Fatal("actor stopped")
+	}
+	armBareHands()
+	if snap, err = res.Session.SetLeaderboardNameStyle(1003, sim.NameStyleTraditional); err != nil || snap.ContractCompleted != sim.ContractBareHands {
+		t.Fatalf("intent snapshot ContractCompleted = %q, err = %v", snap.ContractCompleted, err)
+	}
+}
+
 func TestRenameFarmAppliesModerationAndRateLimit(t *testing.T) {
 	m, _ := testManager(t, PolicyTakeover, time.Hour)
 	res := mustAttach(t, m, ident("SHA256:k1", "farm"), 1000)
