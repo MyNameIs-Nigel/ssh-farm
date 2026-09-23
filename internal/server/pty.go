@@ -3,7 +3,7 @@ package server
 import (
 	"io"
 
-	"github.com/charmbracelet/ssh"
+	"charm.land/ssh"
 )
 
 const noPTYMessage = "ssh-farm needs an interactive terminal.\r\n" +

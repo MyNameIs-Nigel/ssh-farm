@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/charmbracelet/ssh"
+	"charm.land/ssh"
 )
 
 const maxSlotLen = 32
