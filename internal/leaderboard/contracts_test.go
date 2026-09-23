@@ -2,6 +2,7 @@ package leaderboard
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -50,5 +51,42 @@ func TestDuplicateCheckUsesPostModerationDisplayNamesAcrossWholePopulation(t *te
 		if !row.ShowSuffix {
 			t.Fatalf(`Top[%d].ShowSuffix = false, want true`, i)
 		}
+	}
+}
+
+// Seal counts come from a denormalized column, so a hand-edited or corrupt
+// row must still render between zero and three seals.
+func TestContractSealCountIsClampedToTheCampaign(t *testing.T) {
+	clock := newFakeClock()
+	now := clock.now().Unix()
+	src := &fakeSource{rows: []store.LeaderboardRow{
+		{Fingerprint: `SHA256:over`, Slot: `farm`, Coins: 200, FarmName: `Over`, UpdatedAt: now, ContractsCompleted: 7},
+		{Fingerprint: `SHA256:under`, Slot: `farm`, Coins: 100, FarmName: `Under`, UpdatedAt: now, ContractsCompleted: -2},
+	}}
+	board, err := New(src, time.Minute, 0, 1, clock.now).Get(context.Background(), SaveRef{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := []int{board.Top[0].ContractsCompleted, board.Top[1].ContractsCompleted}; got[0] != 3 || got[1] != 0 {
+		t.Fatalf(`clamped seal counts = %v, want [3 0]`, got)
+	}
+}
+
+type failingSource struct{ err error }
+
+func (f failingSource) LeaderboardSnapshot(context.Context) ([]store.LeaderboardRow, error) {
+	return nil, f.err
+}
+
+// A store failure reaches the caller (the Board screen shows its
+// "unavailable" state) rather than an empty board that reads as no farms.
+func TestGetSurfacesSourceFailure(t *testing.T) {
+	want := errors.New(`store offline`)
+	board, err := New(failingSource{err: want}, time.Minute, 0, 1, newFakeClock().now).Get(context.Background(), SaveRef{})
+	if !errors.Is(err, want) {
+		t.Fatalf(`Get error = %v, want it to wrap %v`, err, want)
+	}
+	if len(board.Top) != 0 || board.Total != 0 {
+		t.Fatalf(`a failed Get returned a board: %+v`, board)
 	}
 }

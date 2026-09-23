@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -284,7 +285,7 @@ func TestContractSessionIntentsAndMetadataPersist(t *testing.T) {
 	if snap.State.ActiveContract != sim.ContractBareHands || snap.State.LifetimeEarnings != 777 {
 		t.Fatalf("started contract state = %+v", snap.State)
 	}
-	if snap, err = res.Session.SetLeaderboardNameStyle(1002, sim.NameStyleLeaf); err != sim.ErrNameStyleLocked {
+	if snap, err = res.Session.SetLeaderboardNameStyle(1002, sim.NameStyleLeaf); !errors.Is(err, sim.ErrNameStyleLocked) {
 		t.Fatalf("locked style error = %v, want %v", err, sim.ErrNameStyleLocked)
 	}
 	if snap, _, err = res.Session.AbandonContract(1003); err != nil || snap.State.ActiveContract != "" {
