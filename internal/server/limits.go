@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"charm.land/ssh"
+
 	"github.com/mynameis-nigel/ssh-farm/internal/identity"
 )
 
