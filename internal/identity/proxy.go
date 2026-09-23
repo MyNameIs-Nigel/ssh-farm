@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/ssh"
+	"charm.land/ssh"
 )
 
 // ErrProxiedIdentity means the router sent a username that does not match

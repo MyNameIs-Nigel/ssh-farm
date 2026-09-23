@@ -10,11 +10,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"charm.land/ssh"
 	"charm.land/wish/v2"
 	"charm.land/wish/v2/bubbletea"
 	"charm.land/wish/v2/logging"
 	"charm.land/wish/v2/ratelimiter"
-	"github.com/charmbracelet/ssh"
 	"golang.org/x/time/rate"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/config"

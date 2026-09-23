@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: production code changed without tests
@@ -72,10 +72,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: coverage-profile
       - name: measure
@@ -95,16 +95,26 @@ jobs:
   supply-chain:
     name: supply chain
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 20, not 15: the litestream govulncheck below builds an SSA call graph
+    # over the AWS, Azure and GCP SDKs it links, which is minutes of work on
+    # its own — enough that the old budget would have been decided by runner
+    # weather rather than by whether the step found anything.
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # gitleaks needs history to scan it
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+          # Both modules, or the litestream tree downloads from scratch on
+          # every run and never contributes to the key that would have
+          # cached it.
+          cache-dependency-path: |
+            go.sum
+            build/litestream/go.sum
 
       - name: govulncheck
         # Reachability-based, so it reports vulnerabilities in code this
@@ -114,6 +124,23 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
+      - name: govulncheck (litestream build module)
+        # litestream ships inside the image but is built from a module of its
+        # own, which the step above does not reach: `./...` stops at the root
+        # module's packages. Until this existed, nothing looked at that tree
+        # until `scan published image` — which runs on main, after the image
+        # is pushed, so the first sign of trouble was a red release and a
+        # blocked deploy of whatever change happened to merge next.
+        #
+        # Read the reachability note above in both directions. It is what
+        # makes this safe to block a merge on, and it is also why this is not
+        # a substitute for the release scan: that one matches versions, so a
+        # vulnerable package linked but never called passes here and still
+        # fails there. This catches the reachable ones early; the release
+        # scan stays the backstop that holds the line on the rest.
+        working-directory: build/litestream
+        run: govulncheck github.com/benbjohnson/litestream/cmd/litestream
+
       - name: gitleaks
         # This repo is public and its threat model has a specific shape: the
         # moderation denylist must never enter git history, and the fleet's
@@ -121,7 +148,7 @@ jobs:
         # exists in the tree, which says this scan has been run by hand —
         # a control that depends on somebody remembering is not a control.
         # Free for public repositories; organisations need GITLEAKS_LICENSE.
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"
@@ -132,7 +159,10 @@ jobs:
         # or a licence incompatible with shipping inside the published image.
         # NOTICE already carries an Apache-2.0 obligation for the bundled
         # litestream binary; a copyleft dependency arriving unnoticed is a
-        # licensing problem, not a packaging one.
+        # licensing problem, not a packaging one. Since litestream is built
+        # from source (build/litestream/go.mod), its tree is in the dependency
+        # graph too rather than hidden inside someone else's binary — so this
+        # step now reviews the licences we actually redistribute.
         #
         # ┌─ ACTION REQUIRED ────────────────────────────────────────────────┐
         # │ This step cannot work until Dependency graph is enabled:         │
@@ -148,7 +178,7 @@ jobs:
         # │ a dependency you already have has become vulnerable.             │
         # └──────────────────────────────────────────────────────────────────┘
         continue-on-error: true
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
           deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0

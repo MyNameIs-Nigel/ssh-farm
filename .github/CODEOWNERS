@@ -16,3 +16,6 @@
 /Dockerfile                   @MyNameIs-Nigel
 /entrypoint.sh                @MyNameIs-Nigel
 /etc/litestream.yml           @MyNameIs-Nigel
+# Decides which litestream binary supervises the durability path, and the
+# destination for dependabot's bumps to that tree now it is built from source.
+/build/litestream/            @MyNameIs-Nigel

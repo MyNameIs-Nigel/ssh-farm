@@ -11,27 +11,58 @@ that is redistributed *inside the image*, rather than depended on as source.
 Litestream
 ----------
 
-  Version:  0.5.12  (pinned in Dockerfile)
+  Version:  0.5.17  (pinned in build/litestream/go.mod)
   Source:   https://github.com/benbjohnson/litestream
   Licence:  Apache License 2.0
             https://github.com/benbjohnson/litestream/blob/main/LICENSE
 
-Used as the replication process that supervises the game binary. Copied
-into the image as a prebuilt static binary from litestream/litestream:0.5.12,
-unmodified. It is a separate program run as the container's supervising
-process, not linked into this program's code.
+Used as the replication process that supervises the game binary. It is a
+separate program run as the container's supervising process, not linked into
+this program's code.
+
+Compiled from upstream source at v0.5.17 by the Dockerfile's litestream
+stage, rather than copied from the prebuilt litestream/litestream image —
+see that stage for why. No source file is patched or vendored. What does
+differ from an upstream build: it is compiled with this repository's Go
+toolchain, and three transitive module dependencies are raised above the
+versions v0.5.17 pins, to versions carrying fixes for advisories the release
+scan fails on. Those three are named, with the advisory each answers, in
+build/litestream/go.mod.
 
 Apache-2.0 section 4 requires this attribution to travel with the binary,
 which is why this file exists even though none of this repository's own code
-is Apache-licensed.
+is Apache-licensed. Section 4(b) asks that modified files carry notice of the
+change; no file of litestream's is modified, and the paragraph above states
+the build deltas so the distinction is on the record either way.
+
+Libraries linked into the litestream binary
+-------------------------------------------
+
+Building litestream here rather than shipping someone else's build makes this
+repository the one combining litestream's dependency tree into a redistributed
+binary, so those licences are in scope where previously they sat behind an
+opaque upstream artefact. That tree is largely Apache-2.0 — the AWS and Azure
+SDKs, gRPC, OpenTelemetry and the Prometheus client among them — alongside
+MIT and BSD-3-Clause modules.
+
+The full list, with exact versions and checksums, is build/litestream/go.mod
+and build/litestream/go.sum; each module's own repository carries its licence
+text and any NOTICE of its own. They are enumerated there rather than copied
+here for the same reason the base image is not enumerated below: a list
+maintained by hand goes stale, and the generated one is already in the tree
+and machine-checkable against the image's SBOM.
 
 
 Go module dependencies
 ----------------------
 
-Every Go dependency is permissive (MIT or BSD-3-Clause) and is compiled into
-the binary rather than redistributed as a separate work. See go.mod for the
-list, and each module's own repository for its licence text.
+This section covers the game's own dependencies — the root go.mod. Every one
+is permissive (MIT or BSD-3-Clause) and is compiled into the binary rather
+than redistributed as a separate work. See go.mod for the list, and each
+module's own repository for its licence text.
+
+litestream's dependencies are a separate tree with a separate licence mix;
+they are covered above, under the litestream entry.
 
 
 Base image
