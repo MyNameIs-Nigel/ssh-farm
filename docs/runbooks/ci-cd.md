@@ -161,7 +161,7 @@ fleet's to own.
 
 **The smoke test reads the SSH banner.** `internal/server` feeds
 `internal/version.Version` into wish's `Version` option, so the identification
-string on the wire is literally `SSH-2.0-2.4.1` — and the arcade router already
+string on the wire is literally `SSH-2.0-2.5.0` — and the arcade router already
 health-probes it. Checking that one line proves the process started, bound its
 port, finished enough init to accept TCP, *and* is the build just shipped. The
 previous check — `sleep 10` then `docker compose ps --status running` — proved
