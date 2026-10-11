@@ -110,3 +110,8 @@ future progress. Existing guest progress cannot be converted into a save.
 Deploy this backend before enabling guest admission in the lobby. The fleet's
 [guest architecture plan](../ssh-arcadelobby/docs/08-guest-access-plan.md) defines
 the trust boundary and rollout order. No database migration is needed.
+
+## Releases
+
+See [Publishing a release](docs/releasing.md) for versioning, GitHub environment
+setup, deployment order, and rollback. Production deploys on published releases.

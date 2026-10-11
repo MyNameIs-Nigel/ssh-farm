@@ -1,5 +1,11 @@
 # Farm Framework 03 — Deployment, CI/CD & the V1 Cutover
 
+> Release workflow update: production now deploys published `vMAJOR.MINOR.PATCH`
+> releases, with build-injected versions and persistent digest selection.
+> See the repository `docs/releasing.md` for the current procedure. Older
+> push-to-main and local-latest deployment descriptions below are historical.
+
+
 **Phase:** 3 · **Depends on:** framework/01–02 buildable ·
 **Parallel-safe with:** gameplay/02, tui/*
 

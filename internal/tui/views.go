@@ -969,7 +969,7 @@ func (g *Game) helpTabs() string {
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, controls, " ", gameplay) +
 		"\n" + th.Hint.Render("  ← → switch pages · esc/q back to farm · Idle Farmer v"+
-		version.Version+" ("+version.Channel+")")
+		version.Version)
 }
 
 func (g *Game) viewHelpControls() string {

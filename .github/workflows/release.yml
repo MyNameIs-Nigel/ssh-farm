@@ -1,17 +1,10 @@
 name: Release
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      skip-deploy:
-        description: Build and publish the image but do not deploy it.
-        type: boolean
-        default: false
+  release:
+    types: [published]
 
-# Never two deploys at once, and never cancel one halfway: a cancelled deploy
-# leaves the host in whatever state it had reached. Releases queue.
+# Never interrupt an active SSM deployment. A host lock also serializes repos.
 concurrency:
   group: release-production
   cancel-in-progress: false
@@ -20,7 +13,34 @@ permissions:
   contents: read
 
 jobs:
+  release:
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - run: python3 scripts/deploy/test_deploy.py
+      - id: release
+        name: Validate release tag and main ancestry
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tag must be vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$(git rev-parse HEAD)"
+          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
   verify:
+    needs: release
     name: verify
     uses: ./.github/workflows/verify.yml
     with:
@@ -32,7 +52,7 @@ jobs:
 
   publish:
     name: publish image
-    needs: verify
+    needs: [release, verify]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -46,6 +66,8 @@ jobs:
       sha_short: ${{ steps.meta.outputs.sha_short }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -56,30 +78,21 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
-        name: derive tags
-        # internal/version.Version is the single source of truth for the
-        # release number — internal/server feeds it straight into the SSH
-        # version-exchange banner, which the arcade router health-probes. The
-        # image is tagged with it so "which build is that?" has an answer that
-        # does not require reading a commit log, and so the deploy can assert
-        # the banner it expects to see afterwards.
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
         run: |
-          set -euo pipefail
-          version=$(sed -n 's/^const Version = "\(.*\)"$/\1/p' internal/version/version.go)
-          if [ -z "$version" ]; then
-            echo "::error::could not read Version from internal/version/version.go"
-            exit 1
-          fi
-          {
-            echo "version=$version"
-            echo "sha_short=sha-$(git rev-parse --short HEAD)"
-          } >> "$GITHUB_OUTPUT"
-          echo "publishing version $version" >> "$GITHUB_STEP_SUMMARY"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha_short=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
+          labels: |
+            org.opencontainers.image.version=v${{ needs.release.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            VERSION=${{ needs.release.outputs.version }}
           push: true
           # A layer cache turns a ~4 minute rebuild into well under a minute
           # for the common case where only Go source changed.
@@ -93,7 +106,7 @@ jobs:
           tags: |
             ghcr.io/mynameis-nigel/ssh-farm:latest
             ghcr.io/mynameis-nigel/ssh-farm:${{ steps.meta.outputs.sha_short }}
-            ghcr.io/mynameis-nigel/ssh-farm:${{ steps.meta.outputs.version }}
+            ghcr.io/mynameis-nigel/ssh-farm:v${{ steps.meta.outputs.version }}
 
       - name: attest provenance
         # The image is pulled anonymously by anyone who wants it. Signed
@@ -119,95 +132,62 @@ jobs:
             ghcr.io/mynameis-nigel/ssh-farm@${{ steps.build.outputs.digest }}
 
   deploy:
-    name: deploy to production
-    needs: publish
-    if: ${{ !inputs.skip-deploy }}
+    needs: [release, publish]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment:
-      name: production
-      url: ssh://play.ssharcade.dev
+    timeout-minutes: 30
+    environment: production
     permissions:
-      id-token: write # mint the OIDC token — the only credential this job holds
+      id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v7
-
+        with:
+          ref: ${{ github.sha }}
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          # Held in a repo variable rather than written inline: this repo is
-          # public, and the ARN carries the AWS account ID. Not a secret, but
-          # not something to publish for free either.
           role-to-assume: ${{ vars.ARCADE_DEPLOY_ROLE }}
           aws-region: us-east-1
-
-      - name: deploy farm via SSM
+      - name: Deploy release through SSM
         env:
           INSTANCE_ID: ${{ vars.ARCADE_INSTANCE_ID }}
-          IMAGE_DIGEST: ghcr.io/mynameis-nigel/ssh-farm@${{ needs.publish.outputs.digest }}
-          EXPECT_VERSION: ${{ needs.publish.outputs.version }}
+          IMAGE: ghcr.io/mynameis-nigel/ssh-farm@${{ needs.publish.outputs.digest }}
+          VERSION: ${{ needs.release.outputs.version }}
         run: |
           set -euo pipefail
-
-          # The deploy logic lives in scripts/deploy/remote-deploy.sh, in the
-          # repository, where it can be reviewed as a diff and run by hand
-          # during an incident. It is shipped to the host base64-encoded
-          # because a shell script with conditionals has no quoting story that
-          # survives being embedded in an SSM `commands=[...]` JSON array.
-          SCRIPT_B64=$(base64 -w0 scripts/deploy/remote-deploy.sh)
-
-          # Build the parameter document with jq rather than by hand: every
-          # value below is single-quoted inside the remote shell, and base64
-          # output cannot contain a quote, so there is no interpolation to get
-          # wrong at 3am.
-          PARAMS=$(jq -n \
-            --arg script "$SCRIPT_B64" \
-            --arg digest "$IMAGE_DIGEST" \
-            --arg version "$EXPECT_VERSION" \
-            '{commands: [
-               "set -eu",
-               "echo \($script) | base64 -d > /tmp/farm-deploy.sh",
-               "chmod +x /tmp/farm-deploy.sh",
-               "FARM_IMAGE_DIGEST=\"\($digest)\" FARM_IMAGE_REPO=ghcr.io/mynameis-nigel/ssh-farm FARM_EXPECT_VERSION=\"\($version)\" sh /tmp/farm-deploy.sh",
-               "rm -f /tmp/farm-deploy.sh"
-             ]}')
-
-          CMD_ID=$(aws ssm send-command \
+          jq -n \
+            --arg script "$(base64 -w0 scripts/deploy/remote-deploy.sh)" \
+            --arg image "$IMAGE" --arg version "$VERSION" \
+            '{executionTimeout: ["1500"], commands: [
+              "set -eu",
+              "script=$(mktemp)",
+              "trap \"rm -f $script\" EXIT",
+              "printf %s \($script) | base64 -d > \"$script\"",
+              "SERVICE=farm IMAGE=\($image) VERSION=\($version) sh \"$script\""
+            ]}' > params.json
+          command_id=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
-            --comment "deploy farm ${{ github.sha }}" \
-            --parameters "$PARAMS" \
+            --timeout-seconds 1800 \
+            --comment "deploy farm $VERSION" \
+            --parameters file://params.json \
             --query Command.CommandId --output text)
-
-          echo "SSM command: $CMD_ID"
-
-          # `wait` exits non-zero when the remote command failed. Swallow that
-          # so the invocation below still prints the real stdout/stderr —
-          # without the `|| true` a failed deploy gives you an exit code and
-          # no logs.
-          aws ssm wait command-executed \
-            --command-id "$CMD_ID" \
-            --instance-id "$INSTANCE_ID" || true
-
-          aws ssm get-command-invocation \
-            --command-id "$CMD_ID" \
+          # The standard waiter stops too early for a queued host deployment.
+          for attempt in $(seq 1 170); do
+            status=$(aws ssm get-command-invocation --command-id "$command_id" \
+              --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || true)
+            case "$status" in
+              Success|Cancelled|TimedOut|Failed|Cancelling) break ;;
+            esac
+            sleep 10
+          done
+          aws ssm get-command-invocation --command-id "$command_id" \
             --instance-id "$INSTANCE_ID" \
             --query '{Status:Status,Out:StandardOutputContent,Err:StandardErrorContent}' \
-            --output json > result.json
-
-          jq -r '.Out' result.json
-          jq -r '.Err' result.json >&2
-
+            --output json | tee result.json
           {
-            echo "### Deploy"
-            echo
-            echo "- image: \`$IMAGE_DIGEST\`"
-            echo "- version: \`$EXPECT_VERSION\`"
-            echo "- status: \`$(jq -r .Status result.json)\`"
+            echo "Release: v$VERSION"
+            echo "Image: $IMAGE"
+            echo "SSM command: $command_id"
+            echo "Status: $(jq -r .Status result.json)"
           } >> "$GITHUB_STEP_SUMMARY"
-
-          # The remote script exits non-zero if the smoke test failed, whether
-          # or not the rollback succeeded — so a red job here means "the new
-          # build is not serving", and the log above says which of the two
-          # states the host is in.
           test "$(jq -r .Status result.json)" = Success

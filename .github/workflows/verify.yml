@@ -52,6 +52,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Verify build-injected version
+        run: go test -tags releasecheck -ldflags="-X github.com/mynameis-nigel/ssh-farm/internal/version.Version=2.4.3" ./internal/version ./internal/server ./internal/tui
+
       - name: gofmt
         run: |
           unformatted=$(gofmt -l .)
