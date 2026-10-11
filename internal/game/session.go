@@ -27,6 +27,9 @@ var (
 	ErrNameDenied      = errors.New("that name isn't available")
 )
 
+// ErrGuestRequiresKey explains actions unavailable without a durable account.
+var ErrGuestRequiresKey = errors.New("guest action requires an SSH key")
+
 // Session is one terminal's handle onto a save actor.
 type Session struct {
 	id       uint64
@@ -73,7 +76,12 @@ func (s *Session) Detach() {
 func (s *Session) Advance(now int64) (Snapshot, sim.Events, error) {
 	var snap Snapshot
 	var ev sim.Events
+	var ownershipErr error
 	ok := s.actor.do(func() {
+		if s.actor.session != s {
+			ownershipErr = ErrSessionClosed
+			return
+		}
 		ev = sim.Advance(s.actor.state, s.actor.content(), now)
 		if ev.Elapsed > 0 {
 			s.actor.dirty = true
@@ -83,7 +91,7 @@ func (s *Session) Advance(now int64) (Snapshot, sim.Events, error) {
 	if !ok {
 		return Snapshot{}, sim.Events{}, ErrSessionClosed
 	}
-	return snap, ev, nil
+	return snap, ev, ownershipErr
 }
 
 func (s *Session) intent(now int64, apply func(st *sim.State) error) (Snapshot, []string, error) {
@@ -91,6 +99,10 @@ func (s *Session) intent(now int64, apply func(st *sim.State) error) (Snapshot, 
 	var newly []string
 	var actErr error
 	ok := s.actor.do(func() {
+		if s.actor.session != s {
+			actErr = ErrSessionClosed
+			return
+		}
 		c := s.actor.content()
 		active, done := s.actor.state.ActiveContract, s.actor.state.ContractsCompleted
 		ev := sim.Advance(s.actor.state, c, now)
@@ -278,6 +290,9 @@ func (s *Session) ShooCritter(now int64, plot int) (int64, Snapshot, []string, e
 // gameplay/03's checks themselves (or, as here, none — see RenameFarm,
 // which every player-facing entry point should call instead).
 func (s *Session) SetFarmName(now int64, name string) (Snapshot, error) {
+	if s.actor.key.guestID != "" {
+		return Snapshot{}, ErrGuestRequiresKey
+	}
 	snap, _, err := s.intent(now, func(st *sim.State) error {
 		return sim.SetFarmName(st, name)
 	})
@@ -303,23 +318,26 @@ func (s *Session) SetFarmName(now int64, name string) (Snapshot, error) {
 // internal/moderation) — callers must not show a different message for
 // the two.
 func (s *Session) RenameFarm(ctx context.Context, now int64, rawName string) (Snapshot, error) {
-	gate, err := s.actor.mgr.store.GateRename(ctx, s.actor.key.fingerprint, s.actor.key.slot, now)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("game: rename gate: %w", err)
+	if s.actor.key.guestID != "" {
+		return Snapshot{}, ErrGuestRequiresKey
 	}
-	switch gate {
-	case store.RenameLocked:
-		return Snapshot{}, ErrNameLocked
-	case store.RenameRateLimited:
-		return Snapshot{}, ErrNameRateLimited
-	}
-
-	filtered, denied := moderation.Filter(rawName)
-	if denied {
-		return Snapshot{}, ErrNameDenied
-	}
-
 	snap, _, err := s.intent(now, func(st *sim.State) error {
+		gate, err := s.actor.mgr.store.GateRename(ctx, s.actor.key.fingerprint, s.actor.key.slot, now)
+		if err != nil {
+			return fmt.Errorf("game: rename gate: %w", err)
+		}
+		switch gate {
+		case store.RenameLocked:
+			return ErrNameLocked
+		case store.RenameRateLimited:
+			return ErrNameRateLimited
+		}
+
+		filtered, denied := moderation.Filter(rawName)
+		if denied {
+			return ErrNameDenied
+		}
+
 		return sim.SetFarmName(st, filtered)
 	})
 	return snap, err
@@ -352,6 +370,9 @@ func (s *Session) AbandonContract(now int64) (Snapshot, []string, error) {
 
 // SetLeaderboardNameStyle selects one of the contract-earned cosmetics.
 func (s *Session) SetLeaderboardNameStyle(now int64, style string) (Snapshot, error) {
+	if s.actor.key.guestID != "" {
+		return Snapshot{}, ErrGuestRequiresKey
+	}
 	snap, _, err := s.intent(now, func(st *sim.State) error {
 		return sim.SetLeaderboardNameStyle(st, style)
 	})

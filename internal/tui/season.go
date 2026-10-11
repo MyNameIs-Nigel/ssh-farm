@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"strings"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -73,7 +72,7 @@ func (g *Game) viewSky() string {
 	}
 	w, _ := g.canvasSize()
 	styled := style.Render(text)
-	return strings.Repeat(" ", max((w-lipgloss.Width(styled))/2, 0)) + styled
+	return lipgloss.PlaceHorizontal(w, lipgloss.Center, styled)
 }
 
 // seasonalSky returns unstyled sky content so layout can reserve its row

@@ -39,6 +39,8 @@ func (g *Game) registerHitboxes() {
 		case scrHelp:
 			g.registerHelpHits()
 		}
+	case ovGuestQuit:
+		g.registerGuestQuitHits()
 	case ovPicker:
 		g.registerPickerHits()
 	case ovUpgrade:
@@ -305,3 +307,15 @@ func minInt(a, b int) int {
 
 // suppress unused import if style vars only used indirectly
 var _ = lipgloss.Width
+
+func (g *Game) registerGuestQuitHits() {
+	box := g.viewGuestQuit()
+	w, h := lipgloss.Width(box), lipgloss.Height(box)
+	if h > g.layout.bodyH {
+		return
+	}
+	x := g.layout.cx + (g.layout.cw-w)/2 + 2
+	y := g.layout.bodyY + (g.layout.bodyH-h)/2 + h - 2
+	g.addHit(x, y, len("Enter: leave"), 1, "guest:leave", nil)
+	g.addHit(x+lipgloss.Width("Enter: leave · "), y, len("Esc: stay"), 1, "guest:stay", nil)
+}

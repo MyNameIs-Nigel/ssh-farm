@@ -67,3 +67,24 @@ Moonminer framework/01's full list, plus:
   (framework/02) since its only changes are store-facing.
 - The TUI itself → tui/01 (it receives the same constructor signature v1
   uses, plus content/leaderboard handles registered later).
+
+## Guest access extension (protocol v2)
+
+`FARM_ALLOW_GUESTS` defaults to false. When enabled, only a configured trusted
+proxy key may carry `guest.<32 lowercase hex>`; guest requests carrying
+`ARCADE_PLAYER_KEY` are rejected. Direct public-key sessions and the v1 keyed
+username retain their existing meaning. Resolved identities have an explicit kind
+and are validated before the manager can reach storage. Guest caps use a token
+namespace, while keyed caps continue to group slots by fingerprint.
+
+Guest actors have no autosave timer, never read/write account or save data, and
+are removed when the shell ends. Naming and public identity changes are rejected
+inside the session API before any store/moderation-budget access. The UI keeps the
+default farm title, labels the player GUEST, explains the locks and asks before
+intentional discard. Gameplay and comfort settings remain available for the visit.
+Per-shell context values are isolated from other channels on the same SSH transport;
+replaced sessions cannot read or mutate the actor owned by their successor.
+
+Regression coverage includes the trusted-proxy admission matrix, a nil-store
+lifecycle, isolated guest worlds, fresh starts after detach, server integration,
+visible locks, discard prompts and existing keyed behavior. See README for rollout.

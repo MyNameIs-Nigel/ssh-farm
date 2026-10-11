@@ -22,7 +22,7 @@ func resize(t *testing.T, g *Game, w, h int) *Game {
 
 func TestAltScreenOnEveryViewPath(t *testing.T) {
 	f := newFixture(t)
-	base := time.Now().Unix()
+	base := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC).Unix()
 	g := f.newGame(t, base)
 	g, _ = tick(t, g, base)
 
@@ -53,7 +53,7 @@ func TestAltScreenOnEveryViewPath(t *testing.T) {
 
 func TestCanvasClamp(t *testing.T) {
 	f := newFixture(t)
-	base := time.Now().Unix()
+	base := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC).Unix()
 	g := f.newGame(t, base)
 
 	g = resize(t, g, 220, 70)
@@ -69,7 +69,7 @@ func TestCanvasClamp(t *testing.T) {
 
 func TestViewIsCenteredOnLargeTerminals(t *testing.T) {
 	f := newFixture(t)
-	base := time.Now().Unix()
+	base := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC).Unix()
 	g := f.newGame(t, base)
 	g = dismissIntro(t, g)
 	g, _ = tick(t, g, base)
@@ -104,7 +104,7 @@ func TestViewIsCenteredOnLargeTerminals(t *testing.T) {
 
 func TestHeaderGapUsesCanvasWidth(t *testing.T) {
 	f := newFixture(t)
-	base := time.Now().Unix()
+	base := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC).Unix()
 	g := f.newGame(t, base)
 	g, _ = tick(t, g, base)
 	g = resize(t, g, 200, 50)
@@ -116,7 +116,7 @@ func TestHeaderGapUsesCanvasWidth(t *testing.T) {
 
 func TestCanvasHeightStableAcrossScreensAndNotices(t *testing.T) {
 	f := newFixture(t)
-	base := time.Now().Unix()
+	base := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC).Unix()
 	g := f.newGame(t, base)
 	g = dismissIntro(t, g)
 	g, _ = tick(t, g, base)
@@ -143,7 +143,7 @@ func TestCanvasHeightStableAcrossScreensAndNotices(t *testing.T) {
 
 func TestModalIsCenteredInBodyRegion(t *testing.T) {
 	f := newFixture(t)
-	base := time.Now().Unix()
+	base := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC).Unix()
 	g := f.newGame(t, base)
 	g = dismissIntro(t, g)
 	g, _ = tick(t, g, base)

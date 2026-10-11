@@ -50,6 +50,8 @@ func (g *Game) overlayBox() string {
 		return g.viewContractReward()
 	case ovKicked:
 		return g.viewKicked()
+	case ovGuestQuit:
+		return g.viewGuestQuit()
 	}
 	return ""
 }
@@ -89,10 +91,10 @@ func (g *Game) viewHeader() string {
 	if st.Rebirths > 0 || st.PrestigeCurrency > 0 {
 		right += th.Header.Render("  ✦ " + money(st.PrestigeCurrency) + " " + g.starseedLabel())
 	}
-	tail := th.Header.Render("  ·  " + sanitizeText(g.id.Slot) + "  ·  " + formatClock(g.now))
+	tail := th.Header.Render("  ·  " + sanitizeText(g.id.Label()) + "  ·  " + formatClock(g.now))
 
 	name := "ssh-farm"
-	if st.FarmName != "" {
+	if !g.id.IsGuest() && st.FarmName != "" {
 		name = sanitizeText(st.FarmName)
 	}
 	// titlePrefix is structural, so truncation eats into the name only and a
@@ -114,7 +116,11 @@ func (g *Game) viewHeader() string {
 	// Extra framed header rows, in priority order. The seasonal sky is the one
 	// deliberate exception: composeCanvas renders it outside the top border
 	// and coords.go reserves its row independently.
-	for _, row := range []string{g.viewEventBar(), g.viewBanner()} {
+	guestWarning := ""
+	if g.id.IsGuest() {
+		guestWarning = th.Locked.Render("GUEST · NOT SAVED — leaving the game resets progress")
+	}
+	for _, row := range []string{guestWarning, g.viewEventBar(), g.viewBanner()} {
 		if row != "" {
 			header += "\n" + row
 		}
@@ -242,6 +248,8 @@ func (g *Game) viewFooter() string {
 	th := g.theme()
 	var hints string
 	switch {
+	case g.overlay == ovGuestQuit:
+		hints = "enter leave and discard · esc stay"
 	case g.overlay == ovPicker && g.pickerAutoSow:
 		hints = "↑/↓ choose · enter queue auto-sow · esc/q close"
 	case g.overlay == ovPicker:
@@ -512,7 +520,8 @@ func (g *Game) viewPicker() string {
 			b.WriteString(marker + th.Value.Render(info) + "\n")
 		}
 	}
-	return th.Box.Render(strings.TrimRight(b.String(), "\n"))
+	body := lipgloss.NewStyle().MaxWidth(g.overlayTextWidth()).Render(strings.TrimRight(b.String(), "\n"))
+	return th.Box.Render(body)
 }
 
 func (g *Game) viewUpgrade() string {
@@ -827,13 +836,15 @@ func (g *Game) viewStats() string {
 	st := g.snap.State
 	var b strings.Builder
 	b.WriteString(th.Section.Render("This farm") + "\n")
-	if st.FarmName != "" {
+	if g.id.IsGuest() {
+		b.WriteString("  Farm name: ssh-farm (n: SSH key required)\n")
+	} else if st.FarmName != "" {
 		b.WriteString("  Farm name: " + th.Value.Render(sanitizeText(st.FarmName)) + th.Hint.Render("  (n to rename)") + "\n")
 	} else {
 		b.WriteString("  Farm name: " + th.Hint.Render("(unnamed — press n)") + "\n")
 	}
-	b.WriteString("  Save slot: " + th.Value.Render(sanitizeText(g.id.Slot)) + "\n")
-	b.WriteString("  Key: " + th.Hint.Render(shortFingerprint(g.id.Fingerprint)) + "\n")
+	b.WriteString("  Save slot: " + th.Value.Render(sanitizeText(g.id.Label())) + "\n")
+	b.WriteString("  Key: " + th.Hint.Render(g.savedCopy(shortFingerprint(g.id.Fingerprint), "Guest — no saved account")) + "\n")
 	settings := make([]string, 0, 4)
 	for _, r := range g.configRows() {
 		settings = append(settings, strings.ToLower(r.label)+" "+onOff(r.on))
@@ -842,7 +853,7 @@ func (g *Game) viewStats() string {
 	b.WriteString("  Settings:\n")
 	b.WriteString(th.Value.Render(wrapIndent(g.contentWidth(), "    ", strings.Join(settings, " · "))) + "\n")
 	b.WriteString("    " + th.Hint.Render("(c to configure)") + "\n")
-	b.WriteString("\n" + th.Section.Render("Lifetime") + "\n")
+	b.WriteString("\n" + th.Section.Render(g.savedCopy("Lifetime", "This guest visit")) + "\n")
 	b.WriteString("  Earnings: " + th.Value.Render(money(st.LifetimeEarnings)+" coins") + "\n")
 	b.WriteString("  Harvests: " + th.Value.Render(money(st.LifetimeHarvests)) + "\n")
 	b.WriteString("  Rebirths: " + th.Value.Render(money(st.Rebirths)) + "  ·  " + g.starseedLabel() + ": " + th.Value.Render("✦ "+money(st.PrestigeCurrency)) + "\n")
@@ -973,6 +984,9 @@ func (g *Game) viewHelpControls() string {
 	if n := g.viewHelpSizeNotice(); n != "" {
 		notice = n + "\n"
 	}
+	if g.id.IsGuest() {
+		notice += g.helpBody("Guest progress, upgrades and contract rewards last for this visit only. Crops stop when you leave.") + "\n"
+	}
 	return notice +
 		th.Section.Render("How it works") + "\n\n" +
 		g.helpBody("Plant crops, go live your life, come back and harvest. Crops keep "+
@@ -993,7 +1007,7 @@ func (g *Game) viewHelpControls() string {
 			"  c                 settings / config (stats screen)\n"+
 			"  R                 rebirth (rebirth screen, with confirmation)\n"+
 			"  esc / q           close menus and overlays\n"+
-			"  q / ctrl+c        leave the game (progress is saved automatically)") + "\n\n" +
+			g.savedCopy("  q / ctrl+c        leave the game (progress is saved automatically)", "  q / ctrl+c        leave guest game (progress is discarded)")) + "\n\n" +
 		th.Hint.Render("  Your SSH key is your identity; the username picks the save slot.")
 }
 
@@ -1138,6 +1152,9 @@ func eventHelpAction(ev content.Event) string {
 
 // tutorialContent returns the title and body for one tutorial step.
 func (g *Game) tutorialContent(page int) (string, string) {
+	if g.id.IsGuest() && page == 0 {
+		return "Welcome, GUEST", "This is a disposable ssh-farm. Progress and settings last for this visit only.\n\nRun ssh-keygen -t ed25519 on your computer, then reconnect to save future progress."
+	}
 	ss := g.starseedLabel()
 	switch page {
 	case 0:
@@ -1223,7 +1240,7 @@ func (g *Game) viewConfig() string {
 		}
 		b.WriteString(line + "\n")
 	}
-	b.WriteString("\n" + th.Hint.Render("Settings are saved per farm. Lucky finds also live here."))
+	b.WriteString("\n" + th.Hint.Render(g.savedCopy("Settings are saved per farm. Lucky finds also live here.", "Guest settings last for this visit only.")))
 	return th.Box.Render(strings.TrimRight(b.String(), "\n"))
 }
 
@@ -1293,7 +1310,7 @@ func (g *Game) viewKicked() string {
 	return th.Box.Render(
 		th.Section.Render("Until next time 🌙") + "\n\n" +
 			th.Value.Render(rewrap(sanitizeText(g.kickReason), g.overlayTextWidth())) + "\n\n" +
-			th.Hint.Render("Your progress is saved. Disconnecting…"))
+			th.Hint.Render(g.savedCopy("Your progress is saved. Disconnecting…", "Guest progress is discarded. Disconnecting…")))
 }
 
 func onOff(b bool) string {

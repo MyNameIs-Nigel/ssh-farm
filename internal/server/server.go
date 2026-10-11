@@ -84,6 +84,7 @@ func New(cfg config.Config, logger *slog.Logger, games SaveManager, resolver *id
 			srv.attachSave(),
 			RequirePTY(),
 			limits.Middleware(),
+			scopeSession(),
 			ratelimiter.Middleware(rl),
 			logging.Middleware(),
 		),

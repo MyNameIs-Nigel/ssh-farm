@@ -85,6 +85,8 @@ func (g *Game) dismissOverlay() (tea.Model, tea.Cmd) {
 		g.pickerAutoSow = false
 	case ovReplantWarn:
 		return g.ackReplantWarning()
+	case ovGuestQuit:
+		g.overlay = ovNone
 	case ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovAway, ovContractConfirm, ovContractReward:
 		g.overlay = ovNone
 	}
@@ -94,6 +96,10 @@ func (g *Game) dismissOverlay() (tea.Model, tea.Cmd) {
 func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 	id := box.ID
 	switch {
+	case id == "guest:leave":
+		return g.pressKey("enter")
+	case id == "guest:stay":
+		return g.dismissOverlay()
 	case id == "overlay:close":
 		return g.dismissOverlay()
 	case strings.HasPrefix(id, "nav:"):
@@ -170,8 +176,7 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 			}
 		}
 	case id == "stats:rename":
-		g.nameInput = g.snap.State.FarmName
-		g.overlay = ovName
+		g.openRename()
 	case id == "board:yourow":
 		g.openRename()
 	case id == "board:refresh":

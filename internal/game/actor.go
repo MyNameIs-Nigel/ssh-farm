@@ -18,6 +18,7 @@ import (
 type saveKey struct {
 	fingerprint string
 	slot        string
+	guestID     string
 }
 
 // actor owns one active save. All fields below the mailbox are touched only
@@ -62,14 +63,18 @@ func (a *actor) do(fn func()) bool {
 
 func (a *actor) run() {
 	defer close(a.done)
-	ticker := time.NewTicker(a.mgr.autosave)
-	defer ticker.Stop()
+	var saves <-chan time.Time
+	if a.key.guestID == "" {
+		ticker := time.NewTicker(a.mgr.autosave)
+		defer ticker.Stop()
+		saves = ticker.C
+	}
 
 	for {
 		select {
 		case fn := <-a.reqs:
 			fn()
-		case <-ticker.C:
+		case <-saves:
 			a.persist("autosave")
 		case <-a.stop:
 			a.persist("final flush")
@@ -81,6 +86,9 @@ func (a *actor) run() {
 // persist writes the save if it has changed since the last write. Failures
 // are logged and the state stays dirty so the next tick retries.
 func (a *actor) persist(reason string) {
+	if a.key.guestID != "" {
+		return
+	}
 	if !a.dirty {
 		return
 	}

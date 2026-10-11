@@ -65,7 +65,7 @@ func runServe() {
 		logger.Error("proxy keys load failed", "path", cfg.ProxyKeysPath, "error", err)
 		os.Exit(1)
 	}
-	resolver := identity.NewResolver(cfg.DefaultSlot, proxyKeys)
+	resolver := identity.NewResolver(cfg.DefaultSlot, proxyKeys, identity.WithGuests(cfg.AllowGuests))
 
 	games := game.NewManager(st, c, logger, cfg.AutosaveInterval, game.Policy(cfg.SessionPolicy))
 	server.RegisterShutdownHook(games.Shutdown)
@@ -80,6 +80,7 @@ func runServe() {
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(done)
 
 	// SIGHUP re-reads the denylist in place, so tightening it is a file edit
 	// plus a signal rather than a rebuild and a redeploy — which is what the
@@ -88,6 +89,7 @@ func runServe() {
 	// the previous list in force and says so; it never drops the filter.
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
+	defer func() { signal.Stop(hup); close(hup) }()
 	go func() {
 		for range hup {
 			if err := moderation.Reload(); err != nil {

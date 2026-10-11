@@ -64,7 +64,7 @@ func testServer(t *testing.T, mutate func(*config.Config)) (*Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolver := identity.NewResolver(cfg.DefaultSlot, proxyKeys)
+	resolver := identity.NewResolver(cfg.DefaultSlot, proxyKeys, identity.WithGuests(cfg.AllowGuests))
 
 	board := leaderboard.New(st, cfg.LeaderboardTTL, cfg.LeaderboardActivityWindow, cfg.LeaderboardMinCoins, time.Now)
 

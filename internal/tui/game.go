@@ -104,6 +104,7 @@ const (
 	ovContractConfirm
 	ovContractReward
 	ovKicked
+	ovGuestQuit
 )
 
 // tutorialPages is the number of pages in the new-player tutorial.
@@ -324,10 +325,18 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	if key == "ctrl+c" {
-		return g, tea.Quit
+		return g.requestQuit()
 	}
 
 	switch g.overlay {
+	case ovGuestQuit:
+		switch key {
+		case "enter", "y":
+			return g, tea.Quit
+		case "esc", "n", "q":
+			g.overlay = ovNone
+		}
+		return g, nil
 	case ovKicked:
 		return g, tea.Quit
 	case ovTutorial:
@@ -363,7 +372,7 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			g.helpScroll = 0
 			return g, nil
 		}
-		return g, tea.Quit
+		return g.requestQuit()
 	case "g":
 		return g.redeemGift()
 	case "1":
@@ -927,9 +936,12 @@ func (g *Game) handleStatsKey(key string) (tea.Model, tea.Cmd) {
 		g.configIdx = 0
 		g.overlay = ovConfig
 	case "n":
-		g.nameInput = g.snap.State.FarmName
-		g.overlay = ovName
+		g.openRename()
 	case "l":
+		if g.id.IsGuest() {
+			g.guestLocked("change leaderboard identity")
+			return g, nil
+		}
 		styles := g.snap.State.AvailableLeaderboardNameStyles()
 		if len(styles) > 1 {
 			next := 0
@@ -972,6 +984,10 @@ func (g *Game) handleBoardKey(key string) (tea.Model, tea.Cmd) {
 // same shortcut the Stats screen's "n" key and the board's your-row click
 // both offer.
 func (g *Game) openRename() {
+	if g.id.IsGuest() {
+		g.guestLocked("rename your farm")
+		return
+	}
 	g.nameInput = g.snap.State.FarmName
 	g.overlay = ovName
 }
@@ -982,7 +998,10 @@ func (g *Game) openRename() {
 // every path that enters the board screen, on the tick loop while it's
 // open, and on an explicit r/click refresh.
 func (g *Game) refreshBoard() {
-	you := leaderboard.SaveRef{Fingerprint: g.id.Fingerprint, Slot: g.id.Slot}
+	you := leaderboard.SaveRef{}
+	if !g.id.IsGuest() {
+		you = leaderboard.SaveRef{Fingerprint: g.id.Fingerprint, Slot: g.id.Slot}
+	}
 	board, err := g.board.Get(context.Background(), you)
 	g.lbErr = err
 	if err == nil {
@@ -1163,6 +1182,8 @@ func (g *Game) boardHeaderLine(cw int) string {
 	title := th.Section.Render("LEADERBOARD — RICHEST FARMS")
 	var rank string
 	switch {
+	case g.id.IsGuest():
+		rank = "Guests are not ranked"
 	case g.lbBoard.You == nil:
 		rank = "YOU: UNRANKED — EARN YOUR FIRST COIN"
 	default:
@@ -1216,6 +1237,8 @@ func (g *Game) handleNameKey(key string, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 		snap, err := g.sess.RenameFarm(context.Background(), g.now, g.nameInput)
 		if err != nil {
 			switch {
+			case errors.Is(err, game.ErrGuestRequiresKey):
+				g.guestLocked("rename your farm")
 			case errors.Is(err, game.ErrNameRateLimited):
 				g.addNotice("Slow down — try again in a bit.")
 			case errors.Is(err, game.ErrNameLocked):
