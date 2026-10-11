@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/game"
@@ -74,5 +75,27 @@ func TestSeasonalCanvasRemainsRectangular(t *testing.T) {
 			}
 		}
 		assertFits(t, "seasonal", out, size[0])
+	}
+}
+
+func TestKickedGuestCtrlCExitsWithoutDiscardDialog(t *testing.T) {
+	f := newFixture(t)
+	f.id = identity.SessionIdentity{Kind: identity.Guest, GuestID: strings.Repeat("e", 32)}
+	res, err := f.mgr.Attach(t.Context(), f.id, "", 100, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Session.Detach()
+	g := NewGame(f.id, res, f.content, f.board, 100, 35, 100, 0)
+	g.overlay = ovKicked
+	_, cmd := g.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if cmd == nil {
+		t.Fatal("kicked guest was offered a cancelable exit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("kicked guest did not quit")
+	}
+	if g.overlay != ovKicked {
+		t.Fatal("terminal kick notice was replaced")
 	}
 }
