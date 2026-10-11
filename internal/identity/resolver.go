@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strings"
 
 	"charm.land/ssh"
 	gossh "golang.org/x/crypto/ssh"
@@ -46,11 +47,19 @@ type SessionSource interface {
 type Resolver struct {
 	defaultSlot string
 	proxyKeys   []ssh.PublicKey
+	allowGuests bool
 }
 
 // NewResolver builds an identity resolver with optional trusted proxy keys.
-func NewResolver(defaultSlot string, proxyKeys []ssh.PublicKey) *Resolver {
-	return &Resolver{defaultSlot: defaultSlot, proxyKeys: proxyKeys}
+type Option func(*Resolver)
+
+func WithGuests(allow bool) Option { return func(r *Resolver) { r.allowGuests = allow } }
+func NewResolver(defaultSlot string, proxyKeys []ssh.PublicKey, opts ...Option) *Resolver {
+	r := &Resolver{defaultSlot: defaultSlot, proxyKeys: proxyKeys}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
 }
 
 // Resolve derives the player fingerprint and save slot from a session.
@@ -79,6 +88,7 @@ func (r *Resolver) isProxyKey(key ssh.PublicKey) bool {
 func (r *Resolver) resolveDirect(s SessionSource, wire ssh.PublicKey) ResolveResult {
 	return ResolveResult{
 		Identity: SessionIdentity{
+			Kind:        Keyed,
 			Fingerprint: Fingerprint(wire),
 			Slot:        ResolveSlot(s.User(), r.defaultSlot),
 		},
@@ -88,6 +98,21 @@ func (r *Resolver) resolveDirect(s SessionSource, wire ssh.PublicKey) ResolveRes
 }
 
 func (r *Resolver) resolveProxied(s SessionSource, wire ssh.PublicKey) (ResolveResult, error) {
+	if strings.HasPrefix(s.User(), "guest.") {
+		token, err := ParseGuestUsername(s.User())
+		if err != nil {
+			return ResolveResult{}, err
+		}
+		if !r.allowGuests {
+			return ResolveResult{}, fmt.Errorf("%w: guest access disabled", ErrProxiedIdentity)
+		}
+		for _, e := range s.Environ() {
+			if strings.HasPrefix(e, "ARCADE_PLAYER_KEY=") {
+				return ResolveResult{}, fmt.Errorf("%w: guest key metadata", ErrProxiedIdentity)
+			}
+		}
+		return ResolveResult{Identity: SessionIdentity{Kind: Guest, GuestID: token}, Proxied: true}, nil
+	}
 	fpBytes, slot, err := ParseProxiedUsername(s.User())
 	if err != nil {
 		return ResolveResult{}, err
@@ -98,6 +123,7 @@ func (r *Resolver) resolveProxied(s SessionSource, wire ssh.PublicKey) (ResolveR
 	}
 	return ResolveResult{
 		Identity: SessionIdentity{
+			Kind:        Keyed,
 			Fingerprint: FingerprintFromBytes(fpBytes),
 			Slot:        slot,
 		},

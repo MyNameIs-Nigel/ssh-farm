@@ -35,7 +35,7 @@ func reopenManager(t *testing.T, path string, policy Policy, autosave time.Durat
 }
 
 func ident(fp, slot string) identity.SessionIdentity {
-	return identity.SessionIdentity{Fingerprint: fp, Slot: slot}
+	return identity.SessionIdentity{Kind: identity.Keyed, Fingerprint: fp, Slot: slot}
 }
 
 func mustAttach(t *testing.T, m *Manager, id identity.SessionIdentity, now int64) AttachResult {

@@ -41,7 +41,7 @@ func newFixture(t *testing.T) *fixture {
 	return &fixture{
 		mgr:     game.NewManager(st, c, applog.New("error", "text"), time.Hour, game.PolicyTakeover),
 		content: c,
-		id:      identity.SessionIdentity{Fingerprint: "SHA256:tuitest", Slot: "farm"},
+		id:      identity.SessionIdentity{Kind: identity.Keyed, Fingerprint: "SHA256:tuitest", Slot: "farm"},
 		st:      st,
 		board:   leaderboard.New(st, 15*time.Second, 0, 0, time.Now),
 	}
@@ -513,7 +513,7 @@ func TestHostileSlotNameIsEscapedInView(t *testing.T) {
 
 	// Identity slots are sanitized at the door; simulate a hostile value
 	// reaching the UI anyway (defense in depth).
-	hostile := identity.SessionIdentity{Fingerprint: "SHA256:x", Slot: "evil\x1b[2Jslot"}
+	hostile := identity.SessionIdentity{Kind: identity.Keyed, Fingerprint: "SHA256:x", Slot: "evil\x1b[2Jslot"}
 	g := NewGame(hostile, res, f.content, f.board, 100, 35, base, 0)
 	g, _ = tick(t, g, base)
 	if strings.Contains(view(g), "\x1b[2J") {

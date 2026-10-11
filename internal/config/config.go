@@ -27,6 +27,7 @@ type Config struct {
 	AutosaveInterval    time.Duration
 	SessionPolicy       string // "takeover" or "refuse"
 	DataDir             string // content override dir; empty = embedded
+	AllowGuests         bool   // FARM_ALLOW_GUESTS: trusted proxied guests only; default false
 	ProxyKeysPath       string // trusted arcade proxy keys; empty = direct-only dev
 
 	// Moderation (gameplay/03). The denylist is host state mounted into the
@@ -57,6 +58,9 @@ func Load() (Config, error) {
 		DataDir:        os.Getenv("FARM_DATA_DIR"),
 		ProxyKeysPath:  os.Getenv("FARM_PROXY_KEYS_PATH"),
 		ModerationPath: os.Getenv("FARM_MODERATION_PATH"),
+	}
+	if cfg.AllowGuests, err = envBoolOr("FARM_ALLOW_GUESTS", false); err != nil {
+		return Config{}, err
 	}
 	if cfg.RequireModeration, err = envBoolOr("FARM_REQUIRE_MODERATION", false); err != nil {
 		return Config{}, err

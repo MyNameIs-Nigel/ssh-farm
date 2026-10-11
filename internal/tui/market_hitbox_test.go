@@ -25,7 +25,7 @@ func marketGame(t *testing.T, c *content.Content) *Game {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	mgr := game.NewManager(st, c, applog.New("error", "text"), time.Hour, game.PolicyTakeover)
-	id := identity.SessionIdentity{Fingerprint: "SHA256:markethit", Slot: "farm"}
+	id := identity.SessionIdentity{Kind: identity.Keyed, Fingerprint: "SHA256:markethit", Slot: "farm"}
 	res, err := mgr.Attach(context.Background(), id, "k", time.Now().Unix(), nil)
 	if err != nil {
 		t.Fatal(err)

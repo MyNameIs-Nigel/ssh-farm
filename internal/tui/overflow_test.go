@@ -18,7 +18,7 @@ import (
 func designGame(t *testing.T) *Game {
 	t.Helper()
 	f := newFixture(t)
-	base := time.Now().Unix()
+	base := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC).Unix()
 	g := f.newGame(t, base)
 	g = dismissIntro(t, g)
 	g, _ = tick(t, g, base)
@@ -89,7 +89,7 @@ func wideBoardFixture() leaderboard.Board {
 		row(24, "TWENTY CHARACTER NAME", 4_199, true),
 		row(25, "TWENTY CHARACTER NAME", 4_198, false),
 	}
-	return leaderboard.Board{Top: top, Window: window, Total: 400, You: &window[1], AsOf: time.Now().Unix()}
+	return leaderboard.Board{Top: top, Window: window, Total: 400, You: &window[1], AsOf: time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC).Unix()}
 }
 
 // TestOverlayBoxesFitContentWidth guards modal overlays. Overlay content is
@@ -193,7 +193,7 @@ func collapseRun(s string) string {
 func stockGame(t *testing.T) *Game {
 	t.Helper()
 	f := newFixture(t)
-	base := time.Now().Unix()
+	base := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC).Unix()
 	g := f.newGame(t, base)
 	g = dismissIntro(t, g)
 	g, _ = tick(t, g, base)

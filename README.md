@@ -91,3 +91,22 @@ MIT — see [`LICENSE`](LICENSE).
 published container image (currently Litestream, Apache-2.0). Update it if the
 image ever gains another bundled binary — Apache-2.0 requires that attribution
 to travel with the artifact, not merely with the source.
+
+## Guest visits through the arcade
+
+`FARM_ALLOW_GUESTS=true` enables **trusted-router guests only** (default `false`).
+Direct SSH still requires a public key. A trusted proxy can send the version 2
+username `guest.<32 lowercase hexadecimal characters>` without `ARCADE_PLAYER_KEY`.
+The token identifies one disposable visit; it is never an account or save slot.
+
+Guests see farm title `ssh-farm`, player `GUEST`, and `NOT SAVED`. Gameplay,
+rebirth, contracts and comfort settings work in memory. Farm naming and
+leaderboard identity require a key; guests may read the board but are never ranked.
+Leaving, disconnecting or maintenance discards the farm without touching account,
+save or rename-budget tables. Intentional exits ask for confirmation. Generate a
+key **on your own computer** with `ssh-keygen -t ed25519`, then reconnect to save
+future progress. Existing guest progress cannot be converted into a save.
+
+Deploy this backend before enabling guest admission in the lobby. The fleet's
+[guest architecture plan](../ssh-arcadelobby/docs/08-guest-access-plan.md) defines
+the trust boundary and rollout order. No database migration is needed.
