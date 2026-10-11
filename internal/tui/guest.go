@@ -8,6 +8,9 @@ func (g *Game) guestLocked(action string) {
 	g.addNotice("Guest: an SSH key is required to " + action + " and save progress. Run ssh-keygen -t ed25519 locally, then reconnect.")
 }
 func (g *Game) requestQuit() (tea.Model, tea.Cmd) {
+	if g.overlay == ovKicked {
+		return g, tea.Quit
+	}
 	if g.id.IsGuest() {
 		g.overlay = ovGuestQuit
 		return g, nil
