@@ -354,7 +354,7 @@ func TestHelpShowsGameVersion(t *testing.T) {
 	g, _ = tick(t, g, base)
 	g = press(t, g, "?")
 
-	want := "Idle Farmer v" + version.Version + " (" + version.Channel + ")"
+	want := "Idle Farmer v" + version.Version
 	if !strings.Contains(view(g), want) {
 		t.Fatalf("help screen: expected %q, got:\n%s", want, view(g))
 	}

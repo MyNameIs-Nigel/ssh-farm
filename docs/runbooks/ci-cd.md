@@ -1,5 +1,11 @@
 # Runbook — CI/CD and the release path
 
+> Release workflow update: production now deploys published `vMAJOR.MINOR.PATCH`
+> releases, with build-injected versions and persistent digest selection.
+> See the repository `docs/releasing.md` for the current procedure. Older
+> push-to-main and local-latest deployment descriptions below are historical.
+
+
 What runs, why it exists, what to do when it goes red, and which settings in
 the GitHub UI this all assumes. If you are changing a workflow, read
 [Branch protection](#branch-protection) first — several gates only mean

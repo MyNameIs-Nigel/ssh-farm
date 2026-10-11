@@ -3,7 +3,7 @@ name: CI
 # ---------------------------------------------------------------------------
 # TRIGGER CHANGE — please read before merging.
 #
-# The previous ci.yml ran on `push: branches-ignore: [main]` and deliberately
+# The previous ci.yml ran on `push: branches: ["**"]` and deliberately
 # had no `pull_request:` trigger, to avoid running unreviewed fork code once
 # these repos went public. The instinct was right; the mechanism was aimed at
 # the wrong trigger.
@@ -27,10 +27,12 @@ name: CI
 # Open a draft PR, or use the Run workflow button. If that trade is not worth
 # it, restoring the old behaviour is one block:
 #     push:
-#       branches-ignore: [main]
+#       branches: ["**"]
 # ---------------------------------------------------------------------------
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   merge_group: # so a merge queue can be switched on without touching this file
@@ -49,6 +51,12 @@ jobs:
   verify:
     name: verify
     uses: ./.github/workflows/verify.yml
+
+  deploy-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 scripts/deploy/test_deploy.py
 
   test-first:
     name: test-first discipline

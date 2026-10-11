@@ -19,7 +19,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X github.com/mynameis-nigel/ssh-farm/internal/version.Version=${VERSION}" \
         -o /out/ssh-farm ./cmd/ssh-farm
 
 # restore-check (docs/tests/02): a read-only integrity/decode verifier the
