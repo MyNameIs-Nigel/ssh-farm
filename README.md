@@ -1,117 +1,101 @@
 # ssh-farm
 
-**Idle Farmer v2** — the ssharcade-native rebuild of
-[`ssh-idlefarmer`](../ssh-idlefarmer). Same beloved game (plant, sell, buy
-land, rebirth), four big upgrades:
-
-1. **Mouse everywhere.** Click plots, click market rows, click buttons —
-   the keyboard still does everything, the mouse now does too.
-2. **Leaderboards.** The richest farms in the world, live:
-   `#13/261 · SUNNY HOLLOW ·k3v9Q · ◈ 84,210` — with real moderation so
-   names stay decent.
-3. **Durable data.** Every save is continuously replicated off the host to
-   S3 (Litestream). A dead instance costs seconds of progress, never a
-   farm.
-4. **A farm that reads on any terminal.** A fully painted near-black
-   canvas that drifts through a day/night cycle, a *Solid background*
-   setting for players who want one fixed colour, and events that take
-   over the frame with a draining countdown instead of one quiet line of
-   text. It plays from 80×24 up; below the recommended 100×30 the Help tab
-   turns into a yellow `⚠` and Help itself says what is cramped.
-   See [docs/tui/03](docs/tui/03-theme-day-night-and-event-feedback.md).
-
-Players reach it through the arcade:
-
 ```bash
-ssh play.ssharcade.dev     # arcade menu → FARM
+ssh ssharcade.dev
 ```
 
-## Status
+**Select FARM in the lobby to play.** Your SSH public key identifies your saved
+farm. A terminal with 24-bit color and a 100×30 window is recommended.
 
-**Beta — 2.5.0.** The v2 port and its arcade integration, mouse controls,
-leaderboard, durable storage, day/night clock, seasonal themes, and fixed
-three-contract endgame campaign are implemented. See
-[docs/gameplay/04-contracts.md](docs/gameplay/04-contracts.md).
+![ssh-farm running in a terminal](docs/farm.png)
 
-[docs/README.md](docs/README.md) indexes the architecture, shipped feature
-specifications, operational runbooks, and proposed work. The older phase
-labels and unchecked acceptance lists are retained as design history, not as
-the current project status.
+Plant crops, trade, buy land, and rebirth for permanent upgrades. Keyboard and
+mouse controls, leaderboards, seasonal themes, and an endgame campaign.
 
-## Stack
+[![CI](https://github.com/MyNameIs-Nigel/ssh-farm/actions/workflows/ci.yml/badge.svg)](https://github.com/MyNameIs-Nigel/ssh-farm/actions/workflows/ci.yml)
+[![Release](https://github.com/MyNameIs-Nigel/ssh-farm/actions/workflows/release.yml/badge.svg)](https://github.com/MyNameIs-Nigel/ssh-farm/actions/workflows/release.yml)
 
-Go 1.26, wish v2, bubbletea v2 + lipgloss v2, modernc SQLite, and
-**Litestream** wrapping the container for S3 replication.
+## Built and shipped on AWS
 
-## Commands
+I built ssharcade to learn how to take games from source code to a live service.
+Farm runs alongside two other games and a shared SSH lobby on one EC2 instance,
+which costs me less than $10/month for compute.
 
-```bash
-go build -o bin/ssh-farm ./cmd/ssh-farm   # build
-go test ./...                              # test
-go vet ./...                               # vet
+I chose SSH because it's an unusual way to play, easy to reach from a terminal,
+and already has public-key authentication built in.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    Player["SSH client"]
+    Browser["Web browser"]
+
+    subgraph EC2["AWS EC2"]
+        Lobby["Arcade lobby"]
+        Farm["ssh-farm"]
+        DB[("SQLite volume")]
+        Caddy["Caddy"]
+
+        Lobby -->|"Private Docker network · player identity"| Farm
+        Farm --> DB
+    end
+
+    Player -->|"Host :22 → container :2222"| Lobby
+    DB -->|"Litestream"| S3[("S3 replica")]
+    Browser -->|"80 / 443"| Caddy
+    Caddy -->|"Redirect"| Website["Website on Vercel"]
 ```
 
-The TUI assumes a terminal with 24-bit color support. The server forces Bubble
-Tea's True Color profile for every SSH session, so players do not need to
-forward `COLORTERM` with `SendEnv`.
+Only the lobby exposes an SSH port. Caddy handles web traffic separately.
+[ssh-arcadelobby](https://github.com/MyNameIs-Nigel/ssh-arcadelobby/tree/main/deploy)
+owns the fleet's Compose configuration.
 
-## Note
+## CI/CD
 
-This repo is public. The moderation **algorithm** lives here and is meant to
-be readable; the moderation **denylist** does not. That list is host state
-loaded from `FARM_MODERATION_PATH` and exists in no repository — see
-[docs/gameplay/03](docs/gameplay/03-farm-names-and-moderation.md).
+Publishing a GitHub Release deploys the game automatically. **GitHub Actions
+uses OIDC to assume an AWS role with temporary credentials**, then sends the
+deployment command to EC2 through **AWS SSM**. No stored AWS access keys or SSH
+connection from the runner.
 
-A clone builds, tests, and runs with no extra setup: with `FARM_MODERATION_PATH`
-unset the server loads the placeholder fixture at
-`internal/moderation/testdata/denylist.fixture.toml`, logs that it is in
-moderation dev mode, and refuses player-set farm names in favour of generated
-ones — a stub list must never be mistaken for a working filter. Production sets
-`FARM_REQUIRE_MODERATION=true`, which turns a missing or malformed list into a
-refusal to boot.
+- **Verify:** shared CI/release checks, Linux and Windows race tests, coverage
+  gates, secret scanning, and vulnerability checks.
+- **Publish:** a GHCR image with an SBOM, provenance attestation, and image scan.
+- **Deploy:** pull the exact image digest, acquire a fleet-wide lock, recreate
+  Farm, and check its SSH version banner. Attempt rollback if startup fails.
 
-For local seasonal-theme testing outside the festival dates, set
-`FARM_DEV_SEASON` before starting the server:
+The deploy job takes about **28 seconds** in my runs, after tests and the image
+build. Players briefly return to the lobby during container replacement and can
+rejoin with their saved progress. The data volume stays in place.
+
+[Release workflow](.github/workflows/release.yml) ·
+[Deployment script](scripts/deploy/remote-deploy.sh) ·
+[Release and recovery runbook](docs/releasing.md)
+
+## Stack and docs
+
+Go · Wish · Bubble Tea · Lip Gloss · SQLite · Litestream · Docker Compose
+
+[Project docs](docs/README.md) · [MIT license](LICENSE) · [Third-party notices](NOTICE)
+
+## Local development
+
+Use the Go version in [go.mod](go.mod):
 
 ```bash
-FARM_DEV_SEASON=halloween go run ./cmd/ssh-farm
-FARM_DEV_SEASON=christmas go run ./cmd/ssh-farm
+go build ./...
+go vet ./...
+go test ./...
+FARM_LISTEN_HOST=127.0.0.1 FARM_LISTEN_PORT=2222 go run ./cmd/ssh-farm
 ```
 
-It forces the corresponding skin and seasonal seeds for that process only.
-With the variable unset (or set to any other value), the normal UTC calendar
-windows apply.
+Connect from another terminal:
 
+```bash
+ssh -p 2222 localhost
+```
 
-## Licence
-
-MIT — see [`LICENSE`](LICENSE).
-
-[`NOTICE`](NOTICE) covers third-party software redistributed inside the
-published container image (currently Litestream, Apache-2.0). Update it if the
-image ever gains another bundled binary — Apache-2.0 requires that attribution
-to travel with the artifact, not merely with the source.
-
-## Guest visits through the arcade
-
-`FARM_ALLOW_GUESTS=true` enables **trusted-router guests only** (default `false`).
-Direct SSH still requires a public key. A trusted proxy can send the version 2
-username `guest.<32 lowercase hexadecimal characters>` without `ARCADE_PLAYER_KEY`.
-The token identifies one disposable visit; it is never an account or save slot.
-
-Guests see farm title `ssh-farm`, player `GUEST`, and `NOT SAVED`. Gameplay,
-rebirth, contracts and comfort settings work in memory. Farm naming and
-leaderboard identity require a key; guests may read the board but are never ranked.
-Leaving, disconnecting or maintenance discards the farm without touching account,
-save or rename-budget tables. Intentional exits ask for confirmation. Generate a
-key **on your own computer** with `ssh-keygen -t ed25519`, then reconnect to save
-future progress. Existing guest progress cannot be converted into a save.
-
-Deploy this backend before enabling guest admission in the lobby. The fleet's
-[guest architecture plan](../ssh-arcadelobby/docs/08-guest-access-plan.md) defines
-the trust boundary and rollout order. No database migration is needed.
-
-## Releases
-
-See [Publishing a release](docs/releasing.md) for versioning, GitHub environment
-setup, deployment order, and rollback. Production deploys on published releases.
+Saves and the host key live in `var/` by default. Local moderation uses a fixture
+and generated farm names; see [moderation configuration](docs/gameplay/03-farm-names-and-moderation.md).
+For seasonal previews, add `FARM_DEV_SEASON=halloween` or
+`FARM_DEV_SEASON=christmas` to the server command.
