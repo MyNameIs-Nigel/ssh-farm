@@ -13,6 +13,19 @@ Requires Docker with Compose v2. This is framework/02's own minimal
 integration check (its acceptance criterion: "Fresh container with empty
 volume + populated bucket restores and serves the restored farms").
 
+The MinIO server and `mc` client are built by the test-only `Dockerfile` in
+this directory from the immutable source commits for the previously used
+releases. This avoids the unavailable `minio/minio` and `minio/mc` Docker Hub
+images. No Docker login or AWS credentials are needed; the first run needs
+network access to fetch the public Go/Alpine base images and Go modules.
+Subsequent runs reuse Docker's build cache.
+
+The nightly workflow runs this disposable stack on a GitHub-hosted runner,
+using synthetic saves and a local MinIO bucket. It does not access EC2 or
+the production S3 bucket. The scripts delete their test containers and
+volumes, so run them on a development/CI Docker daemon. They are not a
+substitute for restoring a real production backup into scratch storage.
+
 [tests/02](../../docs/tests/02-leaderboard-moderation-and-durability-tests.md)
 extends this same compose stack with the full drill, meant to run on a
 schedule as a monitoring tool, not just a one-off test:
