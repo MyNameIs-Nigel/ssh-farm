@@ -2,7 +2,7 @@
 
 # Test-only replacements for the retired upstream Docker Hub images. Build
 # the same releases from immutable source commits; no registry login needed.
-FROM golang:1.26.9-alpine3.23 AS builder
+FROM golang:1.26.10-alpine3.23 AS builder
 RUN apk add --no-cache git
 ENV CGO_ENABLED=0 GOBIN=/out
 

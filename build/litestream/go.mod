@@ -12,7 +12,7 @@
 // tidiness check covers the root only.
 module github.com/mynameis-nigel/ssh-farm/build/litestream
 
-go 1.26.9
+go 1.26.10
 
 tool github.com/benbjohnson/litestream/cmd/litestream
 
@@ -80,7 +80,7 @@ require (
 	github.com/hablullah/go-juliandays v1.0.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/jalaali/go-jalaali v0.0.0-20210801064154-80525e88d958 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect; security floor: >= v1.18.7 for CVE-2026-63209 (dictionary integer-overflow DoS); litestream v0.5.17 and nats.go v1.44.0 pin v1.18.0
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lmittmann/tint v1.1.3 // indirect
