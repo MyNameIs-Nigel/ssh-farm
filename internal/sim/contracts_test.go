@@ -19,10 +19,9 @@ func contractReadyState(t *testing.T, c *content.Content) *State {
 			if s.LifetimeEarnings < crop.Unlock.Value {
 				s.LifetimeEarnings = crop.Unlock.Value
 			}
-		case "prestige":
-			if s.Rebirths < crop.Unlock.Value {
-				s.Rebirths = crop.Unlock.Value
-			}
+		}
+		if need := crop.Unlock.RequiredRebirths(); s.Rebirths < need {
+			s.Rebirths = need
 		}
 	}
 	return s

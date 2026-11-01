@@ -563,18 +563,27 @@ func (g *Game) viewName() string {
 }
 
 func (g *Game) gateText(u content.Unlock) string {
+	var text string
 	switch u.Kind {
 	case "earnings":
-		return "earn " + money(u.Value) + " lifetime coins"
+		text = "earn " + money(u.Value) + " lifetime coins"
 	case "prestige":
-		return "rebirth " + money(u.Value) + "×"
+		text = "rebirth " + money(u.Value) + "×"
 	case "zone":
 		if z := g.content.ZoneByID(u.Zone); z != nil {
-			return "own the " + sanitizeText(z.Name)
+			text = "own the " + sanitizeText(z.Name)
+		} else {
+			text = "own a zone"
 		}
-		return "own a zone"
 	}
-	return ""
+	if u.Rebirths > 0 {
+		rb := "rebirth " + money(u.Rebirths) + "×"
+		if text == "" {
+			return rb
+		}
+		return rb + " + " + text
+	}
+	return text
 }
 
 func (g *Game) viewMarket() string {
@@ -652,10 +661,17 @@ func (g *Game) viewRebirth() string {
 	nextTier := st.ProgressionRebirths() + 1
 	found := false
 	for _, crop := range g.content.Crops {
-		if crop.Unlock.Kind == "prestige" && crop.Unlock.Value == nextTier {
-			b.WriteString("  " + th.Value.Render("🌱 "+sanitizeText(crop.Name)+" ("+crop.Archetype+")") + "\n")
-			found = true
+		if crop.Unlock.RequiredRebirths() != nextTier {
+			continue
 		}
+		label := "🌱 " + sanitizeText(crop.Name) + " (" + crop.Archetype + ")"
+		if crop.Unlock.Kind != "prestige" {
+			if gate := g.gateText(content.Unlock{Kind: crop.Unlock.Kind, Value: crop.Unlock.Value, Zone: crop.Unlock.Zone}); gate != "" {
+				label += " — then " + gate
+			}
+		}
+		b.WriteString("  " + th.Value.Render(label) + "\n")
+		found = true
 	}
 	if !found {
 		b.WriteString("  " + th.Hint.Render("More secrets await deeper cycles…") + "\n")

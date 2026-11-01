@@ -117,6 +117,19 @@ grow_seconds = 43200
 sell_value = 10000
 unlock = { kind = "zone", zone = "greenhouse" }
 
+# Goldengrain: a cheap, very fast greenhouse grain for rebirth-2+ farms.
+# 45s (3/4 of Turnip) for 19 - 12 = 7c profit, ~9.3 coins/minute — the best
+# permanent fast crop (Sunroot ~8, Emberwheat ~7). Seasonal seeds still pay
+# more; their event window is their balancer.
+[[crop]]
+id = "goldengrain"
+name = "Goldengrain"
+archetype = "fast"
+seed_cost = 12
+grow_seconds = 45
+sell_value = 19
+unlock = { kind = "zone", zone = "greenhouse", rebirths = 2 }
+
 # Seasonal festival seeds. Each pays above the permanent profit curve
 # (~0.30 coins/sec vs voidlotus ~0.28) — the event window is the balancer.
 # They are gated by wall-clock season (see internal/season), never by

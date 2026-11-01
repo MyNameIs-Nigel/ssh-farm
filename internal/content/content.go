@@ -16,11 +16,18 @@ import (
 )
 
 // Unlock gates a crop, tool, or zone behind a progression condition.
+//
+// Rebirths is an optional second condition layered on top of Kind: when > 0
+// the gate also needs that many progression rebirths (e.g. a zone crop that
+// only opens up after rebirth 2). It is rejected on the prestige kind, where
+// Value already is the rebirth count, and on the season kind, which is never
+// gated by progression.
 type Unlock struct {
-	Kind   string `toml:"kind"`   // "start", "earnings", "prestige", "zone", "season"
-	Value  int64  `toml:"value"`  // threshold for earnings/prestige kinds
-	Zone   string `toml:"zone"`   // zone id for the zone kind
-	Season string `toml:"season"` // festival key for the season kind ("halloween", "christmas")
+	Kind     string `toml:"kind"`     // "start", "earnings", "prestige", "zone", "season"
+	Value    int64  `toml:"value"`    // threshold for earnings/prestige kinds
+	Zone     string `toml:"zone"`     // zone id for the zone kind
+	Season   string `toml:"season"`   // festival key for the season kind ("halloween", "christmas")
+	Rebirths int64  `toml:"rebirths"` // optional extra rebirth requirement (start/earnings/zone kinds)
 }
 
 // Crop is one plantable crop definition.
@@ -664,6 +671,12 @@ func requireID(kind string, idx int, id, name string) error {
 }
 
 func validateUnlock(kind, id string, u Unlock, zoneIDs map[string]bool) error {
+	if u.Rebirths < 0 {
+		return fmt.Errorf("content: %s %q unlock rebirths must be >= 0", kind, id)
+	}
+	if u.Rebirths > 0 && (u.Kind == "prestige" || u.Kind == "season") {
+		return fmt.Errorf("content: %s %q %s unlock cannot also set rebirths", kind, id, u.Kind)
+	}
 	switch u.Kind {
 	case "", "start":
 		return nil
@@ -688,4 +701,13 @@ func validateUnlock(kind, id string, u Unlock, zoneIDs map[string]bool) error {
 	default:
 		return fmt.Errorf("content: %s %q has unknown unlock kind %q", kind, id, u.Kind)
 	}
+}
+
+// RequiredRebirths is the rebirth count this gate needs, from either the
+// prestige kind's Value or the extra Rebirths requirement; 0 when neither.
+func (u Unlock) RequiredRebirths() int64 {
+	if u.Kind == "prestige" {
+		return u.Value
+	}
+	return u.Rebirths
 }
