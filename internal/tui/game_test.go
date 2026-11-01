@@ -29,12 +29,18 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
+	return newFixtureFrom(t, "../sim/testdata")
+}
+
+// newFixtureFrom is newFixture over another content dir ("" = embedded).
+func newFixtureFrom(t *testing.T, contentDir string) *fixture {
+	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "tui.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	c, err := content.Load("../sim/testdata")
+	c, err := content.Load(contentDir)
 	if err != nil {
 		t.Fatal(err)
 	}

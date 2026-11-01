@@ -98,3 +98,48 @@ func TestGoldengrainVisibility(t *testing.T) {
 		t.Fatal("rebirth-1 save should preview goldengrain")
 	}
 }
+
+// Goldengrain is meant to be the best-paying permanent fast crop by profit
+// rate. Seasonal seeds are excluded: they pay above the permanent curve by
+// design and are balanced by their event window.
+func TestGoldengrainIsTheBestPermanentFastCrop(t *testing.T) {
+	c, err := content.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rate := func(cr *content.Crop) float64 {
+		return float64(cr.SellValue-cr.SeedCost) / float64(cr.GrowSeconds)
+	}
+	gg := c.Crop("goldengrain")
+	for i := range c.Crops {
+		cr := &c.Crops[i]
+		if cr.ID == gg.ID || cr.Archetype != "fast" || cr.Unlock.Kind == "season" {
+			continue
+		}
+		if rate(cr) >= rate(gg) {
+			t.Errorf("%s profits %.2fc/min, at or above goldengrain's %.2fc/min",
+				cr.ID, rate(cr)*60, rate(gg)*60)
+		}
+	}
+}
+
+// A crop's extra rebirth requirement counts toward "base game complete": a
+// save short of it cannot enter contracts even with every other gate met.
+func TestContractsNeedExtraRebirthRequirements(t *testing.T) {
+	c := realContent(t)
+	s := contractReadyState(t, c)
+	if !s.ContractsAvailable(c) {
+		t.Fatal("test setup: ready state should have contracts")
+	}
+	c.Crops = append(c.Crops, content.Crop{
+		ID: "deepgrain", Name: "Deepgrain", Archetype: "fast", SeedCost: 1, GrowSeconds: 1, SellValue: 2,
+		Unlock: content.Unlock{Kind: "zone", Zone: "greenhouse", Rebirths: s.Rebirths + 1},
+	})
+	if s.ContractsAvailable(c) {
+		t.Fatal("a crop needing one more rebirth should keep contracts locked")
+	}
+	s.Rebirths++
+	if !s.ContractsAvailable(c) {
+		t.Fatal("meeting the extra rebirth requirement should open contracts")
+	}
+}

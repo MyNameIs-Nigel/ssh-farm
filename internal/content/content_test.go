@@ -417,3 +417,19 @@ func TestEmbeddedGoldengrain(t *testing.T) {
 		t.Fatalf("RequiredRebirths = %d, want 2", got)
 	}
 }
+
+func TestRequiredRebirths(t *testing.T) {
+	for _, tc := range []struct {
+		u    Unlock
+		want int64
+	}{
+		{Unlock{Kind: "start"}, 0},
+		{Unlock{Kind: "prestige", Value: 3}, 3},
+		{Unlock{Kind: "earnings", Value: 500}, 0},
+		{Unlock{Kind: "zone", Zone: "greenhouse", Rebirths: 2}, 2},
+	} {
+		if got := tc.u.RequiredRebirths(); got != tc.want {
+			t.Errorf("%+v.RequiredRebirths() = %d, want %d", tc.u, got, tc.want)
+		}
+	}
+}
