@@ -339,6 +339,7 @@ coins_min = 2
 coins_max = 8
 synergy_pct = 25
 rebirth_bonus_pct = 10
+unlock_rebirths = [0, 0, 1, 2]
 `
 
 func TestScarecrowConfigValidation(t *testing.T) {
@@ -355,6 +356,9 @@ func TestScarecrowConfigValidation(t *testing.T) {
 	if err := load(minimalBalance + scarecrowBlock); err != nil {
 		t.Fatalf("valid scarecrow block rejected: %v", err)
 	}
+	if err := load(minimalBalance + strings.Replace(scarecrowBlock, "unlock_rebirths = [0, 0, 1, 2]\n", "", 1)); err != nil {
+		t.Fatalf("a scarecrow block without unlock_rebirths (no rebirth gates) must load: %v", err)
+	}
 	for _, tc := range []struct{ name, from, to string }{
 		{"negative cost", "cost = 10", "cost = -1"},
 		{"zero max", "max_count = 4", "max_count = 0"},
@@ -365,6 +369,12 @@ func TestScarecrowConfigValidation(t *testing.T) {
 		{"growth below 100", "cost_growth_pct = 300", "cost_growth_pct = 99"},
 		{"negative synergy", "synergy_pct = 25", "synergy_pct = -1"},
 		{"negative rebirth bonus", "rebirth_bonus_pct = 10", "rebirth_bonus_pct = -1"},
+		{"gate list shorter than max_count", "unlock_rebirths = [0, 0, 1, 2]", "unlock_rebirths = [0, 1]"},
+		{"gate list longer than max_count", "unlock_rebirths = [0, 0, 1, 2]", "unlock_rebirths = [0, 0, 1, 2, 3]"},
+		{"negative gate", "unlock_rebirths = [0, 0, 1, 2]", "unlock_rebirths = [-1, 0, 1, 2]"},
+		// Scarecrows are bought in order, so a later one needing fewer
+		// rebirths than an earlier one is a typo, not a design.
+		{"decreasing gates", "unlock_rebirths = [0, 0, 1, 2]", "unlock_rebirths = [0, 2, 1, 2]"},
 	} {
 		bad := strings.Replace(scarecrowBlock, tc.from, tc.to, 1)
 		if bad == scarecrowBlock {
@@ -391,6 +401,29 @@ func TestEmbeddedScarecrowTuning(t *testing.T) {
 	}
 	if sc.SynergyPct <= 0 || c.Critters.RebirthBonusPct <= 0 {
 		t.Fatalf("scarecrow synergy and critter rebirth bonus must be positive: %+v / %+v", sc, c.Critters)
+	}
+	// The first two are open to every run; the 3rd needs one rebirth and the
+	// 4th two.
+	for owned, want := range []int64{0, 0, 1, 2} {
+		if got := sc.RebirthsToBuy(owned); got != want {
+			t.Errorf("rebirths to buy scarecrow %d = %d, want %d", owned+1, got, want)
+		}
+	}
+}
+
+func TestRebirthsToBuyWithoutGates(t *testing.T) {
+	sc := ScarecrowConfig{MaxCount: 4}
+	for owned := range 6 {
+		if got := sc.RebirthsToBuy(owned); got != 0 {
+			t.Fatalf("no unlock_rebirths: scarecrow %d needs %d rebirths, want 0", owned+1, got)
+		}
+	}
+	sc.UnlockRebirths = []int64{0, 0, 1, 2}
+	if got := sc.RebirthsToBuy(-1); got != 0 {
+		t.Fatalf("RebirthsToBuy(-1) = %d, want 0", got)
+	}
+	if got := sc.RebirthsToBuy(4); got != 0 {
+		t.Fatalf("RebirthsToBuy past the list = %d, want 0 (the cap refuses it, not a gate)", got)
 	}
 }
 

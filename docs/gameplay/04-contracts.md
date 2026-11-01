@@ -111,6 +111,8 @@ Earnings accumulate across rebirths within the contract.
 - The plot-upgrade overlay explains that Bare Hands has disabled both options.
 - All other base systems remain available, including events, gifts,
   Scarecrow, land, Greenhouse, multipliers, strains, and rebirth upgrades.
+  The 3rd and 4th Scarecrows wait on contract-local rebirths, like every
+  rebirth gate (gameplay/05).
 
 **Why this comes first:** it is immediately understandable and asks for
 attention without changing the rest of the economy. Its target is large enough

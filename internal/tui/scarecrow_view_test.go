@@ -490,11 +490,11 @@ func TestCompactPlotHitboxesFollowScrolling(t *testing.T) {
 // --- Copy --------------------------------------------------------------------
 
 func TestMarketRowCountsScarecrows(t *testing.T) {
-	g := scarecrowFarm(t, canvasMaxWidth, canvasMaxHeight, 3, 0, 0)
+	g := scarecrowFarm(t, canvasMaxWidth, canvasMaxHeight, 3, 0)
 	g.snap.State.Coins = 1_000_000
 	g.scr = scrMarket
 	out := stripAnsi(view(g))
-	if !strings.Contains(out, "Scarecrow 2/4") || !strings.Contains(out, money(g.snap.State.ScarecrowCost(g.content))+"c") {
+	if !strings.Contains(out, "Scarecrow 1/4") || !strings.Contains(out, money(g.snap.State.ScarecrowCost(g.content))+"c") {
 		t.Fatalf("market should show owned/max and the next price:\n%s", out)
 	}
 	g = scarecrowFarm(t, canvasMaxWidth, canvasMaxHeight, 3, 0, 0, 0, 0)

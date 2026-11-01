@@ -29,6 +29,7 @@ func TestBuyScarecrowEscalatesAndCapsAtMax(t *testing.T) {
 	c := testContent(t) // cost 100, growth 300%, max 4
 	s := newTestState(t, c)
 	s.Coins = 1_000_000
+	s.Rebirths = 2 // past every unlock_rebirths gate, so only price and cap apply
 
 	want := []int64{100, 300, 900, 2700}
 	for i, w := range want {
@@ -65,6 +66,109 @@ func TestBuyScarecrowCannotAffordChangesNothing(t *testing.T) {
 	}
 	if s.Coins != 99 || len(s.Scarecrows) != 0 {
 		t.Fatal("unaffordable buy mutated the save")
+	}
+}
+
+// unlock_rebirths = [0, 0, 1, 2]: the first two are open to every run, the
+// 3rd needs one progression rebirth and the 4th two. A refused buy charges
+// nothing and adds nothing.
+func TestBuyScarecrowRebirthGates(t *testing.T) {
+	c := testContent(t)
+	for _, tc := range []struct {
+		rebirths int64
+		canOwn   int
+	}{{0, 2}, {1, 3}, {2, 4}, {7, 4}} {
+		s := newTestState(t, c)
+		s.Rebirths = tc.rebirths
+		s.Coins = 1_000_000
+		for len(s.Scarecrows) < tc.canOwn {
+			if _, err := BuyScarecrow(s, c); err != nil {
+				t.Fatalf("%d rebirths: buying scarecrow %d failed: %v", tc.rebirths, len(s.Scarecrows)+1, err)
+			}
+		}
+		if tc.canOwn == int(c.Scarecrow.MaxCount) {
+			continue
+		}
+		need, locked := s.ScarecrowRebirthGate(c)
+		if !locked || need != tc.rebirths+1 {
+			t.Fatalf("%d rebirths owning %d: gate = (%d, %v), want (%d, true)", tc.rebirths, tc.canOwn, need, locked, tc.rebirths+1)
+		}
+		coins := s.Coins
+		if _, err := BuyScarecrow(s, c); !errors.Is(err, ErrLocked) {
+			t.Fatalf("%d rebirths: scarecrow %d = %v, want ErrLocked", tc.rebirths, tc.canOwn+1, err)
+		}
+		if s.Coins != coins || len(s.Scarecrows) != tc.canOwn {
+			t.Fatalf("%d rebirths: a locked buy charged %d coins or added a scarecrow (owned %d)", tc.rebirths, coins-s.Coins, len(s.Scarecrows))
+		}
+	}
+}
+
+// The lock is the first thing the player needs to hear about: telling a run
+// that cannot buy the 3rd at any price to save up would be misleading.
+func TestScarecrowRebirthGateOutranksThePrice(t *testing.T) {
+	c := testContent(t)
+	s := scarecrowState(t, 2)
+	s.Coins = 0
+	if _, err := BuyScarecrow(s, c); !errors.Is(err, ErrLocked) {
+		t.Fatalf("broke and short a rebirth: %v, want ErrLocked", err)
+	}
+}
+
+// Contracts restart progression at zero, so their gates count the contract's
+// own rebirths, as every other gameplay gate does (ProgressionRebirths).
+func TestScarecrowRebirthGatesCountContractRebirths(t *testing.T) {
+	c := testContent(t)
+	s := scarecrowState(t, 2)
+	s.Coins = 1_000_000
+	s.Rebirths = 9
+	s.ActiveContract = ContractBareHands
+	if _, err := BuyScarecrow(s, c); !errors.Is(err, ErrLocked) {
+		t.Fatalf("9 lifetime but 0 contract rebirths: %v, want ErrLocked", err)
+	}
+	s.ContractRebirths = 1
+	if _, err := BuyScarecrow(s, c); err != nil {
+		t.Fatalf("1 contract rebirth should open the 3rd: %v", err)
+	}
+}
+
+// Scarecrows bought before the gates existed are the player's: the gate only
+// ever refuses a purchase, it never takes one back, and they keep dropping.
+func TestScarecrowsBoughtBeforeTheGatesKeepWorking(t *testing.T) {
+	c := testContent(t)
+	s := scarecrowState(t, 4) // four owned at zero rebirths
+	payload, err := s.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := DecodeState(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Scarecrows) != 4 {
+		t.Fatalf("reloaded save holds %d scarecrows, want 4", len(loaded.Scarecrows))
+	}
+	tickOnline(loaded, c, c.Scarecrow.DropIntervalSec)
+	for i, sc := range loaded.Scarecrows {
+		if sc.Pouch <= 0 {
+			t.Fatalf("scarecrow %d stopped dropping: pouch %d", i+1, sc.Pouch)
+		}
+	}
+	if need, locked := loaded.ScarecrowRebirthGate(c); need != 0 || locked {
+		t.Fatalf("a full column has nothing left to gate, got (%d, %v)", need, locked)
+	}
+
+	three := scarecrowState(t, 3)
+	if need, locked := three.ScarecrowRebirthGate(c); need != 2 || !locked {
+		t.Fatalf("three owned at zero rebirths: gate = (%d, %v), want the 4th's (2, true)", need, locked)
+	}
+}
+
+func TestScarecrowRebirthGateIsEmptyWhenDisabled(t *testing.T) {
+	c := testContent(t)
+	c.Scarecrow.Cost = 0
+	s := scarecrowState(t, 2)
+	if need, locked := s.ScarecrowRebirthGate(c); need != 0 || locked {
+		t.Fatalf("disabled item: gate = (%d, %v), want none", need, locked)
 	}
 }
 

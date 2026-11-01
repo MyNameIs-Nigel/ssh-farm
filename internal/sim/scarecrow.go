@@ -38,6 +38,18 @@ func (s *State) ScarecrowCost(c *content.Content) int64 {
 	return cost
 }
 
+// ScarecrowRebirthGate reports how many progression rebirths the next
+// scarecrow needs (unlock_rebirths) and whether the run is still short of
+// them. There is no gate once nothing more can be bought. The gate only ever
+// refuses a purchase: scarecrows a run already owns are never taken back.
+func (s *State) ScarecrowRebirthGate(c *content.Content) (need int64, locked bool) {
+	if s.ScarecrowCost(c) < 0 {
+		return 0, false
+	}
+	need = c.Scarecrow.RebirthsToBuy(len(s.Scarecrows))
+	return need, s.ProgressionRebirths() < need
+}
+
 // BuyScarecrow purchases the next scarecrow at its escalating price.
 func BuyScarecrow(s *State, c *content.Content) (int64, error) {
 	if s.contractBlocksScarecrow() {
@@ -49,6 +61,9 @@ func BuyScarecrow(s *State, c *content.Content) (int64, error) {
 	cost := s.ScarecrowCost(c)
 	if cost < 0 {
 		return 0, ErrMaxed
+	}
+	if _, locked := s.ScarecrowRebirthGate(c); locked {
+		return 0, ErrLocked
 	}
 	if s.Coins < cost {
 		return 0, ErrCantAfford

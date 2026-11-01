@@ -38,6 +38,7 @@ click it). `a` (harvest all) also empties every pouch.
 | `coins_min`, `coins_max` | 2, 8 | base roll per Scarecrow per drop |
 | `synergy_pct` | 25 | each Scarecrow beyond the first adds +25% to **every** Scarecrow's drop (4 owned = ×1.75 each, 7× one alone) |
 | `rebirth_bonus_pct` | 10 | +10% to drops per rebirth |
+| `unlock_rebirths` | [0, 0, 1, 2] | rebirths needed to **buy** the 1st, 2nd, 3rd and 4th (see [Rebirth gates](#rebirth-gates)) |
 | `[critters] rebirth_bonus_pct` | 50 | +50% to shoo rewards per rebirth |
 
 "Rebirths" means `ProgressionRebirths()` — contract runs count their own
@@ -86,6 +87,38 @@ rebirths from zero, as every other gameplay gate does.
     `Events.ContractCompleted` plumbing stays as a guard for future passive
     income.
 
+## Rebirth gates
+
+Requested after launch: the first two Scarecrows are open to every run, the
+3rd needs **1 rebirth** and the 4th **2**, so a full column of four is
+something rebirths earn.
+
+13. **One list, one entry per Scarecrow.** `unlock_rebirths` must be empty (no
+    gates) or have exactly `max_count` entries, each ≥ 0 and never decreasing,
+    because Scarecrows are bought in order. A bad list fails the server at load
+    like every other content error.
+14. **Progression rebirths, as every gate counts them.** Inside a contract the
+    contract's own rebirths count, so Bare Hands and Lean Season start back at
+    two. Clockwork Denied still disables Scarecrows outright, and its lock
+    takes precedence over the rebirth gate.
+15. **The gate only ever refuses a purchase.** Scarecrows a save already owns
+    (bought before the gates shipped) are kept and keep dropping; no save is
+    touched or migrated. Scarecrows reset on rebirth, so such a column is back
+    under the rule after the player's next rebirth anyway.
+16. **The lock outranks the price.** A gated buy is refused as `ErrLocked` even
+    when the player could not afford it. The Market shows `🔒 rebirth 1×`
+    (the wording crop and zone gates use) instead of a price, and refusing it
+    says `Scarecrow 3 needs 1 rebirth (you have 0).` (`this contract has 0`
+    inside a contract, where "you have 0" would baffle a veteran).
+17. **The for-sale card turns into a locked card** that counts the rebirths
+    still needed (`1 more` / `rebirth`). The absolute "rebirth 2×" does not
+    fit the card's 9 text cells, and the remaining count is what the player
+    acts on, correct inside a contract too. It still opens the Market when
+    clicked.
+18. **The Rebirth screen's "Next rebirth unlocks" list names the next
+    Scarecrow** (`⛀ Scarecrow 3 in the Market`) alongside the crop tiers, except
+    under Clockwork Denied, and Help spells the gates out from the live config.
+
 ## Card layout
 
 At the standard 100-column canvas the body is 94 columns: four 20-column plot
@@ -96,6 +129,17 @@ cards (80) + a 1-column gap + a **13-column** Scarecrow card = 94 exactly.
 │ Scarecrow │   title
 │ ⛀ 1,234   │   pouch (compact above 99,999: 1.2M)
 │ ▰▰▰▱ 9s   │   time to next drop
+╰───────────╯
+```
+
+While `unlock_rebirths` gates the next Scarecrow, the column's last card
+counts the rebirths still needed instead of quoting a price:
+
+```
+╭───────────╮
+│ Scarecrow │
+│ 1 more    │
+│ rebirth   │
 ╰───────────╯
 ```
 
@@ -130,3 +174,6 @@ Each was reproduced with a failing test against the untouched code first.
 - [x] Enter/click collects one; `a` collects all.
 - [x] No auto-shoo; shoo reward rises per rebirth.
 - [x] Cards fit the 94-column body with no clipping; goldens committed.
+- [x] The 3rd Scarecrow needs 1 progression rebirth and the 4th 2, refused
+      in the sim and explained in the Market, on the farm, in Help and on the
+      Rebirth screen; owned Scarecrows are never taken away.
