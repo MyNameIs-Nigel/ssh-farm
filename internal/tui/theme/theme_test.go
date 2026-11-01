@@ -111,7 +111,8 @@ func TestEveryStyleCarriesAForeground(t *testing.T) {
 	th := New(PhaseNight, false, "")
 	for name, st := range styleFields(t, th) {
 		// Frame and Box colour their border, not their text.
-		if name == "Frame" || name == "Box" || name == "PlotCard" || name == "PlotSel" {
+		switch name {
+		case "Frame", "Box", "PlotCard", "PlotSel", "ScareCard", "ScareSel", "ScareShop":
 			continue
 		}
 		if fg := st.GetForeground(); fg == (lipgloss.NoColor{}) {

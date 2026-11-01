@@ -316,41 +316,54 @@ func TestContractSessionIntentsAndMetadataPersist(t *testing.T) {
 	}
 }
 
-// A contract can finish inside the catch-up that precedes every call (a
-// Bare Hands scarecrow bounty), so both the tick path and an intent must
-// say so explicitly — exactly once.
+// Scarecrow drops land in a pouch, not the wallet, so no tick may report a
+// finished contract; the collect intent that banks the pouch reports it
+// exactly once.
 func TestSnapshotsReportContractCompletedOnce(t *testing.T) {
 	m, _ := testManager(t, PolicyTakeover, time.Hour)
 	res := mustAttach(t, m, ident("SHA256:contract-done", "farm"), 1000)
-	armBareHands := func() {
-		t.Helper()
-		if ok := res.Session.actor.do(func() {
-			st := res.Session.actor.state
-			st.ActiveContract = sim.ContractBareHands
-			st.ContractEarnings = 99_999
-			st.Scarecrow = true
-			st.Plots[0] = sim.Plot{Critter: "crow"}
-		}); !ok {
-			t.Fatal("actor stopped")
+	if ok := res.Session.actor.do(func() {
+		st := res.Session.actor.state
+		st.ActiveContract = sim.ContractBareHands
+		st.ContractEarnings = 99_999
+		st.Scarecrows = []sim.Scarecrow{{}}
+	}); !ok {
+		t.Fatal("actor stopped")
+	}
+
+	for now := int64(1001); now <= 1031; now++ {
+		snap, _, err := res.Session.Advance(now)
+		if err != nil || snap.ContractCompleted != "" {
+			t.Fatalf("tick at %d reported %q (err %v); drops are not earnings", now, snap.ContractCompleted, err)
 		}
 	}
 
-	armBareHands()
-	snap, _, err := res.Session.Advance(1001)
-	if err != nil || snap.ContractCompleted != sim.ContractBareHands {
-		t.Fatalf("tick snapshot ContractCompleted = %q, err = %v", snap.ContractCompleted, err)
+	total, n, snap, _, err := res.Session.CollectScarecrows(1031)
+	if err != nil || total == 0 || n != 1 {
+		t.Fatalf("collect = %d from %d, err %v", total, n, err)
 	}
-	if snap, _, _ = res.Session.Advance(1002); snap.ContractCompleted != "" {
+	if snap.ContractCompleted != sim.ContractBareHands {
+		t.Fatalf("collect snapshot ContractCompleted = %q", snap.ContractCompleted)
+	}
+	if snap, _, _ := res.Session.Advance(1032); snap.ContractCompleted != "" {
 		t.Fatalf("next tick re-reported %q", snap.ContractCompleted)
 	}
+}
 
-	// The same crossing inside an intent's catch-up, on a no-op action.
-	if ok := res.Session.actor.do(func() { res.Session.actor.state.ContractsCompleted = 0 }); !ok {
+func TestCollectScarecrowIntent(t *testing.T) {
+	m, _ := testManager(t, PolicyTakeover, time.Hour)
+	res := mustAttach(t, m, ident("SHA256:scarecrow", "farm"), 1000)
+	if ok := res.Session.actor.do(func() {
+		res.Session.actor.state.Scarecrows = []sim.Scarecrow{{Pouch: 30}}
+	}); !ok {
 		t.Fatal("actor stopped")
 	}
-	armBareHands()
-	if snap, err = res.Session.SetLeaderboardNameStyle(1003, sim.NameStyleTraditional); err != nil || snap.ContractCompleted != sim.ContractBareHands {
-		t.Fatalf("intent snapshot ContractCompleted = %q, err = %v", snap.ContractCompleted, err)
+	got, snap, _, err := res.Session.CollectScarecrow(1000, 0)
+	if err != nil || got != 30 || snap.State.Scarecrows[0].Pouch != 0 {
+		t.Fatalf("collect = %d, err %v, pouch %d", got, err, snap.State.Scarecrows[0].Pouch)
+	}
+	if _, _, _, err := res.Session.CollectScarecrow(1000, 0); !errors.Is(err, sim.ErrPouchEmpty) {
+		t.Fatalf("second collect = %v, want ErrPouchEmpty", err)
 	}
 }
 

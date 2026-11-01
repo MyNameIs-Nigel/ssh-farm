@@ -123,25 +123,6 @@ func ReplantAll(s *State, c *content.Content, now int64) ReplantResult {
 	return res
 }
 
-// BuyScarecrow purchases the run-scoped scarecrow that auto-shoos critters.
-func BuyScarecrow(s *State, c *content.Content) (int64, error) {
-	if s.contractBlocksScarecrow() {
-		return 0, ErrContractRestricted
-	}
-	if c.Scarecrow.Cost <= 0 {
-		return 0, ErrUnknownItem
-	}
-	if s.Scarecrow {
-		return 0, ErrAlreadyOwned
-	}
-	if s.Coins < c.Scarecrow.Cost {
-		return 0, ErrCantAfford
-	}
-	s.Coins -= c.Scarecrow.Cost
-	s.Scarecrow = true
-	return c.Scarecrow.Cost, nil
-}
-
 // HarvestResult reports what one manual harvest yielded.
 type HarvestResult struct {
 	CropID    string
@@ -406,7 +387,7 @@ func giftCoinReward(s *State, c *content.Content) int64 {
 	return reward
 }
 
-// ShooCritter removes a cosmetic critter and awards a few coins.
+// ShooCritter removes a critter and awards a few coins, more per rebirth.
 func ShooCritter(s *State, c *content.Content, plotIdx int) (int64, error) {
 	if plotIdx < 0 || plotIdx >= len(s.Plots) {
 		return 0, ErrUnknownPlot
@@ -416,7 +397,7 @@ func ShooCritter(s *State, c *content.Content, plotIdx int) (int64, error) {
 		return 0, ErrNoCritter
 	}
 	plot.Critter = ""
-	reward := s.rollRange(c.Critters.ShooRewardMin, c.Critters.ShooRewardMax)
+	reward := s.shooScaled(c, s.rollRange(c.Critters.ShooRewardMin, c.Critters.ShooRewardMax))
 	s.credit(reward)
 	return reward, nil
 }
@@ -439,6 +420,10 @@ func Rebirth(s *State, c *content.Content, now int64) (int64, error) {
 	if !s.CanRebirth(c) {
 		return 0, ErrRebirthTooSoon
 	}
+	// Coins are about to be thrown away, so bank the pouches first: they
+	// count toward this run's earnings and the gain the rebirth screen
+	// previewed (PrestigeGain already includes them).
+	CollectScarecrows(s)
 	gain := s.PrestigeGain(c)
 	s.PrestigeCurrency = satAdd(s.PrestigeCurrency, gain)
 	if s.ActiveContract != "" {
@@ -454,7 +439,8 @@ func Rebirth(s *State, c *content.Content, now int64) (int64, error) {
 	s.Zones = map[string]bool{}
 	s.Multipliers = map[string]int{}
 	s.SeedUpgrades = map[string]int{}
-	s.Scarecrow = false
+	s.Scarecrows = nil
+	s.ScarecrowClock = 0
 	s.RunEarnings = 0
 	s.EventID = ""
 	s.EventStartedAt = 0

@@ -26,11 +26,14 @@ type Events struct {
 	EventStarted   string
 	EventEnded     string
 	CritterVisits  []string
+	// ScarecrowCoins is what the scarecrows dropped into their pouches. It is
+	// not credited: the player collects pouches by hand (gameplay/05).
 	ScarecrowCoins int64
 	AwayVignettes  []string
-	// ContractCompleted names the contract whose goal this Advance crossed
-	// (a Bare Hands scarecrow bounty, say), so a live tick or the offline
-	// catch-up can announce it the way an action does.
+	// ContractCompleted names the contract whose goal this Advance crossed,
+	// so a live tick or the offline catch-up can announce it the way an
+	// action does. No passive source credits coins inside a contract today
+	// (scarecrow drops wait in a pouch), so this is a guard for future ones.
 	ContractCompleted ContractID
 }
 
@@ -85,27 +88,12 @@ func Advance(s *State, c *content.Content, to int64) Events {
 		s.rollGiftArrival(c, elapsed, online, to, &ev)
 	}
 
-	// Offline scarecrow trickle: a small passive income while away, far lower
-	// than the critter bounties it would collect online.
-	if s.Scarecrow && !s.contractBlocksScarecrow() && !online && c.Scarecrow.OfflineCoinsPerHour > 0 {
-		gained := satMul(c.Scarecrow.OfflineCoinsPerHour, elapsed) / 3600
-		if gained > 0 {
-			s.credit(gained)
-			ev.ScarecrowCoins = satAdd(ev.ScarecrowCoins, gained)
-		}
-	}
+	s.advanceScarecrows(c, elapsed, online, &ev)
 
 	for i := range s.Plots {
 		plot := &s.Plots[i]
 		if plot.Crop == "" {
 			if online {
-				// A standing scarecrow shoos any critter already loitering.
-				if s.Scarecrow && !s.contractBlocksScarecrow() && plot.Critter != "" {
-					reward := s.rollRange(c.Critters.ShooRewardMin, c.Critters.ShooRewardMax)
-					s.credit(reward)
-					ev.ScarecrowCoins = satAdd(ev.ScarecrowCoins, reward)
-					plot.Critter = ""
-				}
 				s.maybeCritterVisit(c, plot, &ev)
 			}
 			continue
@@ -239,7 +227,7 @@ func awayVignettes(s *State, c *content.Content, ev *Events) []string {
 		lines = append(lines, "A parcel arrived at the gate while you were away.")
 	}
 	if ev.ScarecrowCoins > 0 {
-		lines = append(lines, "Your scarecrow kept watch and gathered a few coins.")
+		lines = append(lines, "Your scarecrows kept watch; their pouches are waiting.")
 	}
 	if len(lines) == 0 {
 		vignettes := []string{
@@ -353,19 +341,11 @@ func (s *State) maybeCritterVisit(c *content.Content, plot *Plot, ev *Events) {
 	if c.Critters.VisitChancePct <= 0 {
 		return
 	}
-	// Honor the active-critter cap (<=0 means unlimited). A scarecrow bypasses
-	// it since it shoos visitors on sight rather than letting them accumulate.
-	if limit := c.Critters.MaxActive; limit > 0 && !s.Scarecrow && s.activeCritterCount() >= limit {
+	// Honor the active-critter cap (<=0 means unlimited).
+	if limit := c.Critters.MaxActive; limit > 0 && s.activeCritterCount() >= limit {
 		return
 	}
 	if s.roll100() >= c.Critters.VisitChancePct {
-		return
-	}
-	if s.Scarecrow {
-		// Shoo the visitor immediately and bank the bounty automatically.
-		reward := s.rollRange(c.Critters.ShooRewardMin, c.Critters.ShooRewardMax)
-		s.credit(reward)
-		ev.ScarecrowCoins = satAdd(ev.ScarecrowCoins, reward)
 		return
 	}
 	idx := int(s.rollRange(0, int64(len(c.Critters.Kinds)-1)))

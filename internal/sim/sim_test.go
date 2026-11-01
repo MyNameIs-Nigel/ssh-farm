@@ -1039,49 +1039,6 @@ func TestReplantAllSkipsBusyAndLockedPlots(t *testing.T) {
 	}
 }
 
-func TestScarecrowOnlineShoosAndOfflineTrickles(t *testing.T) {
-	c := testContent(t)
-	c.Scarecrow.Cost = 100
-	c.Scarecrow.OfflineCoinsPerHour = 60
-	c.Critters.VisitChancePct = 100 // every empty plot draws a visitor online
-
-	s := newTestState(t, c)
-	s.Coins = 200
-	cost, err := BuyScarecrow(s, c)
-	if err != nil || cost != 100 || !s.Scarecrow || s.Coins != 100 {
-		t.Fatalf("buy scarecrow: cost %d err %v coins %d owned %v", cost, err, s.Coins, s.Scarecrow)
-	}
-	if _, err := BuyScarecrow(s, c); err != ErrAlreadyOwned {
-		t.Fatalf("second buy should be ErrAlreadyOwned, got %v", err)
-	}
-
-	// One online tick: the scarecrow shoos every would-be critter for coins
-	// and leaves no critter behind.
-	ev := Advance(s, c, s.UpdatedAt+1)
-	if ev.ScarecrowCoins <= 0 {
-		t.Fatalf("online scarecrow should earn coins, got %d", ev.ScarecrowCoins)
-	}
-	if len(ev.CritterVisits) != 0 {
-		t.Fatal("scarecrow should prevent critters from settling")
-	}
-	for i := range s.Plots {
-		if s.Plots[i].Critter != "" {
-			t.Fatalf("plot %d still has a critter despite the scarecrow", i)
-		}
-	}
-
-	// Offline for an hour trickles the configured passive income, far less
-	// than it would earn shooing critters at your side.
-	before := s.Coins
-	ev = Advance(s, c, s.UpdatedAt+3600)
-	if ev.ScarecrowCoins != 60 {
-		t.Fatalf("offline trickle = %d, want 60 (one hour at 60/hr)", ev.ScarecrowCoins)
-	}
-	if s.Coins != before+60 {
-		t.Fatalf("coins = %d, want %d after offline trickle", s.Coins, before+60)
-	}
-}
-
 func TestCritterCapAndDisableToggle(t *testing.T) {
 	c := testContent(t)
 	c.Critters.VisitChancePct = 100
@@ -1115,20 +1072,6 @@ func TestPayloadUpgradeV3ToV4DefaultsSettingsOn(t *testing.T) {
 	}
 	if !up.NewsEnabled || !up.CrittersEnabled {
 		t.Fatal("v4 migration should default news and critters on for old saves")
-	}
-}
-
-func TestRebirthClearsScarecrow(t *testing.T) {
-	c := testContent(t)
-	s := newTestState(t, c)
-	s.Scarecrow = true
-	s.RunEarnings = 1_000_000
-	s.LifetimeEarnings = 1_000_000
-	if _, err := Rebirth(s, c, 2000); err != nil {
-		t.Fatalf("rebirth: %v", err)
-	}
-	if s.Scarecrow {
-		t.Fatal("scarecrow is run-scoped and must reset on rebirth")
 	}
 }
 

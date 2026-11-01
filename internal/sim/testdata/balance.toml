@@ -122,7 +122,19 @@ moonberry_crop_id = "moonberry"
 visit_chance_pct = 0
 shoo_reward_min = 3
 shoo_reward_max = 12
+rebirth_bonus_pct = 50
 kind = ["crow"]
+
+[scarecrow]
+max_count = 4
+cost = 100
+cost_growth_pct = 300
+drop_interval_sec = 15
+offline_slowdown = 20
+coins_min = 2
+coins_max = 8
+synergy_pct = 25
+rebirth_bonus_pct = 10
 
 [[achievement]]
 id = "first_sprout"

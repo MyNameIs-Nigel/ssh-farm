@@ -237,8 +237,9 @@ func (g *Game) viewNotices() string {
 	if len(g.notices) == 0 {
 		return ""
 	}
-	lines := make([]string, 0, len(g.notices))
-	for _, n := range g.notices {
+	shown := g.notices[max(len(g.notices)-g.noticeBudget(), 0):]
+	lines := make([]string, 0, len(shown))
+	for _, n := range shown {
 		lines = append(lines, th.Notice.Render(truncate(n.text, g.contentWidth()-2)))
 	}
 	return strings.Join(lines, "\n")
@@ -272,6 +273,8 @@ func (g *Game) viewFooter() string {
 		hints = "s toggle skip · enter continue · ←/→ pages"
 	case g.overlay == ovAway:
 		hints = "press any key to continue"
+	case g.scr == scrFarm && g.scareSel >= 0:
+		hints = "←↑↓→ · enter collect · a harvest all · r replant all · g gift · q leave"
 	case g.scr == scrFarm:
 		hints = "←↑↓→ · enter plant/harvest · a harvest all · r replant all · u upgrades · g gift · q leave"
 	case g.scr == scrMarket:
@@ -303,27 +306,22 @@ func (g *Game) farmColumns() int {
 	if g.compactFarm() {
 		return 1
 	}
-	cols := g.contentWidth() / 22
-	if cols < 1 {
-		cols = 1
-	}
-	if cols > 6 {
-		cols = 6
-	}
-	return cols
+	return g.gridColumns()
 }
 
+// compactFarm switches to the one-line-per-entry list when the card grid
+// (plots plus the scarecrow column) would not fit whole with room for at
+// least one notice line; noticeBudget trims notices to what is left. It used
+// to budget 3 lines per 5-line card row, so the grid could lose its bottom
+// row behind the notices.
 func (g *Game) compactFarm() bool {
-	cw, chh := g.contentWidth(), g.contentHeight()
-	rowsNeeded := (len(g.snap.State.Plots) + cw/22 - 1) / max(cw/22, 1)
-	return cw < 66 || chh < rowsNeeded*3+10
+	return g.contentWidth() < 66 ||
+		g.contentHeight() < g.gridRows()*plotCardHeight+g.farmChromeLines()+1
 }
 
 func (g *Game) viewFarm() string {
 	st := g.snap.State
-	if g.cursor >= len(st.Plots) {
-		g.cursor = len(st.Plots) - 1
-	}
+	g.clampFarmCursor()
 	if g.compactFarm() {
 		return g.viewFarmCompact()
 	}
@@ -341,7 +339,7 @@ func (g *Game) viewFarm() string {
 		}
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, cards...))
 	}
-	return strings.Join(rows, "\n")
+	return g.withScareColumn(strings.Join(rows, "\n"), cols)
 }
 
 // autoSowQueueLabel returns a styled "↻→ Name" hint when a plot's auto-sow
@@ -406,7 +404,7 @@ func (g *Game) plotCard(i int) string {
 		}
 	}
 	content := th.Selected.Render(title) + "\n" + line1 + "\n" + line2
-	if i == g.cursor {
+	if i == g.cursor && g.scareSel < 0 {
 		return th.PlotSel.Render(content)
 	}
 	return th.PlotCard.Render(content)
@@ -415,19 +413,14 @@ func (g *Game) plotCard(i int) string {
 func (g *Game) viewFarmCompact() string {
 	th := g.theme()
 	st := g.snap.State
-	maxRows := g.contentHeight() - 9
-	if maxRows < 3 {
-		maxRows = 3
-	}
-	start := 0
-	if g.cursor >= maxRows {
-		start = g.cursor - maxRows + 1
-	}
+	maxRows := g.compactRowBudget()
+	start := g.compactStart()
+	total := len(st.Plots) + len(st.Scarecrows)
 	var b strings.Builder
 	for i := start; i < len(st.Plots) && i < start+maxRows; i++ {
 		plot := st.Plots[i]
 		marker := "  "
-		if i == g.cursor {
+		if i == g.cursor && g.scareSel < 0 {
 			marker = th.Selected.Render("▸ ")
 		}
 		badges := g.plotBadges(plot)
@@ -456,8 +449,11 @@ func (g *Game) viewFarmCompact() string {
 		}
 		b.WriteString(marker + itoa(i+1) + badges + ". " + status + "\n")
 	}
-	if start+maxRows < len(st.Plots) {
-		b.WriteString(th.Hint.Render("  …" + itoa(len(st.Plots)-start-maxRows) + " more below"))
+	for i := max(start-len(st.Plots), 0); len(st.Plots)+i < start+maxRows && i < len(st.Scarecrows); i++ {
+		b.WriteString(g.compactScarecrowRow(i) + "\n")
+	}
+	if start+maxRows < total {
+		b.WriteString(th.Hint.Render("  …" + itoa(total-start-maxRows) + " more below"))
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -641,13 +637,16 @@ func (g *Game) viewRebirth() string {
 	var b strings.Builder
 	b.WriteString(th.Section.Render("Rebirth") + "\n\n")
 	b.WriteString("  This run has earned " + th.Value.Render(money(st.RunEarnings)+" coins") + ".\n")
+	if pouches := st.ScarecrowPouchTotal(); pouches > 0 {
+		b.WriteString("  " + th.Hint.Render(fitWidth("+ "+money(pouches)+" in scarecrow pouches (banked on rebirth, so they count)", g.contentWidth()-2)) + "\n")
+	}
 	if st.CanRebirth(g.content) {
 		b.WriteString("  Rebirthing now grants " + th.Ready.Render("✦ "+money(gain)+" "+g.starseedLabel()) + ".\n")
 	} else {
 		b.WriteString("  " + th.Hint.Render("Earn "+money(g.content.Prestige.MinEarnings)+" coins in one run to unlock rebirth.") + "\n")
 	}
 	b.WriteString("\n" + th.Section.Render("  Kept: ") + th.Value.Render(g.starseedLabel()+", upgrades, achievements, crop unlocks") + "\n")
-	b.WriteString(th.Section.Render("  Lost: ") + th.Value.Render("coins, plots, crops, multipliers, zones, plot automation") + "\n")
+	b.WriteString(th.Section.Render("  Lost: ") + th.Value.Render("coins, plots, crops, multipliers, zones, automation, scarecrows") + "\n")
 
 	b.WriteString("\n" + th.Section.Render("Next rebirth unlocks") + "\n")
 	nextTier := st.ProgressionRebirths() + 1
@@ -997,8 +996,8 @@ func (g *Game) viewHelpControls() string {
 			"  ?                 help\n"+
 			"  tab / shift+tab   cycle screens forward / back\n"+
 			"  ←↑↓→              move around the farm\n"+
-			"  enter / space     plant, harvest, or pick an auto-sow crop\n"+
-			"  a                 harvest everything that's ready\n"+
+			"  enter / space     plant, harvest, collect a scarecrow, or pick an auto-sow crop\n"+
+			"  a                 harvest everything that's ready and empty every scarecrow\n"+
 			"  r                 replant every empty plot (last crop)\n"+
 			"  u                 plot automation upgrades\n"+
 			"  g                 redeem a gift parcel\n"+
@@ -1067,7 +1066,8 @@ func (g *Game) viewHelpGameplay() string {
 		"Gain: isqrt(run earnings ÷ "+money(c.Prestige.Divisor)+
 		") — e.g. "+money(c.Prestige.MinEarnings)+" run earnings → 10 "+ss+".") + "\n")
 	b.WriteString(g.helpBody("Kept: "+ss+", permanent upgrades, achievements, crop unlocks. "+
-		"Lost: coins, plots, crops, multipliers, zones, plot automation.") + "\n")
+		"Lost: coins, plots, crops, multipliers, zones, plot automation, scarecrows "+
+		"(uncollected scarecrow coins are banked first, so they count toward the payout).") + "\n")
 
 	b.WriteString("\n" + th.Section.Render("Automation") + "\n")
 	b.WriteString(g.helpBody("Auto-harvest gathers ready crops on that plot each tick. "+
@@ -1078,12 +1078,15 @@ func (g *Game) viewHelpGameplay() string {
 		" lifetime earnings. Resets on rebirth. "+
 		"Crops keep growing offline; auto plots simulate harvest cycles when you reconnect.") + "\n")
 
-	b.WriteString("\n" + th.Section.Render("Critters & the Scarecrow") + "\n")
-	b.WriteString(g.helpBody("Critters wander onto empty plots now and then (press x to shoo "+
-		"one for a few coins). Buy the Scarecrow in the Market to shoo them "+
-		"automatically and bank the coins. While you're offline it can't chase "+
-		"critters, so it only trickles a small passive income — far less than "+
-		"it earns at your side.") + "\n")
+	b.WriteString("\n" + th.Section.Render("Scarecrows") + "\n")
+	b.WriteString(g.helpBody(g.scarecrowHelp()) + "\n")
+
+	b.WriteString("\n" + th.Section.Render("Critters") + "\n")
+	shooLo, shooHi := g.snap.State.ShooRewardRange(c)
+	b.WriteString(g.helpBody("Critters wander onto empty plots now and then. Press x to shoo "+
+		"one for "+money(shooLo)+"–"+money(shooHi)+" coins — every rebirth adds "+
+		money(c.Critters.RebirthBonusPct)+"% to the reward. Scarecrows don't shoo "+
+		"critters; that's your job.") + "\n")
 
 	b.WriteString("\n" + th.Section.Render("Replant all (r)") + "\n")
 	b.WriteString(g.helpBody("On the Farm screen, r refills every empty plot with the crop it "+
@@ -1169,11 +1172,12 @@ func (g *Game) tutorialContent(page int) (string, string) {
 				"• a  harvests every ready plot at once.\n" +
 				"• r  replants every empty plot with what it last grew.\n" +
 				"• u  adds per-plot automation once you can afford it.\n" +
-				"• x  shoos a critter off an empty plot for a few coins."
+				"• x  shoos a critter off an empty plot for a few coins.\n" +
+				"• Scarecrows sit beside your plots; enter on one collects its coins."
 	case 2:
 		return "Growing richer 💰",
 			"• Sell crops for coins. Buy plots on the Land screen and run-scoped\n" +
-				"  boosts — plus a critter-chasing Scarecrow — in the Market.\n" +
+				"  boosts — plus up to four coin-gathering Scarecrows — in the Market.\n" +
 				"• Random events and gift parcels (press g) sweeten the day.\n" +
 				"• Rebirth trades your run for " + ss + ": permanent bonuses that make\n" +
 				"  every later run faster."
@@ -1297,6 +1301,10 @@ func (g *Game) viewAway() string {
 	}
 	if ev.GiftArrived {
 		b.WriteString(th.Ready.Render("  📦 A parcel waits at the gate — press g") + "\n")
+		wrote = true
+	}
+	if ev.ScarecrowCoins > 0 {
+		b.WriteString(th.Ready.Render("  ⛀ Your scarecrows gathered "+money(ev.ScarecrowCoins)+" coins — collect them on the farm") + "\n")
 		wrote = true
 	}
 	if !wrote {

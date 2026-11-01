@@ -135,6 +135,7 @@ type Game struct {
 	scr               screen
 	overlay           overlay
 	cursor            int
+	scareSel          int // scarecrow under the cursor, or -1 on a plot; cursor keeps its plot meanwhile
 	pickerIdx         int
 	pickerAutoSow     bool // picker is choosing an auto-sow queue, not planting now
 	marketIdx         int
@@ -208,6 +209,7 @@ func NewGame(id identity.SessionIdentity, res game.AttachResult, c *content.Cont
 		lastInput:   now,
 		hits:        &hitbox.Registry{},
 		board:       board,
+		scareSel:    -1,
 	}
 	switch {
 	case res.Created:
@@ -478,29 +480,20 @@ func (g *Game) cycleScreen(forward bool) tea.Cmd {
 
 func (g *Game) handleFarmKey(key string) (tea.Model, tea.Cmd) {
 	st := g.snap.State
-	cols := g.farmColumns()
+	g.clampFarmCursor()
+	onScare := g.scareSel >= 0
 	switch key {
-	case "left":
-		if g.cursor > 0 {
-			g.cursor--
-		}
-	case "right":
-		if g.cursor < len(st.Plots)-1 {
-			g.cursor++
-		}
-	case "up":
-		if g.cursor-cols >= 0 {
-			g.cursor -= cols
-		}
-	case "down":
-		if g.cursor+cols < len(st.Plots) {
-			g.cursor += cols
-		}
+	case "left", "right", "up", "down":
+		g.navigateFarm(key)
 	case "u":
+		if onScare {
+			g.addNotice("Scarecrows don't take plot upgrades — buy more in the Market.")
+			return g, nil
+		}
 		g.upgradeIdx = g.cursor
 		g.overlay = ovUpgrade
 	case "x":
-		if g.cursor < len(st.Plots) && st.Plots[g.cursor].Critter != "" {
+		if !onScare && g.cursor < len(st.Plots) && st.Plots[g.cursor].Critter != "" {
 			reward, snap, ach, err := g.sess.ShooCritter(g.now, g.cursor)
 			g.applyAction(snap, ach, err)
 			if err == nil {
@@ -508,6 +501,10 @@ func (g *Game) handleFarmKey(key string) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "enter", "space", " ":
+		if onScare {
+			g.collectScarecrow(g.scareSel)
+			return g, nil
+		}
 		if g.cursor >= len(st.Plots) {
 			return g, nil
 		}
@@ -764,7 +761,9 @@ func (g *Game) handleMarketKey(key string) (tea.Model, tea.Cmd) {
 			_, snap, ach, err = g.sess.BuyScarecrow(now)
 		}
 		g.applyAction(snap, ach, err)
-		if err == nil {
+		if err == nil && it.kind == "scarecrow" {
+			g.addNotice("Scarecrow " + itoa(len(g.snap.State.Scarecrows)) + " is standing guard beside your plots.")
+		} else if err == nil {
 			g.addNotice("Bought " + sanitizeText(it.name) + "!")
 		}
 	}
@@ -1341,9 +1340,16 @@ func (g *Game) harvestAllReady() {
 		total += res.Payout + res.Discovery
 		count++
 	}
-	if count > 0 {
+	scareCoins, scareN := g.collectAllScarecrows()
+	switch {
+	case count > 0 && scareN > 0:
+		g.addNotice("Harvested " + itoa(count) + " " + plural(count, "plot", "plots") + " and emptied " +
+			itoa(scareN) + " " + plural(scareN, "scarecrow", "scarecrows") + " (+" + money(total+scareCoins) + " coins).")
+	case count > 0:
 		g.addNotice("Harvested " + itoa(count) + " plots (+" + money(total) + " coins).")
-	} else {
+	case scareN > 0:
+		g.addNotice("Emptied " + itoa(scareN) + " " + plural(scareN, "scarecrow", "scarecrows") + " (+" + money(scareCoins) + " coins).")
+	default:
 		g.addNotice("Nothing is ready yet.")
 	}
 }
@@ -1414,9 +1420,6 @@ func (g *Game) eventNotices(ev sim.Events) {
 	}
 	if ev.AutoCoins > 0 {
 		g.addNotice("⚙ Auto-plots gathered crops (+" + money(ev.AutoCoins) + ").")
-	}
-	if ev.ScarecrowCoins > 0 {
-		g.addNotice("🐦 Your scarecrow shooed critters (+" + money(ev.ScarecrowCoins) + " coins).")
 	}
 	if ev.GoldenHarvests > 0 {
 		g.addNotice("✨ " + itoa(ev.GoldenHarvests) + " golden harvest(s)!")
@@ -1503,13 +1506,16 @@ func (g *Game) marketItems() []marketItem {
 			locked: locked, level: st.SeedUpgradeLevel(su.CropID), maxLvl: su.MaxLevel,
 		})
 	}
-	if g.content.Scarecrow.Cost > 0 {
-		blocked := st.ActiveContract == sim.ContractClockworkDenied
+	if sc := g.content.Scarecrow; sc.Cost > 0 {
+		blocked := !st.ScarecrowsAllowed()
+		lo, hi := st.ScarecrowDropRange(g.content)
 		items = append(items, marketItem{
 			id: "scarecrow", name: "Scarecrow",
-			desc: "Auto-shoos critters for coins; trickles a little while you're away.",
-			cost: g.content.Scarecrow.Cost, kind: "scarecrow", owned: st.Scarecrow,
-			locked: blocked, lockReason: "disabled by Clockwork Denied",
+			desc: "drops " + money(lo) + "–" + money(hi) + "c every " + duration(sc.DropIntervalSec) +
+				" online, " + money(sc.OfflineSlowdown) + "× slower away; collect on the farm",
+			cost: st.ScarecrowCost(g.content), kind: "scarecrow",
+			level: len(st.Scarecrows), maxLvl: int(sc.MaxCount),
+			locked: blocked, lockReason: map[bool]string{true: "disabled by Clockwork Denied"}[blocked],
 		})
 	}
 	for _, z := range g.content.Zones {
@@ -1600,17 +1606,27 @@ func (g *Game) marketItemRow(i int, it marketItem, st *sim.State) string {
 			return marker + th.Value.Render(line+"  "+money(it.cost)+"c")
 		}
 	case "scarecrow":
-		line := sanitizeText(it.name) + " — " + sanitizeText(it.desc)
+		// The description carries live numbers, so it is the part that gives
+		// way on a narrow row; the price or status at the end never does.
+		var prefix, tail string
+		style := th.Value
 		switch {
-		case it.owned:
-			return marker + th.Ready.Render("✓ "+line+"  owned")
+		case it.level >= it.maxLvl:
+			prefix, tail, style = "✓ ", "  maxed", th.Ready
 		case it.locked:
-			return marker + th.Locked.Render(line+"  🔒 "+it.lockReason)
+			tail, style = "  🔒 "+it.lockReason, th.Locked
 		case st.Coins < it.cost:
-			return marker + th.Locked.Render(line+"  "+money(it.cost)+"c")
+			tail, style = "  "+money(it.cost)+"c", th.Locked
 		default:
-			return marker + th.Value.Render(line+"  "+money(it.cost)+"c")
+			tail = "  " + money(it.cost) + "c"
 		}
+		head := prefix + sanitizeText(it.name) + " " + itoa(it.level) + "/" + itoa(it.maxLvl)
+		room := g.contentWidth() - lipgloss.Width(marker) - lipgloss.Width(head) - lipgloss.Width(tail)
+		desc := ""
+		if room > 4 {
+			desc = fitWidth(" — "+sanitizeText(it.desc), room)
+		}
+		return marker + style.Render(head+desc+tail)
 	case "zone":
 		line := sanitizeText(it.name) + " — " + money(it.cost) + "c · " + sanitizeText(it.desc)
 		switch {

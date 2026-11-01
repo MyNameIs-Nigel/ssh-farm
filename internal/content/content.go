@@ -127,19 +127,55 @@ type MoonConfig struct {
 	MoonberryCropID      string `toml:"moonberry_crop_id"`
 }
 
-// CritterConfig tunes cosmetic critter visits on empty plots.
+// CritterConfig tunes critter visits on empty plots. Critters are only ever
+// shooed by hand (x); the reward grows with the run's rebirth count.
 type CritterConfig struct {
-	VisitChancePct int64    `toml:"visit_chance_pct"`
-	MaxActive      int64    `toml:"max_active"` // cap on simultaneous critters; <=0 means unlimited
-	ShooRewardMin  int64    `toml:"shoo_reward_min"`
-	ShooRewardMax  int64    `toml:"shoo_reward_max"`
-	Kinds          []string `toml:"kind"`
+	VisitChancePct  int64    `toml:"visit_chance_pct"`
+	MaxActive       int64    `toml:"max_active"` // cap on simultaneous critters; <=0 means unlimited
+	ShooRewardMin   int64    `toml:"shoo_reward_min"`
+	ShooRewardMax   int64    `toml:"shoo_reward_max"`
+	RebirthBonusPct int64    `toml:"rebirth_bonus_pct"` // +% shoo reward per progression rebirth
+	Kinds           []string `toml:"kind"`
 }
 
-// ScarecrowConfig tunes the run-scoped scarecrow market purchase.
+// ScarecrowConfig tunes the run-scoped Scarecrows (gameplay/05). Each one
+// drops a random coin amount into its own pouch every DropIntervalSec of
+// online play, OfflineSlowdown times slower while the player is away; the
+// player collects pouches by hand.
 type ScarecrowConfig struct {
-	Cost                int64 `toml:"cost"`                   // coin price (<=0 disables the item)
-	OfflineCoinsPerHour int64 `toml:"offline_coins_per_hour"` // passive trickle while away
+	Cost            int64 `toml:"cost"`              // price of the first (<=0 disables the item)
+	CostGrowthPct   int64 `toml:"cost_growth_pct"`   // each next one costs this % of the last
+	MaxCount        int64 `toml:"max_count"`         // scarecrows per run
+	DropIntervalSec int64 `toml:"drop_interval_sec"` // online seconds between drops
+	OfflineSlowdown int64 `toml:"offline_slowdown"`  // offline drops take this many times longer
+	CoinsMin        int64 `toml:"coins_min"`         // base roll per scarecrow per drop
+	CoinsMax        int64 `toml:"coins_max"`
+	SynergyPct      int64 `toml:"synergy_pct"`       // +% to every drop per scarecrow beyond the first
+	RebirthBonusPct int64 `toml:"rebirth_bonus_pct"` // +% to every drop per progression rebirth
+}
+
+func (sc ScarecrowConfig) validate() error {
+	if sc.Cost < 0 {
+		return fmt.Errorf("content: scarecrow cost must be >= 0")
+	}
+	if sc.Cost == 0 {
+		return nil // the item is disabled; the rest of the table is unused
+	}
+	switch {
+	case sc.MaxCount < 1:
+		return fmt.Errorf("content: scarecrow max_count must be >= 1")
+	case sc.CostGrowthPct < 100:
+		return fmt.Errorf("content: scarecrow cost_growth_pct must be >= 100")
+	case sc.DropIntervalSec < 1:
+		return fmt.Errorf("content: scarecrow drop_interval_sec must be >= 1")
+	case sc.OfflineSlowdown < 1:
+		return fmt.Errorf("content: scarecrow offline_slowdown must be >= 1")
+	case sc.CoinsMin < 1 || sc.CoinsMax < sc.CoinsMin:
+		return fmt.Errorf("content: scarecrow needs 1 <= coins_min <= coins_max")
+	case sc.SynergyPct < 0 || sc.RebirthBonusPct < 0:
+		return fmt.Errorf("content: scarecrow synergy_pct and rebirth_bonus_pct must be >= 0")
+	}
+	return nil
 }
 
 // Headline is a one-line flavor line for the Daily Furrow banner.
@@ -577,8 +613,11 @@ func (c *Content) validate() error {
 	if c.Critters.MaxActive < 0 {
 		return fmt.Errorf("content: critters max_active must be >= 0")
 	}
-	if c.Scarecrow.Cost < 0 || c.Scarecrow.OfflineCoinsPerHour < 0 {
-		return fmt.Errorf("content: scarecrow cost and offline_coins_per_hour must be >= 0")
+	if c.Critters.RebirthBonusPct < 0 {
+		return fmt.Errorf("content: critters rebirth_bonus_pct must be >= 0")
+	}
+	if err := c.Scarecrow.validate(); err != nil {
+		return err
 	}
 
 	achIDs := map[string]bool{}

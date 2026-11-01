@@ -182,7 +182,8 @@ func resetGameplay(s *State, c *content.Content, now int64) {
 	s.RunEarnings = 0
 	s.Multipliers = map[string]int{}
 	s.SeedUpgrades = map[string]int{}
-	s.Scarecrow = false
+	s.Scarecrows = nil
+	s.ScarecrowClock = 0
 	s.GiftPending = false
 	s.GiftArrivedAt = 0
 	s.EventID = ""

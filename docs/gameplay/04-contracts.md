@@ -164,8 +164,8 @@ locked.
 - Random events neither start nor grant effects.
 - Gifts do not arrive online or offline, and no pending gift crosses into the
   contract.
-- The Scarecrow cannot be purchased; critters remain cosmetic and may still be
-  shooed manually for their ordinary small reward.
+- Scarecrows cannot be purchased; critters may still be shooed by hand for
+  their ordinary reward (scaled by contract-local rebirths, gameplay/05).
 - Land, Greenhouse, multipliers, strains, and StarShop upgrades remain
   available. Spending each rebirth's Starseeds well is the acceleration path.
 
@@ -210,10 +210,13 @@ immediately records the completion, clears its restrictions, and opens a reward
 modal. The current farm state remains; starting the next contract performs the
 next hard reset.
 
-A goal can be crossed outside any action: a Bare Hands scarecrow bounty on a
-live tick, or its offline trickle while away. `sim.Events.ContractCompleted` and
+A goal can be crossed inside the catch-up `sim.Advance` that precedes every tick
+and action. Since gameplay/05 no passive source credits coins inside a contract
+(Scarecrow drops wait in a pouch until the player collects them, which is an
+action), so today completion always lands on an action; the plumbing stays as a
+guard for any future passive income. `sim.Events.ContractCompleted` and
 `game.Snapshot.ContractCompleted` carry the completion explicitly, so the reward
-modal opens on a tick too. The UI never infers completion by diffing
+modal would open on a tick too. The UI never infers completion by diffing
 snapshots, because its first snapshot is a placeholder, and diffing against it
 would re-announce every earned seal on each connect.
 

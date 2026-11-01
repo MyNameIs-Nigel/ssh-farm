@@ -217,7 +217,29 @@ func (s *Session) ReplantAll(now int64) (sim.ReplantResult, Snapshot, []string, 
 	return res, snap, newly, err
 }
 
-// BuyScarecrow purchases the run-scoped scarecrow.
+// CollectScarecrow empties one scarecrow's pouch into the wallet.
+func (s *Session) CollectScarecrow(now int64, i int) (int64, Snapshot, []string, error) {
+	var got int64
+	snap, newly, err := s.intent(now, func(st *sim.State) error {
+		var cerr error
+		got, cerr = sim.CollectScarecrow(st, i)
+		return cerr
+	})
+	return got, snap, newly, err
+}
+
+// CollectScarecrows empties every scarecrow pouch (part of harvest-all).
+func (s *Session) CollectScarecrows(now int64) (int64, int, Snapshot, []string, error) {
+	var total int64
+	var n int
+	snap, newly, err := s.intent(now, func(st *sim.State) error {
+		total, n = sim.CollectScarecrows(st)
+		return nil
+	})
+	return total, n, snap, newly, err
+}
+
+// BuyScarecrow purchases the next run-scoped scarecrow.
 func (s *Session) BuyScarecrow(now int64) (int64, Snapshot, []string, error) {
 	var cost int64
 	snap, newly, err := s.intent(now, func(st *sim.State) error {
