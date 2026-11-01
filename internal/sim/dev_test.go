@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"errors"
 	"math"
 	"reflect"
 	"testing"
@@ -102,7 +103,7 @@ func TestDevEventsAndContractRestrictions(t *testing.T) {
 	}
 	s.ActiveContract = ContractClockworkDenied
 	for _, action := range []string{"gift", "event"} {
-		if err := DevApply(s, c, action, 1, 1000); err != ErrContractRestricted {
+		if err := DevApply(s, c, action, 1, 1000); !errors.Is(err, ErrContractRestricted) {
 			t.Fatalf("%s: %v", action, err)
 		}
 	}

@@ -23,11 +23,19 @@ import (
 	"github.com/mynameis-nigel/ssh-farm/internal/store"
 )
 
+// Run starts the SSH server and exits nonzero if startup or shutdown fails.
+// Keep process exit outside run so its deferred resource cleanup always runs.
 func Run() {
+	if code := run(); code != 0 {
+		os.Exit(code)
+	}
+}
+
+func run() int {
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("config", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	logger := applog.New(cfg.LogLevel, cfg.LogFormat)
@@ -39,21 +47,21 @@ func Run() {
 	c, err := content.Load(cfg.DataDir)
 	if err != nil {
 		logger.Error("content load failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	// Fail closed before opening the database or binding a port: a process that
 	// is not allowed to serve should not have touched player data first.
 	if err := moderation.Init(cfg.ModerationPath, cfg.RequireModeration); err != nil {
 		logger.Error("moderation load failed", "path", cfg.ModerationPath, "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	ctx := context.Background()
 	st, err := store.Open(ctx, cfg.DBPath)
 	if err != nil {
 		logger.Error("store open failed", "path", cfg.DBPath, "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer st.Close()
 
@@ -61,13 +69,13 @@ func Run() {
 	// arrived via import-v1) before the server starts serving sessions.
 	if err := game.ReconcileDenormalized(ctx, st, logger); err != nil {
 		logger.Error("reconcile failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	proxyKeys, err := identity.LoadProxyKeys(cfg.ProxyKeysPath)
 	if err != nil {
 		logger.Error("proxy keys load failed", "path", cfg.ProxyKeysPath, "error", err)
-		os.Exit(1)
+		return 1
 	}
 	resolver := identity.NewResolver(cfg.DefaultSlot, proxyKeys, identity.WithGuests(cfg.AllowGuests))
 
@@ -79,7 +87,7 @@ func Run() {
 	srv, err := server.New(cfg, logger, games, resolver, board)
 	if err != nil {
 		logger.Error("server init failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	done := make(chan os.Signal, 1)
@@ -123,8 +131,9 @@ func Run() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 		logger.Error("shutdown failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	logger.Info("shutdown complete")
+	return 0
 }
