@@ -11,6 +11,7 @@ import (
 
 // Config holds server settings loaded from FARM_* environment variables.
 type Config struct {
+	DevMode             bool // FARM_DEV_MODE: enable local testing tools; default false
 	ListenHost          string
 	ListenPort          int
 	HostKeyPath         string
@@ -58,6 +59,9 @@ func Load() (Config, error) {
 		DataDir:        os.Getenv("FARM_DATA_DIR"),
 		ProxyKeysPath:  os.Getenv("FARM_PROXY_KEYS_PATH"),
 		ModerationPath: os.Getenv("FARM_MODERATION_PATH"),
+	}
+	if cfg.DevMode, err = envBoolOr("FARM_DEV_MODE", false); err != nil {
+		return Config{}, err
 	}
 	if cfg.AllowGuests, err = envBoolOr("FARM_ALLOW_GUESTS", false); err != nil {
 		return Config{}, err

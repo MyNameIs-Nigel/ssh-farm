@@ -40,6 +40,7 @@ type Manager struct {
 	logger   *slog.Logger
 	autosave time.Duration
 	policy   Policy
+	devMode  bool
 
 	mu      sync.Mutex
 	actors  map[saveKey]*actor
@@ -51,14 +52,14 @@ type Manager struct {
 var ErrShuttingDown = errors.New("the farm is closing for maintenance")
 
 // NewManager wires the save registry over the given store and content.
-func NewManager(st *store.Store, c *content.Content, logger *slog.Logger, autosave time.Duration, policy Policy) *Manager {
+func NewManager(st *store.Store, c *content.Content, logger *slog.Logger, autosave time.Duration, policy Policy, options ...ManagerOption) *Manager {
 	if autosave <= 0 {
 		autosave = 30 * time.Second
 	}
 	if policy != PolicyRefuse {
 		policy = PolicyTakeover
 	}
-	return &Manager{
+	m := &Manager{
 		store:    st,
 		content:  c,
 		logger:   logger,
@@ -66,6 +67,18 @@ func NewManager(st *store.Store, c *content.Content, logger *slog.Logger, autosa
 		policy:   policy,
 		actors:   make(map[saveKey]*actor),
 	}
+	for _, option := range options {
+		option(m)
+	}
+	return m
+}
+
+// ManagerOption configures a manager before any sessions are attached.
+type ManagerOption func(*Manager)
+
+// WithDevMode enables save manipulation for a development server only.
+func WithDevMode(enabled bool) ManagerOption {
+	return func(m *Manager) { m.devMode = enabled }
 }
 
 // Content exposes the immutable game content for the UI layer.

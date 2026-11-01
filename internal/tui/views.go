@@ -40,6 +40,8 @@ func (g *Game) overlayBox() string {
 		return g.viewRebirthConfirm()
 	case ovName:
 		return g.viewName()
+	case ovDev:
+		return g.viewDev()
 	case ovConfig:
 		return g.viewConfig()
 	case ovReplantWarn:
@@ -260,6 +262,8 @@ func (g *Game) viewFooter() string {
 		hints = "type name · enter save · esc/q close"
 	case g.overlay == ovRebirthConfirm:
 		hints = "y rebirth · n/esc/q keep farming"
+	case g.overlay == ovDev:
+		hints = "↑/↓ row · type value · enter apply · ←/→ adjust · esc close"
 	case g.overlay == ovConfig:
 		hints = "↑/↓ select · enter toggle · esc/q close"
 	case g.overlay == ovReplantWarn:
@@ -295,6 +299,9 @@ func (g *Game) viewFooter() string {
 		hints = "↑/↓/wheel scroll · n rename farm · r refresh · esc back"
 	default:
 		hints = "1-6 screens · tab/shift+tab cycle · g gift · q leave"
+	}
+	if g.sess != nil && g.sess.DevMode() && g.overlay == ovNone {
+		hints = "Ctrl+D dev tools · " + hints
 	}
 	return th.Hint.Render(truncate(hints, g.contentWidth()-1))
 }
