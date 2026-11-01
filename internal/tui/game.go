@@ -105,6 +105,7 @@ const (
 	ovContractReward
 	ovKicked
 	ovGuestQuit
+	ovDev
 )
 
 // tutorialPages is the number of pages in the new-player tutorial.
@@ -167,6 +168,8 @@ type Game struct {
 
 	tutorialPage int
 	tutorialSkip bool
+	devSel       int
+	devInput     string
 	configIdx    int
 
 	notices    []notice
@@ -330,7 +333,19 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return g.requestQuit()
 	}
 
+	if key == "ctrl+d" && g.sess.DevMode() && g.overlay != ovKicked {
+		if g.overlay == ovDev {
+			g.overlay = ovNone
+		} else {
+			g.overlay = ovDev
+			g.devInput = ""
+		}
+		return g, nil
+	}
+
 	switch g.overlay {
+	case ovDev:
+		return g.handleDevKey(key)
 	case ovGuestQuit:
 		switch key {
 		case "enter", "y":

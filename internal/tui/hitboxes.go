@@ -51,6 +51,8 @@ func (g *Game) registerHitboxes() {
 		g.registerContractConfirmHits()
 	case ovName:
 		g.registerNameHits()
+	case ovDev:
+		g.registerDevHits()
 	case ovConfig:
 		g.registerConfigHits()
 	case ovTutorial:

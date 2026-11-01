@@ -95,6 +95,34 @@ Connect from another terminal:
 ssh -p 2222 localhost
 ```
 
+For a local server with test controls on port 2222:
+
+```bash
+go run ./cmd/dev-farm
+ssh -p 2222 -o StrictHostKeyChecking=accept-new localhost
+```
+
+Press **Ctrl+D** to open or close dev tools. Use ↑/↓ to select a row, type an
+exact non-negative integer and press Enter to save it, or use ←/→ to adjust it.
+You can edit coins, Starseeds, run earnings, and lifetime rebirths; mature every
+planted crop; spawn a parcel; cycle events (including off); or unlock contracts.
+Click to select a row, double-click to activate an action, or scroll to select.
+Mature auto-harvest plots are collected by the next normal game tick.
+
+Coins and Starseeds change only the balance, so you can test purchases without
+also changing earnings or contract progress. Run earnings also raise lifetime
+earnings when needed and let you test crop gates and rebirth eligibility.
+Lifetime rebirth edits leave contract-local rebirth progress alone. Contract
+restrictions still apply to parcels and events; unlocking contracts opens the
+campaign without granting seals or cosmetic rewards.
+
+The dev command binds to `127.0.0.1`, disables idle kicks, logs at debug level,
+and keeps its database and SSH host key in gitignored `var/dev/`. Changes persist
+across reconnects. Every `FARM_*` default can be overridden by setting that
+environment variable before launch, including `FARM_LISTEN_PORT`.
+`FARM_DEV_MODE` defaults to false on the regular server; never enable it for
+production or point a dev server at a real player database.
+
 Saves and the host key live in `var/` by default. Local moderation uses a fixture
 and generated farm names; see [moderation configuration](docs/gameplay/03-farm-names-and-moderation.md).
 For seasonal previews, add `FARM_DEV_SEASON=halloween` or

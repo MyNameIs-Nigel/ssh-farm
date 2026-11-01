@@ -55,6 +55,9 @@ func (g *Game) handleMouseWheel(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 		g.pickerIdx = clamp(g.pickerIdx+delta, 0, len(g.visibleCrops())-1)
 	case ovUpgrade:
 		g.upgradeIdx = clamp(g.upgradeIdx+delta, 0, len(g.snap.State.Plots)-1)
+	case ovDev:
+		g.devSel = clamp(g.devSel+delta, 0, len(devRows)-1)
+		g.devInput = ""
 	case ovConfig:
 		g.configIdx = clamp(g.configIdx+delta, 0, len(g.configRows())-1)
 	case ovNone:
@@ -87,7 +90,7 @@ func (g *Game) dismissOverlay() (tea.Model, tea.Cmd) {
 		return g.ackReplantWarning()
 	case ovGuestQuit:
 		g.overlay = ovNone
-	case ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovAway, ovContractConfirm, ovContractReward:
+	case ovDev, ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovAway, ovContractConfirm, ovContractReward:
 		g.overlay = ovNone
 	}
 	return g, nil
@@ -96,6 +99,14 @@ func (g *Game) dismissOverlay() (tea.Model, tea.Cmd) {
 func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 	id := box.ID
 	switch {
+	case strings.HasPrefix(id, "dev:") && g.overlay == ovDev:
+		if idx, ok := box.Data.(int); ok {
+			g.devSel = idx
+			g.devInput = ""
+			if isDouble {
+				return g.handleDevKey("enter")
+			}
+		}
 	case id == "guest:leave":
 		return g.pressKey("enter")
 	case id == "guest:stay":
