@@ -195,6 +195,23 @@ func TestHelpNamesTheScarecrowRebirthGates(t *testing.T) {
 	if !strings.Contains(help, "The 3rd needs 1 rebirth and the 4th needs 2 rebirths.") {
 		t.Fatalf("gameplay help should spell out the gates:\n%s", help)
 	}
+
+	// The sentence follows the live config: one gate, or none at all.
+	for _, tc := range []struct {
+		gates []int64
+		want  string
+	}{
+		{[]int64{0, 0, 0, 3}, "the last). The 4th needs 3 rebirths. While you play"},
+		{nil, "the last). While you play"},
+	} {
+		c := *g.content
+		c.Scarecrow.UnlockRebirths = tc.gates
+		g.content = &c
+		help := strings.Join(strings.Fields(stripAnsi(g.viewHelpGameplay())), " ")
+		if !strings.Contains(help, tc.want) {
+			t.Fatalf("gates %v: want %q in:\n%s", tc.gates, tc.want, help)
+		}
+	}
 }
 
 // The Rebirth screen's "Next rebirth unlocks" list is where the game tells a
