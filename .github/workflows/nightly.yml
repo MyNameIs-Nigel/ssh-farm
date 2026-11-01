@@ -18,7 +18,7 @@ name: Nightly
 
 on:
   schedule:
-    - cron: "0 4 * * *" # 04:00 UTC daily
+    - cron: "0 4 * * 1" # 04:00 UTC every Monday
   workflow_dispatch:
 
 permissions:
@@ -43,7 +43,7 @@ jobs:
         # A test that fails one run in twenty is invisible on a pull request
         # and corrosive over a year: people learn to re-run red CI instead of
         # reading it, and that habit is what lets a real failure through.
-        # Ten runs a night finds them while nobody is waiting.
+        # Ten runs each week finds them while nobody is waiting.
         shell: bash
         run: go test -race -count=10 -shuffle=on -timeout 40m ./...
 
@@ -133,7 +133,7 @@ jobs:
           cache: true
       - name: full-tree golangci-lint
         # Pull requests are gated on new issues only. This counts the whole
-        # backlog every night so it stays a number somebody can watch going
+        # backlog every week so it stays a number somebody can watch going
         # down, rather than an unbounded thing nobody has looked at since the
         # linter was introduced. Advisory by design: it must never be the
         # reason a nightly is red.
