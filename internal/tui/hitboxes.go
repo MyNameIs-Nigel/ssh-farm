@@ -100,35 +100,42 @@ func (g *Game) registerNavHits() {
 	}
 }
 
+// registerFarmHits mirrors viewFarm/viewFarmCompact exactly, reading the same
+// geometry constants and scroll helpers. (It used to assume 22-wide cards
+// with a blank row between card rows, and a different compact row budget, so
+// clicks drifted onto the wrong plot.)
 func (g *Game) registerFarmHits() {
 	st := g.snap.State
 	ly := g.layout
 	y := ly.bodyY
+	g.clampFarmCursor()
 	if g.compactFarm() {
-		maxRows := ly.bodyH
-		start := 0
-		if g.cursor >= maxRows {
-			start = g.cursor - maxRows + 1
-		}
-		for i := start; i < len(st.Plots) && i < start+maxRows; i++ {
-			g.addHit(ly.cx, y, ly.cw, 1, "plot:"+itoa(i), i)
+		start, budget := g.compactStart(), g.compactRowBudget()
+		for pos := start; pos < start+budget && pos < len(st.Plots)+len(st.Scarecrows); pos++ {
+			if pos < len(st.Plots) {
+				g.addHit(ly.cx, y, ly.cw, 1, "plot:"+itoa(pos), pos)
+			} else {
+				k := pos - len(st.Plots)
+				g.addHit(ly.cx, y, ly.cw, 1, "scarecrow:"+itoa(k), k)
+			}
 			y++
 		}
 		return
 	}
 	cols := g.farmColumns()
-	cardW, cardH := 22, 5
-	for start := 0; start < len(st.Plots); start += cols {
-		end := start + cols
-		if end > len(st.Plots) {
-			end = len(st.Plots)
-		}
-		x := ly.cx
-		for i := start; i < end; i++ {
-			g.addHit(x, y, cardW, cardH, "plot:"+itoa(i), i)
-			x += cardW
-		}
-		y += cardH + 1
+	for i := range st.Plots {
+		x := ly.cx + (i%cols)*plotCardWidth
+		g.addHit(x, y+(i/cols)*plotCardHeight, plotCardWidth, plotCardHeight, "plot:"+itoa(i), i)
+	}
+	if g.scareColumnCards() == 0 {
+		return
+	}
+	x := ly.cx + cols*plotCardWidth + scareColumnGap
+	for k := range st.Scarecrows {
+		g.addHit(x, y+k*plotCardHeight, scareCardWidth, plotCardHeight, "scarecrow:"+itoa(k), k)
+	}
+	if g.scareForSale() {
+		g.addHit(x, y+len(st.Scarecrows)*plotCardHeight, scareCardWidth, plotCardHeight, "farm:scarecrow-shop", nil)
 	}
 }
 

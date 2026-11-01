@@ -249,14 +249,19 @@ func TestBoardRowKeepsItsStyleAfterAnEarnedName(t *testing.T) {
 	}
 }
 
-func TestTickThatCompletesAContractOpensTheReward(t *testing.T) {
+// Scarecrow drops are not credits, so a contract finishes on the collect
+// action, and that action must open the reward like any other.
+func TestCollectingAScarecrowThatCompletesAContractOpensTheReward(t *testing.T) {
 	g, now := contractSave(t, func(st *sim.State) {
 		st.ActiveContract = sim.ContractBareHands
 		st.ContractEarnings = 99_999
-		st.Scarecrow = true
-		st.Plots[0] = sim.Plot{Critter: "crow"}
+		st.Scarecrows = []sim.Scarecrow{{Pouch: 5}}
 	})
-	g, _ = tick(t, g, now+1) // the scarecrow's bounty crosses the goal
+	g, _ = tick(t, g, now+1)
+	if g.overlay == ovContractReward {
+		t.Fatal("a full pouch completed the contract on a tick; drops must wait for collection")
+	}
+	g = press(t, g, "a")
 	if g.overlay != ovContractReward || g.completedContract != sim.ContractBareHands {
 		t.Fatalf("overlay = %v, completed = %q; want the Bare Hands reward", g.overlay, g.completedContract)
 	}
@@ -397,30 +402,30 @@ func TestFinalClockworkRebirthShowsTheReward(t *testing.T) {
 	}
 }
 
-// Pressing y to abandon just as the goal lands: the catch-up before the
-// abandon completes the contract, so there is nothing left to abandon.
-// The player should see the reward, not a refusal.
-func TestAbandonThatLosesTheRaceToTheGoalShowsTheReward(t *testing.T) {
+// The catch-up before an abandon can fill a pouch past the goal, but an
+// uncollected pouch is not earnings: the abandon goes ahead and the coins go
+// with the farm, exactly as uncollected crops do.
+func TestAbandonCatchUpFillsPouchesWithoutCompletingTheContract(t *testing.T) {
 	g, now := contractSave(t, func(st *sim.State) {
 		st.ActiveContract = sim.ContractBareHands
 		st.ContractEarnings = 99_999
-		st.Scarecrow = true
-		st.Plots[0] = sim.Plot{Critter: "crow"}
+		st.Scarecrows = []sim.Scarecrow{{}}
 	})
-	g, _ = tick(t, g, now) // load the save; no time passes, so nothing is shooed yet
+	g, _ = tick(t, g, now)
 	g.scr = scrContracts
 	g = press(t, g, `a`)
 	if g.overlay != ovContractConfirm || !g.contractAbandon {
 		t.Fatalf("abandon prompt not open: overlay = %v", g.overlay)
 	}
-	g.now = now + 1 // the scarecrow's bounty lands in the abandon's catch-up
+	g.now = now + 3600 // an hour of offline drops lands in the abandon's catch-up
 	g = press(t, g, `y`)
-	if g.overlay != ovContractReward || g.completedContract != sim.ContractBareHands {
-		t.Fatalf("overlay = %v, completed = %q; want the Bare Hands reward", g.overlay, g.completedContract)
+	if g.overlay == ovContractReward {
+		t.Fatal("an uncollected pouch completed the contract")
 	}
-	for _, n := range g.notices {
-		if strings.Contains(n.text, "Hmm") || strings.Contains(n.text, "abandoned") {
-			t.Fatalf("a won contract should not read as a failed or completed abandon: %q", n.text)
-		}
+	if g.snap.State.ActiveContract != "" || g.snap.State.ContractsCompleted != 0 {
+		t.Fatalf("abandon did not go through: active %q, completed %d", g.snap.State.ActiveContract, g.snap.State.ContractsCompleted)
+	}
+	if len(g.snap.State.Scarecrows) != 0 {
+		t.Fatal("abandon resets the farm, scarecrows included")
 	}
 }

@@ -31,6 +31,12 @@ type Plot struct {
 	LastCrop    string `json:"last_crop,omitempty"` // last crop planted here, for replant-all
 }
 
+// Scarecrow is one run-scoped scarecrow and the coins it has gathered but the
+// player has not yet collected.
+type Scarecrow struct {
+	Pouch int64 `json:"pouch,omitempty"`
+}
+
 // SowCrop returns the crop ID auto-sow should replant on this plot: the queued
 // AutoSowCrop if set, otherwise the currently planted crop.
 func (p *Plot) SowCrop() string {
@@ -60,7 +66,16 @@ type State struct {
 	RunEarnings    int64           `json:"run_earnings"`
 	Multipliers    map[string]int  `json:"multipliers,omitempty"`   // run-scoped coin upgrades
 	SeedUpgrades   map[string]int  `json:"seed_upgrades,omitempty"` // crop id -> Hardier Strain level
-	Scarecrow      bool            `json:"scarecrow,omitempty"`     // run-scoped: auto-shoos critters
+	// Scarecrows are run-scoped (gameplay/05): each holds an uncollected
+	// pouch. ScarecrowClock is progress toward the next drop in "offline
+	// seconds" — an online second adds OfflineSlowdown of them. Both are
+	// omitempty so saves that never bought one round-trip byte-identically.
+	Scarecrows     []Scarecrow `json:"scarecrows,omitempty"`
+	ScarecrowClock int64       `json:"scarecrow_clock,omitempty"`
+	// LegacyScarecrow is the pre-gameplay/05 single auto-shooing scarecrow.
+	// It is read once by upgradeState, turned into one Scarecrow, and cleared
+	// so it is never written again.
+	LegacyScarecrow bool `json:"scarecrow,omitempty"`
 
 	// Gifts and events (gift pending persists across rebirth; events are transient).
 	GiftPending    bool   `json:"gift_pending,omitempty"`
@@ -185,6 +200,14 @@ func upgradeState(s *State) {
 		s.CrittersEnabled = true
 		s.Version = 4
 	}
+	// The single legacy scarecrow becomes the first of the new ones. This is
+	// additive and idempotent, so it needs no StateVersion bump.
+	if s.LegacyScarecrow {
+		if len(s.Scarecrows) == 0 {
+			s.Scarecrows = []Scarecrow{{}}
+		}
+		s.LegacyScarecrow = false
+	}
 	if s.Tools == nil {
 		s.Tools = map[string]bool{}
 	}
@@ -219,6 +242,9 @@ func (s *State) SeedUpgradeLevel(cropID string) int { return s.SeedUpgrades[crop
 func (s *State) Clone() *State {
 	c := *s
 	c.Plots = append([]Plot(nil), s.Plots...)
+	if s.Scarecrows != nil {
+		c.Scarecrows = append([]Scarecrow(nil), s.Scarecrows...)
+	}
 	c.Tools = maps.Clone(s.Tools)
 	c.Zones = maps.Clone(s.Zones)
 	c.Upgrades = maps.Clone(s.Upgrades)

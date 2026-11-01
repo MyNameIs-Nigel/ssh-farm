@@ -3,6 +3,7 @@ package content
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -292,5 +293,73 @@ func TestEmbeddedSeasonalCropsExist(t *testing.T) {
 		if crop.Unlock.Kind != "season" || crop.Unlock.Season != want {
 			t.Fatalf("%q unlock = %+v, want season %q", id, crop.Unlock, want)
 		}
+	}
+}
+
+// scarecrowBlock is a valid [scarecrow] table; each rejection case below
+// breaks exactly one key of it.
+const scarecrowBlock = `
+[scarecrow]
+max_count = 4
+cost = 10
+cost_growth_pct = 300
+drop_interval_sec = 15
+offline_slowdown = 20
+coins_min = 2
+coins_max = 8
+synergy_pct = 25
+rebirth_bonus_pct = 10
+`
+
+func TestScarecrowConfigValidation(t *testing.T) {
+	load := func(balance string) error {
+		dir := t.TempDir()
+		writeFixture(t, dir, "crops.toml", minimalCrops)
+		writeFixture(t, dir, "balance.toml", balance)
+		_, err := Load(dir)
+		return err
+	}
+	if err := load(minimalBalance); err != nil {
+		t.Fatalf("a balance with no [scarecrow] table must load (scarecrows disabled): %v", err)
+	}
+	if err := load(minimalBalance + scarecrowBlock); err != nil {
+		t.Fatalf("valid scarecrow block rejected: %v", err)
+	}
+	for _, tc := range []struct{ name, from, to string }{
+		{"negative cost", "cost = 10", "cost = -1"},
+		{"zero max", "max_count = 4", "max_count = 0"},
+		{"zero interval", "drop_interval_sec = 15", "drop_interval_sec = 0"},
+		{"zero slowdown", "offline_slowdown = 20", "offline_slowdown = 0"},
+		{"min above max", "coins_min = 2", "coins_min = 9"},
+		{"zero min", "coins_min = 2", "coins_min = 0"},
+		{"growth below 100", "cost_growth_pct = 300", "cost_growth_pct = 99"},
+		{"negative synergy", "synergy_pct = 25", "synergy_pct = -1"},
+		{"negative rebirth bonus", "rebirth_bonus_pct = 10", "rebirth_bonus_pct = -1"},
+	} {
+		bad := strings.Replace(scarecrowBlock, tc.from, tc.to, 1)
+		if bad == scarecrowBlock {
+			t.Fatalf("%s: replacement did not apply", tc.name)
+		}
+		if err := load(minimalBalance + bad); err == nil {
+			t.Errorf("%s: invalid scarecrow config accepted", tc.name)
+		}
+	}
+	if err := load(strings.Replace(minimalBalance, "kind = [\"crow\"]", "rebirth_bonus_pct = -5\nkind = [\"crow\"]", 1)); err == nil {
+		t.Error("negative critter rebirth_bonus_pct accepted")
+	}
+}
+
+// The shipped tuning is the one the design doc (gameplay/05) promises.
+func TestEmbeddedScarecrowTuning(t *testing.T) {
+	c, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := c.Scarecrow
+	if sc.MaxCount != 4 || sc.DropIntervalSec != 15 || sc.OfflineSlowdown < 10 {
+		t.Fatalf("embedded scarecrow tuning drifted from gameplay/05: %+v", sc)
+	}
+	if sc.SynergyPct <= 0 || c.Critters.RebirthBonusPct <= 0 {
+		t.Fatalf("scarecrow synergy and critter rebirth bonus must be positive: %+v / %+v", sc, c.Critters)
 	}
 }

@@ -116,11 +116,29 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 		}
 	case strings.HasPrefix(id, "plot:"):
 		if idx, ok := box.Data.(int); ok {
-			if idx == g.cursor || isDouble {
-				g.cursor = idx
+			// A plot only counts as "already selected" while the cursor is
+			// actually on it, not parked under a selected scarecrow.
+			if (idx == g.cursor && g.scareSel < 0) || isDouble {
+				g.cursor, g.scareSel = idx, -1
 				return g.pressKey("enter")
 			}
-			g.cursor = idx
+			g.cursor, g.scareSel = idx, -1
+		}
+	case strings.HasPrefix(id, "scarecrow:"):
+		if idx, ok := box.Data.(int); ok {
+			if idx == g.scareSel || isDouble {
+				g.scareSel = idx
+				g.collectScarecrow(idx)
+				return g, nil
+			}
+			g.scareSel = idx
+		}
+	case id == "farm:scarecrow-shop":
+		g.scr = scrMarket
+		for i, it := range g.marketItems() {
+			if it.kind == "scarecrow" {
+				g.marketIdx = i
+			}
 		}
 	case id == "farm:harvest-all":
 		g.harvestAllReady()
@@ -242,14 +260,22 @@ func keyPress(s string) tea.KeyPressMsg {
 	}
 }
 
+// moveFarmCursor scrolls the farm cursor by wheel notches: a row of plots at
+// a time, one scarecrow at a time in the scarecrow column, and one entry at
+// a time through the compact list (plots, then scarecrows).
 func (g *Game) moveFarmCursor(delta int) {
 	cols := g.farmColumns()
 	st := g.snap.State
 	if len(st.Plots) == 0 {
 		return
 	}
+	g.clampFarmCursor()
 	if g.compactFarm() {
-		g.cursor = clamp(g.cursor+delta, 0, len(st.Plots)-1)
+		g.setCompactPos(g.compactPos() + delta)
+		return
+	}
+	if g.scareSel >= 0 {
+		g.scareSel = clamp(g.scareSel+delta, 0, g.scareCount()-1)
 		return
 	}
 	g.cursor = clamp(g.cursor+delta*cols, 0, len(st.Plots)-1)

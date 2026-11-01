@@ -131,6 +131,68 @@ func TestGoldenRenders(t *testing.T) {
 		}},
 	}
 
+	// Scarecrow goldens (gameplay/05) pin the column beside a full farm in
+	// each palette the game can show, plus the selected, for-sale, compact
+	// and Market renders.
+	cases = append(cases, []struct {
+		name  string
+		w, h  int
+		setup func(g *Game)
+	}{
+		{"farm-scarecrows", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			lateFarm(g)
+		}},
+		{"farm-scarecrows-selected", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			lateFarm(g)
+			g.scareSel = 1
+		}},
+		{"farm-scarecrows-night", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = goldenBase + 3*theme.PhaseSeconds
+			lateFarm(g)
+		}},
+		{"farm-scarecrows-event", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			lateFarm(g)
+			st := g.snap.State
+			st.EventID = "market_day"
+			st.EventStartedAt = g.now - 30
+			st.EventEndsAt = g.now + 90
+		}},
+		{"farm-scarecrows-halloween", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = alignToPhase(festivalUnix(2024, 10, 15), theme.PhaseNight)
+			lateFarm(g)
+		}},
+		{"farm-scarecrows-forsale", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			st := g.snap.State
+			st.Plots = []sim.Plot{
+				{Crop: "turnip", PlantedAt: g.now - 30}, {Crop: "pumpkin", PlantedAt: g.now - 10},
+				{Crop: "turnip", PlantedAt: g.now - 600}, {},
+				{Crop: "turnip", PlantedAt: g.now - 45}, {Critter: "crow"},
+			}
+			st.Coins = 250
+			st.RunEarnings = 4_000
+			st.Scarecrows = []sim.Scarecrow{{Pouch: 18}, {Pouch: 7}}
+			st.ScarecrowClock = 11 * 20
+		}},
+		{"farm-scarecrows-80x24", 80, 24, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			lateFarm(g)
+			g.cursor = 15
+			g.scareSel = 2
+		}},
+		{"market-scarecrows", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			st := g.snap.State
+			st.Coins = 5_000
+			st.Scarecrows = []sim.Scarecrow{{}, {}}
+			g.scr = scrMarket
+			g.marketIdx = 2
+		}},
+	}...)
+
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			g := goldenGame(t, c.w, c.h)
@@ -151,4 +213,19 @@ func TestGoldenRendersAreDeterministic(t *testing.T) {
 	if a != b {
 		t.Fatal("two identically-built games rendered differently; the golden fixture is not deterministic")
 	}
+}
+
+// lateFarm is the screenshot that motivated gameplay/05: sixteen plots, all
+// busy, and four scarecrows whose pouches span empty to compacted-huge.
+func lateFarm(g *Game) {
+	st := g.snap.State
+	st.Plots = make([]sim.Plot, 16)
+	for i := range st.Plots {
+		st.Plots[i] = sim.Plot{Crop: "pumpkin", PlantedAt: g.now - int64(i*97), AutoHarvest: i%3 == 0, AutoSow: i%6 == 0}
+	}
+	st.Plots[5] = sim.Plot{Crop: "turnip", PlantedAt: g.now - 600}
+	st.Coins = 358_716_959
+	st.RunEarnings = 400_000_000
+	st.Scarecrows = []sim.Scarecrow{{Pouch: 0}, {Pouch: 46}, {Pouch: 12_480}, {Pouch: 123_456_789}}
+	st.ScarecrowClock = 6 * 20
 }

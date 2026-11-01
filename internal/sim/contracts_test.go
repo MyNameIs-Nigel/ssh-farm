@@ -59,7 +59,8 @@ func TestStartContractHardResetPreservesLifetimeIdentityAndSettings(t *testing.T
 	s.Zones["greenhouse"] = true
 	s.Multipliers["fertilizer"] = 2
 	s.SeedUpgrades["glimmercorn"] = 2
-	s.Scarecrow = true
+	s.Scarecrows = []Scarecrow{{Pouch: 5}}
+	s.ScarecrowClock = 7
 	s.GiftPending = true
 	s.GiftArrivedAt = 900
 	s.EventID = "market_day"
@@ -93,7 +94,7 @@ func TestStartContractHardResetPreservesLifetimeIdentityAndSettings(t *testing.T
 		t.Fatalf("progression not reset: pp=%d upgrades=%v zones=%v multipliers=%v strains=%v",
 			s.PrestigeCurrency, s.Upgrades, s.Zones, s.Multipliers, s.SeedUpgrades)
 	}
-	if s.Scarecrow || s.GiftPending || s.EventID != "" || s.RunEarnings != 0 || s.LastCrop != "" {
+	if len(s.Scarecrows) != 0 || s.ScarecrowClock != 0 || s.GiftPending || s.EventID != "" || s.RunEarnings != 0 || s.LastCrop != "" {
 		t.Fatalf("transient state survived reset: %+v", s)
 	}
 	if s.LifetimeEarnings != wantLifetime || s.Rebirths != wantRebirths || s.LifetimeHarvests != 1234 {
@@ -331,41 +332,5 @@ func TestPayloadUpgradeV4InitializesContractsWithoutInferringCompletion(t *testi
 	}
 	if s.ContractsUnlocked || s.ContractsCompleted != 0 || s.ActiveContract != "" || s.LeaderboardNameStyle != "" {
 		t.Fatalf("migration inferred contract state: %+v", s)
-	}
-}
-
-// Bare Hands allows the Scarecrow, so its bounties (online) and its trickle
-// (offline) can cross the goal inside Advance rather than in an action. The
-// caller has no other way to learn the contract finished there.
-func TestAdvanceReportsContractCompletedDuringCatchUp(t *testing.T) {
-	c := realContent(t)
-	for _, tc := range []struct {
-		name    string
-		elapsed int64
-		setup   func(s *State)
-	}{
-		{"online scarecrow bounty", 1, func(s *State) { s.Plots[0].Critter = "crow" }},
-		{"offline scarecrow trickle", 3600, func(*State) {}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			s := contractReadyState(t, c)
-			if err := StartContract(s, c, ContractBareHands, 10); err != nil {
-				t.Fatal(err)
-			}
-			s.Scarecrow = true
-			s.ContractEarnings = contractBareHandsEarnings - 1
-			tc.setup(s)
-
-			ev := Advance(s, c, 10+tc.elapsed)
-			if ev.ContractCompleted != ContractBareHands || s.ContractsCompleted != 1 {
-				t.Fatalf("ContractCompleted = %q, completed = %d", ev.ContractCompleted, s.ContractsCompleted)
-			}
-			if ev.Empty() {
-				t.Fatal("a completed contract must make the away summary non-empty")
-			}
-			if again := Advance(s, c, 20+tc.elapsed); again.ContractCompleted != "" {
-				t.Fatalf("second Advance re-reported %q", again.ContractCompleted)
-			}
-		})
 	}
 }

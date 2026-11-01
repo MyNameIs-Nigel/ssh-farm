@@ -191,14 +191,26 @@ visit_chance_pct = 1
 max_active = 3
 shoo_reward_min = 3
 shoo_reward_max = 12
+# Shooing is always by hand (x); each rebirth adds this % to the reward.
+rebirth_bonus_pct = 50
 kind = ["crow", "rabbit", "mole"]
 
-# The Scarecrow is a run-scoped Market purchase that auto-shoos critters and
-# banks their bounty. Online it earns whatever critters wander in; offline it
-# trickles a much smaller passive income so it never breaks the economy.
+# Scarecrows (gameplay/05) are run-scoped Market purchases, up to max_count.
+# Each drops a random coins_min..coins_max into its own pouch every
+# drop_interval_sec of online play, and offline_slowdown times slower while
+# you are away. Pouches are never auto-collected: enter on the card, or a.
+# Every scarecrow beyond the first adds synergy_pct to all of them, and every
+# rebirth adds rebirth_bonus_pct.
 [scarecrow]
+max_count = 4
 cost = 1200
-offline_coins_per_hour = 60
+cost_growth_pct = 300
+drop_interval_sec = 15
+offline_slowdown = 20
+coins_min = 2
+coins_max = 8
+synergy_pct = 25
+rebirth_bonus_pct = 10
 
 [[achievement]]
 id = "first_sprout"

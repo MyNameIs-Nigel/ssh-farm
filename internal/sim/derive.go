@@ -326,12 +326,19 @@ func (s *State) SeedUpgradeCost(su *content.SeedUpgrade) int64 {
 
 // PrestigeGain returns the Starseeds a rebirth would award: isqrt(run earnings / divisor).
 func (s *State) PrestigeGain(c *content.Content) int64 {
-	return isqrt(s.RunEarnings / c.Prestige.Divisor)
+	return isqrt(s.rebirthEarnings() / c.Prestige.Divisor)
 }
 
 // CanRebirth reports whether the run has earned enough to rebirth.
 func (s *State) CanRebirth(c *content.Content) bool {
-	return s.RunEarnings >= c.Prestige.MinEarnings && s.PrestigeGain(c) >= 1
+	return s.rebirthEarnings() >= c.Prestige.MinEarnings && s.PrestigeGain(c) >= 1
+}
+
+// rebirthEarnings is the run's earnings as a rebirth will see them: Rebirth
+// banks uncollected scarecrow pouches before paying out, so the preview and
+// the eligibility check count them too.
+func (s *State) rebirthEarnings() int64 {
+	return satAdd(s.RunEarnings, s.ScarecrowPouchTotal())
 }
 
 // isqrt is the integer square root (floor) for non-negative n.

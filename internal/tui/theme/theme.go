@@ -155,11 +155,18 @@ type Theme struct {
 	Box      lipgloss.Style
 	PlotCard lipgloss.Style
 	PlotSel  lipgloss.Style
-	Banner   lipgloss.Style
-	Event    lipgloss.Style
-	Frame    lipgloss.Style
-	Rule     lipgloss.Style
-	Warn     lipgloss.Style
+	// Scarecrow cards (gameplay/05) sit in the column right of the plots:
+	// straw-bordered when idle, the plot selection green when under the
+	// cursor, and a dim border for the "for sale" placeholder.
+	ScareCard  lipgloss.Style
+	ScareSel   lipgloss.Style
+	ScareShop  lipgloss.Style
+	ScareTitle lipgloss.Style
+	Banner     lipgloss.Style
+	Event      lipgloss.Style
+	Frame      lipgloss.Style
+	Rule       lipgloss.Style
+	Warn       lipgloss.Style
 
 	BoardGold   lipgloss.Style
 	BoardSilver lipgloss.Style
@@ -253,24 +260,28 @@ func NewWithSeason(p Phase, solid bool, eventID string, sn season.Season) Theme 
 		// same padding as the other tabs: the Help tab swaps to it while the
 		// window is undersized, and any width difference would shift the
 		// strip and every hitbox on it.
-		NavWarn:  text("214").Bold(true).Padding(0, 1),
-		Hint:     text("245").Italic(true),
-		Notice:   text("222"),
-		Ready:    text("120").Bold(true),
-		Growing:  text("108"),
-		Empty:    text("244"),
-		Locked:   text("243"),
-		Selected: text("229").Bold(true),
-		Value:    text("222"),
-		Section:  text(sectionColor).Bold(true),
-		Box:      base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("65")).BorderBackground(bg).Padding(1, 2),
-		PlotCard: base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("244")).BorderBackground(bg).Padding(0, 1).Width(20),
-		PlotSel:  base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("114")).BorderBackground(bg).Padding(0, 1).Width(20),
-		Banner:   text("222").Italic(true),
-		Event:    eventStyle,
-		Frame:    base.Border(lipgloss.RoundedBorder()).BorderForeground(frameAccent).BorderBackground(bg).Padding(0, 2),
-		Rule:     text("240"),
-		Warn:     text("214").Bold(true),
+		NavWarn:    text("214").Bold(true).Padding(0, 1),
+		Hint:       text("245").Italic(true),
+		Notice:     text("222"),
+		Ready:      text("120").Bold(true),
+		Growing:    text("108"),
+		Empty:      text("244"),
+		Locked:     text("243"),
+		Selected:   text("229").Bold(true),
+		Value:      text("222"),
+		Section:    text(sectionColor).Bold(true),
+		Box:        base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("65")).BorderBackground(bg).Padding(1, 2),
+		PlotCard:   base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("244")).BorderBackground(bg).Padding(0, 1).Width(20),
+		PlotSel:    base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("114")).BorderBackground(bg).Padding(0, 1).Width(20),
+		ScareCard:  base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("137")).BorderBackground(bg).Padding(0, 1).Width(13),
+		ScareSel:   base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("114")).BorderBackground(bg).Padding(0, 1).Width(13),
+		ScareShop:  base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("239")).BorderBackground(bg).Padding(0, 1).Width(13),
+		ScareTitle: text("180").Bold(true),
+		Banner:     text("222").Italic(true),
+		Event:      eventStyle,
+		Frame:      base.Border(lipgloss.RoundedBorder()).BorderForeground(frameAccent).BorderBackground(bg).Padding(0, 2),
+		Rule:       text("240"),
+		Warn:       text("214").Bold(true),
 
 		BoardGold:   text("220").Bold(true),
 		BoardSilver: text("152").Bold(true),

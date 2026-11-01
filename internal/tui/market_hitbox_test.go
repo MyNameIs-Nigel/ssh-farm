@@ -92,7 +92,8 @@ func TestMarketRowHitboxesMatchRenderedText(t *testing.T) {
 	}{
 		{"Fertilizer", 0},
 		{"Hardier Gamble", 1},
-		{"Greenhouse", 2},
+		{"Scarecrow 0/4", 2},
+		{"Greenhouse", 3},
 	} {
 		row := bodyRowForText(t, g, want.name)
 		if got := marketHitboxRow(t, g, want.idx); got != row {
