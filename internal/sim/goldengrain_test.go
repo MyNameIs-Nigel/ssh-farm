@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
@@ -41,7 +42,7 @@ func TestGoldengrainNeedsGreenhouseAndTwoRebirths(t *testing.T) {
 				}
 			}
 			before := s.Coins
-			if err := Plant(s, c, 0, "goldengrain", 0); err != tc.want {
+			if err := Plant(s, c, 0, "goldengrain", 0); !errors.Is(err, tc.want) {
 				t.Fatalf("plant goldengrain = %v, want %v", err, tc.want)
 			}
 			if tc.want == nil && before-s.Coins != s.SeedCost(c, c.Crop("goldengrain")) {
