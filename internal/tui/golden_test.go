@@ -174,8 +174,25 @@ func TestGoldenRenders(t *testing.T) {
 			}
 			st.Coins = 250
 			st.RunEarnings = 4_000
+			st.Rebirths = 1 // past the 3rd's unlock_rebirths gate, so it is for sale
 			st.Scarecrows = []sim.Scarecrow{{Pouch: 18}, {Pouch: 7}}
 			st.ScarecrowClock = 11 * 20
+		}},
+		{"farm-scarecrows-locked", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			// A first run with two scarecrows: the 3rd waits on a rebirth.
+			g.now = goldenBase + theme.PhaseSeconds
+			st := g.snap.State
+			st.Plots = make([]sim.Plot, 12)
+			for i := range st.Plots {
+				st.Plots[i] = sim.Plot{Crop: "turnip", PlantedAt: g.now - int64(i*7)}
+			}
+			st.Plots[2] = sim.Plot{Crop: "pumpkin", PlantedAt: g.now - 900}
+			st.Plots[7] = sim.Plot{Crop: "turnip", PlantedAt: g.now - 600}
+			st.Plots[9] = sim.Plot{Critter: "crow"}
+			st.Coins = 4_210
+			st.RunEarnings = 6_500
+			st.Scarecrows = []sim.Scarecrow{{Pouch: 64}, {Pouch: 0}}
+			st.ScarecrowClock = 4 * 20
 		}},
 		{"farm-scarecrows-80x24", 80, 24, func(g *Game) {
 			g.now = goldenBase + theme.PhaseSeconds
@@ -184,6 +201,15 @@ func TestGoldenRenders(t *testing.T) {
 			g.scareSel = 2
 		}},
 		{"market-scarecrows", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			st := g.snap.State
+			st.Coins = 5_000
+			st.Rebirths = 1
+			st.Scarecrows = []sim.Scarecrow{{}, {}}
+			g.scr = scrMarket
+			g.marketIdx = 2
+		}},
+		{"market-scarecrows-locked", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
 			g.now = goldenBase + theme.PhaseSeconds
 			st := g.snap.State
 			st.Coins = 5_000

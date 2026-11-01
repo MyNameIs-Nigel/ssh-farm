@@ -159,6 +159,19 @@ type ScarecrowConfig struct {
 	CoinsMax        int64 `toml:"coins_max"`
 	SynergyPct      int64 `toml:"synergy_pct"`       // +% to every drop per scarecrow beyond the first
 	RebirthBonusPct int64 `toml:"rebirth_bonus_pct"` // +% to every drop per progression rebirth
+	// UnlockRebirths lists the progression rebirths needed to buy the 1st,
+	// 2nd, … scarecrow. Empty means no rebirth gates; otherwise it has one
+	// entry per scarecrow, never decreasing, since they are bought in order.
+	UnlockRebirths []int64 `toml:"unlock_rebirths"`
+}
+
+// RebirthsToBuy is how many progression rebirths a run that already owns
+// `owned` scarecrows needs before it may buy the next one; 0 when ungated.
+func (sc ScarecrowConfig) RebirthsToBuy(owned int) int64 {
+	if owned < 0 || owned >= len(sc.UnlockRebirths) {
+		return 0
+	}
+	return sc.UnlockRebirths[owned]
 }
 
 func (sc ScarecrowConfig) validate() error {
@@ -181,6 +194,17 @@ func (sc ScarecrowConfig) validate() error {
 		return fmt.Errorf("content: scarecrow needs 1 <= coins_min <= coins_max")
 	case sc.SynergyPct < 0 || sc.RebirthBonusPct < 0:
 		return fmt.Errorf("content: scarecrow synergy_pct and rebirth_bonus_pct must be >= 0")
+	case len(sc.UnlockRebirths) != 0 && int64(len(sc.UnlockRebirths)) != sc.MaxCount:
+		return fmt.Errorf("content: scarecrow unlock_rebirths needs one entry per scarecrow (%d), has %d",
+			sc.MaxCount, len(sc.UnlockRebirths))
+	}
+	for i, need := range sc.UnlockRebirths {
+		if need < 0 {
+			return fmt.Errorf("content: scarecrow unlock_rebirths[%d] must be >= 0", i)
+		}
+		if i > 0 && need < sc.UnlockRebirths[i-1] {
+			return fmt.Errorf("content: scarecrow unlock_rebirths must not decrease (entry %d)", i)
+		}
 	}
 	return nil
 }

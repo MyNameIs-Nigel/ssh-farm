@@ -200,7 +200,9 @@ kind = ["crow", "rabbit", "mole"]
 # drop_interval_sec of online play, and offline_slowdown times slower while
 # you are away. Pouches are never auto-collected: enter on the card, or a.
 # Every scarecrow beyond the first adds synergy_pct to all of them, and every
-# rebirth adds rebirth_bonus_pct.
+# rebirth adds rebirth_bonus_pct. unlock_rebirths is the progression rebirths
+# needed to buy each one in turn: the first two are open to every run, the 3rd
+# needs one rebirth and the 4th two (a contract counts its own rebirths).
 [scarecrow]
 max_count = 4
 cost = 1200
@@ -211,6 +213,7 @@ coins_min = 2
 coins_max = 8
 synergy_pct = 25
 rebirth_bonus_pct = 10
+unlock_rebirths = [0, 0, 1, 2]
 
 [[achievement]]
 id = "first_sprout"

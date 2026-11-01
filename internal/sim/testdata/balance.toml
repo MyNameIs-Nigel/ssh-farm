@@ -135,6 +135,7 @@ coins_min = 2
 coins_max = 8
 synergy_pct = 25
 rebirth_bonus_pct = 10
+unlock_rebirths = [0, 0, 1, 2]
 
 [[achievement]]
 id = "first_sprout"

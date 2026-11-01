@@ -680,6 +680,14 @@ func (g *Game) viewRebirth() string {
 		b.WriteString("  " + th.Value.Render(label) + "\n")
 		found = true
 	}
+	if g.content.Scarecrow.Cost > 0 && st.ScarecrowsAllowed() {
+		for i, need := range g.content.Scarecrow.UnlockRebirths {
+			if need == nextTier {
+				b.WriteString("  " + th.Value.Render("⛀ Scarecrow "+itoa(i+1)+" in the Market") + "\n")
+				found = true
+			}
+		}
+	}
 	if !found {
 		b.WriteString("  " + th.Hint.Render("More secrets await deeper cycles…") + "\n")
 	}

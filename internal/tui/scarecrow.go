@@ -160,10 +160,17 @@ func (g *Game) scarecrowCard(i int) string {
 	return th.ScareCard.Render(content)
 }
 
-// scareShopCard is the dim placeholder advertising the next scarecrow.
+// scareShopCard is the dim placeholder advertising the next scarecrow, or,
+// while unlock_rebirths still gates it, saying how many rebirths it takes.
 func (g *Game) scareShopCard() string {
 	th := g.theme()
 	st := g.snap.State
+	if need, locked := st.ScarecrowRebirthGate(g.content); locked {
+		left := need - st.ProgressionRebirths()
+		return th.ScareShop.Render(th.Empty.Render("Scarecrow") + "\n" +
+			th.Locked.Render(fitWidth(money(left)+" more", scareCardText)) + "\n" +
+			th.Locked.Render(plural(int(left), "rebirth", "rebirths")))
+	}
 	cost := st.ScarecrowCost(g.content)
 	price := th.Locked.Render(shortMoney(cost) + "c")
 	if st.Coins >= cost {
@@ -357,11 +364,44 @@ func (g *Game) scarecrowHelp() string {
 	}
 	away := duration(sc.DropIntervalSec * sc.OfflineSlowdown)
 	return "Buy up to " + money(sc.MaxCount) + " Scarecrows in the Market (from " +
-		money(sc.Cost) + " coins, each dearer than the last). While you play, every " +
+		money(sc.Cost) + " coins, each dearer than the last)." + g.scarecrowGateHelp() + " While you play, every " +
 		"Scarecrow drops " + money(sc.CoinsMin) + "–" + money(sc.CoinsMax) + " coins into its pouch every " +
 		duration(sc.DropIntervalSec) + "; while you're away, only once every " + away + ". " +
 		"Pouches are never collected for you: move onto a Scarecrow beside your plots and " +
 		"press enter (or click it), or press a to collect them all with your harvest. " +
 		"Each Scarecrow beyond the first adds " + money(sc.SynergyPct) + "% to every drop, " +
 		"and each rebirth adds " + money(sc.RebirthBonusPct) + "% more. Scarecrows reset on rebirth."
+}
+
+// scarecrowGateHelp spells out unlock_rebirths for Help, e.g. " The 3rd needs
+// 1 rebirth and the 4th needs 2 rebirths." It is empty when nothing is gated.
+func (g *Game) scarecrowGateHelp() string {
+	var parts []string
+	for i, need := range g.content.Scarecrow.UnlockRebirths {
+		if need > 0 {
+			parts = append(parts, "the "+ordinal(i+1)+" needs "+money(need)+" "+plural(int(need), "rebirth", "rebirths"))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	text := parts[len(parts)-1]
+	if len(parts) > 1 {
+		text = strings.Join(parts[:len(parts)-1], ", ") + " and " + text
+	}
+	return " " + strings.ToUpper(text[:1]) + text[1:] + "."
+}
+
+// scarecrowGateNotice explains a Market buy refused by unlock_rebirths. A
+// contract counts its own rebirths, and the notice says so: "you have 0"
+// would baffle a player with nine lifetime rebirths.
+func (g *Game) scarecrowGateNotice() string {
+	st := g.snap.State
+	need, _ := st.ScarecrowRebirthGate(g.content)
+	who := "you have"
+	if st.ActiveContract != "" {
+		who = "this contract has"
+	}
+	return "Scarecrow " + itoa(len(st.Scarecrows)+1) + " needs " + money(need) + " " +
+		plural(int(need), "rebirth", "rebirths") + " (" + who + " " + money(st.ProgressionRebirths()) + ")."
 }

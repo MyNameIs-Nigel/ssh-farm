@@ -92,6 +92,22 @@ func plural(n int, one, other string) string {
 	return other
 }
 
+// ordinal renders n as 1st, 2nd, 3rd, 4th, … 11th, 12th, 13th, 21st, ….
+func ordinal(n int) string {
+	suffix := "th"
+	if n%100 < 11 || n%100 > 13 {
+		switch n % 10 {
+		case 1:
+			suffix = "st"
+		case 2:
+			suffix = "nd"
+		case 3:
+			suffix = "rd"
+		}
+	}
+	return itoa(n) + suffix
+}
+
 // shortFingerprint trims "SHA256:..." for display.
 func shortFingerprint(fp string) string {
 	const max = 19 // "SHA256:" + 12 chars

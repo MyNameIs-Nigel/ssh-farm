@@ -759,6 +759,10 @@ func (g *Game) handleMarketKey(key string) (tea.Model, tea.Cmd) {
 			g.addNotice(sanitizeText(it.name) + " is " + it.lockReason + ".")
 			return g, nil
 		}
+		if it.kind == "scarecrow" && it.locked {
+			g.addNotice(g.scarecrowGateNotice())
+			return g, nil
+		}
 		now := g.now
 		var (
 			snap game.Snapshot
@@ -1524,14 +1528,18 @@ func (g *Game) marketItems() []marketItem {
 	if sc := g.content.Scarecrow; sc.Cost > 0 {
 		blocked := !st.ScarecrowsAllowed()
 		lo, hi := st.ScarecrowDropRange(g.content)
-		items = append(items, marketItem{
+		it := marketItem{
 			id: "scarecrow", name: "Scarecrow",
 			desc: "drops " + money(lo) + "–" + money(hi) + "c every " + duration(sc.DropIntervalSec) +
 				" online, " + money(sc.OfflineSlowdown) + "× slower away; collect on the farm",
 			cost: st.ScarecrowCost(g.content), kind: "scarecrow",
 			level: len(st.Scarecrows), maxLvl: int(sc.MaxCount),
 			locked: blocked, lockReason: map[bool]string{true: "disabled by Clockwork Denied"}[blocked],
-		})
+		}
+		if need, gated := st.ScarecrowRebirthGate(g.content); gated && !blocked {
+			it.locked, it.gate = true, content.Unlock{Kind: "prestige", Value: need}
+		}
+		items = append(items, it)
 	}
 	for _, z := range g.content.Zones {
 		blocked := st.ActiveContract == sim.ContractLeanSeason && z.ID == "greenhouse"
@@ -1629,7 +1637,11 @@ func (g *Game) marketItemRow(i int, it marketItem, st *sim.State) string {
 		case it.level >= it.maxLvl:
 			prefix, tail, style = "✓ ", "  maxed", th.Ready
 		case it.locked:
-			tail, style = "  🔒 "+it.lockReason, th.Locked
+			reason := it.lockReason
+			if reason == "" {
+				reason = g.gateText(it.gate)
+			}
+			tail, style = "  🔒 "+reason, th.Locked
 		case st.Coins < it.cost:
 			tail, style = "  "+money(it.cost)+"c", th.Locked
 		default:
