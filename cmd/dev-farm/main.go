@@ -15,7 +15,7 @@ func main() {
 func setDefaults() {
 	for key, value := range map[string]string{
 		"FARM_LISTEN_HOST":   "127.0.0.1",
-		"FARM_LISTEN_PORT":   "2223",
+		"FARM_LISTEN_PORT":   "2222",
 		"FARM_DB_PATH":       "var/dev/farm-dev.db",
 		"FARM_HOST_KEY_PATH": "var/dev/ssh_host_key",
 		"FARM_LOG_LEVEL":     "debug",

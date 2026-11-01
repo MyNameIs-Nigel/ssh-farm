@@ -95,11 +95,11 @@ Connect from another terminal:
 ssh -p 2222 localhost
 ```
 
-For a local server with test controls (port 2223, so Moonminer can run alongside it):
+For a local server with test controls on port 2222:
 
 ```bash
 go run ./cmd/dev-farm
-ssh -p 2223 -o StrictHostKeyChecking=accept-new localhost
+ssh -p 2222 -o StrictHostKeyChecking=accept-new localhost
 ```
 
 Press **Ctrl+D** to open or close dev tools. Use ↑/↓ to select a row, type an

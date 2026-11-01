@@ -22,8 +22,10 @@
 
 TOTAL                                  73.0
 
+cmd/dev-farm                           80.0   # dev defaults and overrides; main delegates to shared app
 cmd/restore-check                       0.0   # thin main(); exercised by the durability drills, not unit tests
 cmd/ssh-farm                           45.0
+internal/app                            0.0   # extracted server boot/signal wiring; exercised by real SSH smoke test
 internal/config                        56.0
 internal/content                       71.0
 internal/game                          67.0

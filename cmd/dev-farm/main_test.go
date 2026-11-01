@@ -18,7 +18,7 @@ func TestDevDefaultsAndOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.DevMode || cfg.ListenHost != "127.0.0.1" || cfg.ListenPort != 2223 || cfg.DBPath != "var/dev/farm-dev.db" || cfg.HostKeyPath != "var/dev/ssh_host_key" || cfg.IdleTimeout != 0 || cfg.LogLevel != "debug" {
+	if !cfg.DevMode || cfg.ListenHost != "127.0.0.1" || cfg.ListenPort != 2222 || cfg.DBPath != "var/dev/farm-dev.db" || cfg.HostKeyPath != "var/dev/ssh_host_key" || cfg.IdleTimeout != 0 || cfg.LogLevel != "debug" {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	t.Setenv("FARM_LISTEN_PORT", "2229")
