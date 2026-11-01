@@ -8,15 +8,14 @@ import (
 )
 
 // VisibleCrops returns crops that should appear in pickers and catalogs.
-// Prestige-locked crops with unlock value V are hidden until the active
-// progression's rebirth count reaches V-1.
+// Crops needing R rebirths (prestige value R, or an extra rebirths
+// requirement R) are hidden until the active progression's rebirth count
+// reaches R-1.
 func VisibleCrops(s *State, c *content.Content) []content.Crop {
 	var out []content.Crop
 	for _, crop := range c.Crops {
-		if crop.Unlock.Kind == "prestige" && crop.Unlock.Value > 1 {
-			if s.ProgressionRebirths() < crop.Unlock.Value-1 {
-				continue
-			}
+		if need := crop.Unlock.RequiredRebirths(); need > 1 && s.ProgressionRebirths() < need-1 {
+			continue
 		}
 		out = append(out, crop)
 	}
@@ -361,6 +360,9 @@ func isqrt(n int64) int64 {
 // wall-clock state, not save state, so it is checked separately with
 // SeasonalPlantable (which takes the timestamp Unlocked never had).
 func (s *State) Unlocked(u content.Unlock) bool {
+	if u.Rebirths > 0 && s.ProgressionRebirths() < u.Rebirths {
+		return false
+	}
 	switch u.Kind {
 	case "", "start":
 		return true

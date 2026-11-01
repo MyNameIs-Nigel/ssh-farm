@@ -151,6 +151,36 @@ grow_seconds = 1
 sell_value = 1
 unlock = { kind = "season", season = "christmas", zone = "greenhouse" }
 `, minimalBalance},
+		{"rebirths on a prestige unlock", minimalCrops + `
+[[crop]]
+id = "bad"
+name = "Bad"
+archetype = "fast"
+seed_cost = 1
+grow_seconds = 1
+sell_value = 1
+unlock = { kind = "prestige", value = 1, rebirths = 2 }
+`, minimalBalance},
+		{"rebirths on a season unlock", minimalCrops + `
+[[crop]]
+id = "bad"
+name = "Bad"
+archetype = "fast"
+seed_cost = 1
+grow_seconds = 1
+sell_value = 1
+unlock = { kind = "season", season = "halloween", rebirths = 1 }
+`, minimalBalance},
+		{"negative rebirths", minimalCrops + `
+[[crop]]
+id = "bad"
+name = "Bad"
+archetype = "fast"
+seed_cost = 1
+grow_seconds = 1
+sell_value = 1
+unlock = { kind = "earnings", value = 10, rebirths = -1 }
+`, minimalBalance},
 	}
 
 	for _, tc := range cases {
@@ -361,5 +391,29 @@ func TestEmbeddedScarecrowTuning(t *testing.T) {
 	}
 	if sc.SynergyPct <= 0 || c.Critters.RebirthBonusPct <= 0 {
 		t.Fatalf("scarecrow synergy and critter rebirth bonus must be positive: %+v / %+v", sc, c.Critters)
+	}
+}
+
+func TestEmbeddedGoldengrain(t *testing.T) {
+	c, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gg, turnip := c.Crop("goldengrain"), c.Crop("turnip")
+	if gg == nil || turnip == nil {
+		t.Fatal("embedded crops missing goldengrain or turnip")
+	}
+	if gg.Archetype != "fast" || gg.SeedCost != 12 {
+		t.Fatalf("goldengrain = %+v, want a fast crop costing 12", gg)
+	}
+	if gg.GrowSeconds*4 != turnip.GrowSeconds*3 {
+		t.Fatalf("goldengrain grows in %ds, want 3/4 of turnip's %ds", gg.GrowSeconds, turnip.GrowSeconds)
+	}
+	want := Unlock{Kind: "zone", Zone: "greenhouse", Rebirths: 2}
+	if gg.Unlock != want {
+		t.Fatalf("goldengrain unlock = %+v, want %+v", gg.Unlock, want)
+	}
+	if got := gg.Unlock.RequiredRebirths(); got != 2 {
+		t.Fatalf("RequiredRebirths = %d, want 2", got)
 	}
 }

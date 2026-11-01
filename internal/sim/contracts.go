@@ -120,6 +120,9 @@ func (s *State) baseGameComplete(c *content.Content) bool {
 		}
 	}
 	for _, crop := range c.Crops {
+		if s.Rebirths < crop.Unlock.Rebirths {
+			return false
+		}
 		switch crop.Unlock.Kind {
 		case "earnings":
 			if s.LifetimeEarnings < crop.Unlock.Value {

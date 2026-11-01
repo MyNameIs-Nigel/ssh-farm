@@ -1,0 +1,99 @@
+package sim
+
+import (
+	"testing"
+
+	"github.com/mynameis-nigel/ssh-farm/internal/content"
+)
+
+// Goldengrain is gated twice: the run must own the Greenhouse AND the
+// progression must have rebirthed twice. Either alone stays locked.
+func TestGoldengrainNeedsGreenhouseAndTwoRebirths(t *testing.T) {
+	c, err := content.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := c.ZoneByID("greenhouse")
+	if gz == nil {
+		t.Fatal("embedded content has no greenhouse zone")
+	}
+
+	for _, tc := range []struct {
+		name       string
+		rebirths   int64
+		greenhouse bool
+		want       error
+	}{
+		{"neither", 0, false, ErrLocked},
+		{"greenhouse, one rebirth", 1, true, ErrLocked},
+		{"two rebirths, no greenhouse", 2, false, ErrLocked},
+		{"greenhouse and two rebirths", 2, true, nil},
+		{"greenhouse and more rebirths", 4, true, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := New(c, 1, 0)
+			s.Rebirths = tc.rebirths
+			s.Coins = gz.Cost + 1_000
+			s.LifetimeEarnings = 1_000_000
+			if tc.greenhouse {
+				if err := BuyZone(s, c, "greenhouse"); err != nil {
+					t.Fatalf("buy greenhouse: %v", err)
+				}
+			}
+			before := s.Coins
+			if err := Plant(s, c, 0, "goldengrain", 0); err != tc.want {
+				t.Fatalf("plant goldengrain = %v, want %v", err, tc.want)
+			}
+			if tc.want == nil && before-s.Coins != s.SeedCost(c, c.Crop("goldengrain")) {
+				t.Fatalf("planting charged %d, want the seed cost", before-s.Coins)
+			}
+		})
+	}
+}
+
+// During a contract the rebirth requirement reads the contract's own count,
+// exactly as prestige-tier crops do.
+func TestGoldengrainUsesProgressionRebirths(t *testing.T) {
+	c, err := content.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := c.Crop("goldengrain").Unlock
+	s := New(c, 1, 0)
+	s.Zones["greenhouse"] = true
+	s.Rebirths = 5
+	s.ActiveContract = ContractBareHands
+	s.ContractRebirths = 1
+	if s.Unlocked(gate) {
+		t.Fatal("contract run with 1 contract rebirth should not unlock goldengrain")
+	}
+	s.ContractRebirths = 2
+	if !s.Unlocked(gate) {
+		t.Fatal("contract run with 2 contract rebirths and a greenhouse should unlock goldengrain")
+	}
+}
+
+// Like a tier-2 prestige crop, Goldengrain is hidden on a fresh save and
+// previewed (locked) from rebirth 1.
+func TestGoldengrainVisibility(t *testing.T) {
+	c, err := content.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	visible := func(s *State) bool {
+		for _, crop := range VisibleCrops(s, c) {
+			if crop.ID == "goldengrain" {
+				return true
+			}
+		}
+		return false
+	}
+	s := New(c, 1, 0)
+	if visible(s) {
+		t.Fatal("rebirth-0 save should not see goldengrain")
+	}
+	s.Rebirths = 1
+	if !visible(s) {
+		t.Fatal("rebirth-1 save should preview goldengrain")
+	}
+}
