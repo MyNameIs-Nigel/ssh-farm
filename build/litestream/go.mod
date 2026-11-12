@@ -12,7 +12,7 @@
 // tidiness check covers the root only.
 module github.com/mynameis-nigel/ssh-farm/build/litestream
 
-go 1.26.10
+go 1.26.11
 
 tool github.com/benbjohnson/litestream/cmd/litestream
 
@@ -121,13 +121,13 @@ require (
 	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
-	golang.org/x/crypto v0.57.0 // indirect; security floor: >= v0.56.0 for GO-2026-6354 and GO-2026-6355, reachable via litestream's sftp replica client (ssh.Dial), and >= v0.55.0 for CVE-2026-56854; litestream v0.5.17 pins v0.52.0
+	golang.org/x/crypto v0.58.0 // indirect; security floor: >= v0.56.0 for GO-2026-6354 and GO-2026-6355, reachable via litestream's sftp replica client (ssh.Dial), and >= v0.55.0 for CVE-2026-56854; litestream v0.5.17 pins v0.52.0
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20260209214922-2f26647a795e // indirect
-	golang.org/x/net v0.60.0 // indirect; security floor: >= v0.60.0 for October 2026 HTTP/2 advisories, and >= v0.56.0 for CVE-2026-46600 (dnsmessage DoS); litestream v0.5.17 pins v0.55.0
+	golang.org/x/net v0.62.0 // indirect; security floor: >= v0.62.0 for CVE-2026-78661 (x/net/html DoS), >= v0.60.0 for October 2026 HTTP/2 advisories, and >= v0.56.0 for CVE-2026-46600 (dnsmessage DoS); litestream v0.5.17 pins v0.55.0
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/api v0.264.0 // indirect
 	google.golang.org/genproto v0.0.0-20260128011058-8636f8732409 // indirect
