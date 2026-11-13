@@ -45,7 +45,7 @@ func DevApply(s *State, c *content.Content, action string, value, now int64) err
 		if value != 0 && s.contractBlocksEvents() {
 			return ErrContractRestricted
 		}
-		s.EventID, s.EventStartedAt, s.EventEndsAt = "", 0, 0
+		s.endEvent(c, now)
 		if value > 0 {
 			s.EventID = c.Events[value-1].ID
 			s.EventStartedAt = now

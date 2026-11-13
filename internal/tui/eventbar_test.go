@@ -7,6 +7,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/mynameis-nigel/ssh-farm/internal/content"
 	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 )
 
@@ -54,6 +55,26 @@ func TestEventBarShowsNameEffectAndCountdown(t *testing.T) {
 		if !strings.Contains(bar, want) {
 			t.Errorf("event bar missing %q:\n%s", want, bar)
 		}
+	}
+}
+
+// A Warm Front's speed-up is kept as progress once it ends, so the banner and
+// help must not advertise it as a "−50% grow time" number. Uses the shipped
+// content: the tui fixture has no Warm Front.
+func TestWarmFrontLabelIsNotAPercentage(t *testing.T) {
+	c, err := content.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := c.EventByID("warm_front")
+	if ev == nil {
+		t.Fatal("shipped content has no warm_front event")
+	}
+	if got := eventHelpEffect(*ev); got != "INSANE GROW TIMES!" {
+		t.Errorf("effect label = %q, want INSANE GROW TIMES!", got)
+	}
+	if strings.Contains(eventHelpAction(*ev), "half the time") {
+		t.Errorf("help action still promises a fixed halved time: %q", eventHelpAction(*ev))
 	}
 }
 

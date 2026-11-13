@@ -44,6 +44,20 @@ this being boring.
     (gameplay/03), never inside sim.
 - Offline catch-up (`sim.Advance`, `Events`) ports unchanged — v2 keeps
   the welcome-back summary.
+- **Events and growth progress** (a v2 change, not in v1). Progress is
+  `(now − PlantedAt) / GrowSeconds`, so anything that changes
+  `GrowSeconds` rewrites every growing plant's progress. When a
+  `grow_speed_pct` event (Warm Front) *ends*, `endEvent` rebases each
+  plot's `PlantedAt` so the fraction it had earned is kept and the plant
+  carries on at normal speed: a 300s crop 147s into a 150s Warm Front
+  stays ~98% grown rather than falling to 49%. The rebase happens at the
+  event's real end time (`EventEndsAt`), not at the `Advance` target, so
+  an offline gap isn't sped up. A plant that went ripe during the event
+  stays ripe. Starting an event is *not* rebased: the speed-up still
+  applies to time already spent growing, and ending the event now just
+  keeps it. Upgrade and multiplier purchases still rescale progress
+  retroactively, as before. The banner therefore says "INSANE GROW
+  TIMES!" instead of a percentage.
 
 ## Parity harness (the point of this task)
 

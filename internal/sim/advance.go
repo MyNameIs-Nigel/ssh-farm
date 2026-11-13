@@ -67,17 +67,15 @@ func Advance(s *State, c *content.Content, to int64) Events {
 	// Clockwork Denied removes event effects even if a defensive/corrupt save
 	// somehow enters the contract with one already running.
 	if s.contractBlocksEvents() && s.EventID != "" {
-		s.EventID = ""
-		s.EventStartedAt = 0
-		s.EventEndsAt = 0
+		s.endEvent(c, from)
 	}
 
-	// Expire finished events.
+	// Expire finished events. The plots are rebased at the moment the event
+	// actually ended — not at `to`, which after an offline gap can be hours
+	// later — so growth earned at event speed is kept at its true fraction.
 	if s.EventID != "" && to >= s.EventEndsAt {
 		ev.EventEnded = s.EventID
-		s.EventID = ""
-		s.EventStartedAt = 0
-		s.EventEndsAt = 0
+		s.endEvent(c, min(max(s.EventEndsAt, from), to))
 	}
 
 	// Roll gifts and events before plot simulation.
@@ -202,6 +200,63 @@ func Advance(s *State, c *content.Content, to int64) Events {
 		ev.AwayVignettes = awayVignettes(s, c, &ev)
 	}
 	return ev
+}
+
+// endEvent clears the running event and rebases every growing plot so the
+// growth it has earned survives the change in grow time.
+//
+// Progress is (now − PlantedAt) / GrowSeconds, so merely dropping the event
+// doubles the denominator of a Warm Front and every plant slides backwards:
+// a 300s crop with 3s left at event speed (147s of 150s) would suddenly read
+// 147s of 300s and need another 153s. Instead PlantedAt is moved so the same
+// fraction of the (now longer) grow time is already behind it, then the plant
+// carries on at normal speed from there. at is when the event really ended.
+func (s *State) endEvent(c *content.Content, at int64) {
+	if s.EventID == "" {
+		s.EventStartedAt, s.EventEndsAt = 0, 0
+		return
+	}
+	fast := make([]int64, len(s.Plots))
+	for i := range s.Plots {
+		if crop := c.Crop(s.Plots[i].Crop); crop != nil {
+			fast[i] = s.GrowSeconds(c, crop)
+		}
+	}
+	s.EventID, s.EventStartedAt, s.EventEndsAt = "", 0, 0
+	for i := range s.Plots {
+		p := &s.Plots[i]
+		crop := c.Crop(p.Crop)
+		if crop == nil || fast[i] == 0 {
+			continue
+		}
+		cycling := p.AutoHarvest && !s.contractBlocksAutomation()
+		p.PlantedAt = rebasePlantedAt(p.PlantedAt, at, fast[i], s.GrowSeconds(c, crop), cycling)
+	}
+}
+
+// rebasePlantedAt returns the PlantedAt that keeps a plot's progress fraction
+// at `at` when its grow time changes from fast to slow seconds.
+//
+//   - A plot still growing keeps its fraction. Rounding favours the player but
+//     never carries a plot across the ready line, so it cannot mature early.
+//   - A mature plot that is waiting to be harvested keeps the moment it became
+//     ready; it must not turn unripe again because the event ended.
+//   - An auto-harvest plot keeps its whole (possibly multi-cycle) overshoot,
+//     scaled, because PlantedAt is the cursor the catch-up loop settles cycles
+//     from and the cycles already earned at event speed must still be paid.
+func rebasePlantedAt(planted, at, fast, slow int64, cycling bool) int64 {
+	elapsed := at - planted
+	if elapsed <= 0 || fast == slow {
+		return planted
+	}
+	if elapsed >= fast && !cycling {
+		return planted + fast - slow
+	}
+	scaled := (satMul(elapsed, slow) + fast - 1) / fast
+	if elapsed < fast && scaled >= slow {
+		scaled = slow - 1
+	}
+	return at - scaled
 }
 
 func awayVignettes(s *State, c *content.Content, ev *Events) []string {
