@@ -1165,7 +1165,10 @@ func eventHelpEffect(ev content.Event) string {
 	case "sell_bonus_pct":
 		return "sell value +" + money(ev.EffectValue) + "%"
 	case "grow_speed_pct":
-		return "grow time −" + money(ev.EffectValue) + "%"
+		// Deliberately not a number: the percentage is a speed-up while the
+		// event runs, and what a plant has earned is kept when it ends, so a
+		// "−50%" label read as a retroactive change to the grow time itself.
+		return "INSANE GROW TIMES!"
 	default:
 		return sanitizeText(ev.Description)
 	}
@@ -1178,7 +1181,7 @@ func eventHelpAction(ev content.Event) string {
 	case "sell_bonus_pct":
 		return "Harvest anything ready immediately."
 	case "grow_speed_pct":
-		return "Crops mature in half the time this cycle."
+		return "Crops grow twice as fast; progress earned is kept when it ends."
 	default:
 		return ""
 	}
