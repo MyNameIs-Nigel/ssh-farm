@@ -68,8 +68,17 @@ if [ -n "$BASE" ]; then
 	step "gates that need a base ref ($BASE)"
 	check "test-touched" sh scripts/ci/test-touched.sh "$BASE"
 	check "diff-coverage" python3 scripts/ci/diff-coverage.py --profile coverage.out --base "$BASE" --min 85
+	# CI's lint job is a ratchet (only-new-issues, see verify.yml): changed
+	# code must be clean while the old backlog does not block. --new-from-rev
+	# is the same ratchet, which is why lint needs the base ref too.
+	if command -v golangci-lint >/dev/null 2>&1; then
+		check "lint (new issues)" golangci-lint run --new-from-rev="$BASE" ./...
+	else
+		echo "golangci-lint not installed: skipping lint (CI still runs it)"
+		echo "install: https://golangci-lint.run/welcome/install/"
+	fi
 else
-	printf '\nSkipping test-touched and diff-coverage: pass a base ref to run them,\n'
+	printf '\nSkipping test-touched, diff-coverage and lint: pass a base ref to run them,\n'
 	printf 'e.g. scripts/ci/verify.sh origin/main\n'
 fi
 
