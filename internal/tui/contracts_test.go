@@ -371,7 +371,7 @@ func TestStatsShowsContractsOnlyOnceTheyMatter(t *testing.T) {
 func TestEveryStaticNameStyleHasAThemeColour(t *testing.T) {
 	th := (&Game{snap: game.Snapshot{State: &sim.State{}}}).theme()
 	for _, style := range (&sim.State{ContractsCompleted: 3}).AvailableLeaderboardNameStyles() {
-		if style == sim.NameStyleTraditional || style == sim.NameStylePurpleWave {
+		if style == sim.NameStyleTraditional || sim.IsWaveNameStyle(style) {
 			continue
 		}
 		if _, ok := th.LeaderboardName(style); !ok {
@@ -389,6 +389,7 @@ func TestFinalClockworkRebirthShowsTheReward(t *testing.T) {
 		st.ActiveContract = sim.ContractClockworkDenied
 		st.ContractRebirths = 4
 		st.RunEarnings = 1_000_000
+		st.LeaderboardNameStyle = sim.NameStyleGold
 	})
 	g, _ = tick(t, g, now+1)
 	if !g.snap.State.CanRebirth(g.content) {
@@ -400,6 +401,15 @@ func TestFinalClockworkRebirthShowsTheReward(t *testing.T) {
 	}
 	if g.overlay != ovContractReward || g.completedContract != sim.ContractClockworkDenied {
 		t.Fatalf("overlay = %v, completed = %q; want the Clockwork Denied reward", g.overlay, g.completedContract)
+	}
+	// The reward is the wave: the player's colour starts waving at once,
+	// and L on Stats is the way back to static.
+	if got := g.snap.State.LeaderboardNameStyle; got != sim.NameStyleGoldWave {
+		t.Fatalf("style after the third contract = %q, want the gold wave", got)
+	}
+	g = press(t, g, `esc`, `6`, `L`)
+	if got := g.snap.State.LeaderboardNameStyle; got != sim.NameStyleGold {
+		t.Fatalf("L after the reward = %q, want static gold", got)
 	}
 }
 

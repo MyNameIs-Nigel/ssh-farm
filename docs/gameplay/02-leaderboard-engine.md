@@ -73,7 +73,7 @@ type Row struct {
     Suffix            string // 5-char fingerprint suffix
     ShowSuffix        bool   // duplicate display name or generic fallback
     ContractsCompleted int   // clamped 0..3; one public seal each
-    NameStyle          string // earned static color or purple wave
+    NameStyle          string // earned static color or that color's wave
     Coins       int64  // lifetime coin earnings, not current balance
     Rebirths    int64
     IsYou       bool

@@ -294,8 +294,14 @@ func TestLeaderboardNameStylesCarryTheCanvasBackground(t *testing.T) {
 			}
 			styles[id] = st
 		}
-		for step := range NameWavePeriod {
-			styles["wave "+strconv.Itoa(step)] = th.NameWave(step)
+		for id := range nameWaveRamps {
+			for step := range NameWavePeriod {
+				st, ok := th.NameWave(id, step)
+				if !ok {
+					t.Fatalf("NameWave(%q) not found", id)
+				}
+				styles[id+" wave "+strconv.Itoa(step)] = st
+			}
 		}
 		for name, st := range styles {
 			if st.GetBackground() != th.Bg {
@@ -312,22 +318,53 @@ func TestLeaderboardNameStylesCarryTheCanvasBackground(t *testing.T) {
 // neighbouring frames never jump more than one stop, and any step is valid.
 func TestNameWaveIsAContinuousLoop(t *testing.T) {
 	th := New(PhaseNight, false, "")
-	stop := func(step int) int {
-		fg := th.NameWave(step).GetForeground()
-		for i, c := range nameWaveStops {
-			if lipgloss.Color(c) == fg {
-				return i
+	for id, ramp := range nameWaveRamps {
+		stop := func(step int) int {
+			st, _ := th.NameWave(id, step)
+			fg := st.GetForeground()
+			for i, c := range ramp {
+				if lipgloss.Color(c) == fg {
+					return i
+				}
+			}
+			t.Fatalf("%s step %d: colour is not a ramp stop", id, step)
+			return -1
+		}
+		for step := -NameWavePeriod; step < 2*NameWavePeriod; step++ {
+			if d := stop(step+1) - stop(step); d != 1 && d != -1 {
+				t.Fatalf("%s step %d→%d jumps %d stops", id, step, step+1, d)
+			}
+			if stop(step) != stop(step+NameWavePeriod) {
+				t.Fatalf("%s step %d does not repeat after one period", id, step)
 			}
 		}
-		t.Fatalf("step %d: colour is not a ramp stop", step)
-		return -1
 	}
-	for step := -NameWavePeriod; step < 2*NameWavePeriod; step++ {
-		if d := stop(step+1) - stop(step); d != 1 && d != -1 {
-			t.Fatalf("step %d→%d jumps %d stops", step, step+1, d)
+}
+
+// Every static colour has a wave, and each wave settles on its static tone,
+// so turning the wave off (or a 16-colour terminal holding it still) lands
+// on the colour the ramp was already showing.
+func TestEveryNameColourHasAWaveEndingOnItsStaticTone(t *testing.T) {
+	if len(nameWaveRamps) != len(leaderboardNameColors) {
+		t.Fatalf("%d wave ramps for %d colours", len(nameWaveRamps), len(leaderboardNameColors))
+	}
+	for id, static := range leaderboardNameColors {
+		ramp, ok := nameWaveRamps[id]
+		if !ok {
+			t.Fatalf("colour %q has no wave", id)
 		}
-		if stop(step) != stop(step+NameWavePeriod) {
-			t.Fatalf("step %d does not repeat after one period", step)
+		if ramp[len(ramp)-1] != static {
+			t.Errorf("%s wave ends on %s, want its static tone %s", id, ramp[len(ramp)-1], static)
 		}
+		seen := map[string]bool{}
+		for _, c := range ramp {
+			if seen[c] {
+				t.Errorf("%s wave repeats stop %s", id, c)
+			}
+			seen[c] = true
+		}
+	}
+	if _, ok := New(PhaseDay, false, "").NameWave("", 0); ok {
+		t.Error("the traditional style has no wave")
 	}
 }

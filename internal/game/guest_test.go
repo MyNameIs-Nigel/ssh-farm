@@ -39,6 +39,9 @@ func TestGuestLifecycleNeverUsesStore(t *testing.T) {
 	if _, err = a.Session.SetLeaderboardNameStyle(101, "traditional"); !errors.Is(err, ErrGuestRequiresKey) {
 		t.Fatal(err)
 	}
+	if _, err = a.Session.ToggleLeaderboardNameWave(101); !errors.Is(err, ErrGuestRequiresKey) {
+		t.Fatal(err)
+	}
 	a.Session.actor.do(func() { a.Session.actor.persist("test autosave") })
 	a.Session.Detach()
 	b.Session.Detach()

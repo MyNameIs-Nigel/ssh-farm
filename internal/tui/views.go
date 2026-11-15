@@ -336,6 +336,8 @@ func (g *Game) viewFooter() string {
 		}
 	case g.scr == scrContracts:
 		hints = "↑/↓ inspect · enter accept · a abandon active · esc back"
+	case g.scr == scrStats && g.snap.State.ContractsCompleted >= 3:
+		hints = "n name farm · l board style · L wave · c config · q quit"
 	case g.scr == scrStats && len(g.snap.State.AvailableLeaderboardNameStyles()) > 1:
 		hints = "n name farm · l board style · c config · q quit"
 	case g.scr == scrStats:
@@ -969,7 +971,10 @@ func (g *Game) viewStats() string {
 	if st.ContractsAvailable(g.content) {
 		line := "  Contracts: " + th.Value.Render(itoa(st.ContractsCompleted)+"/"+itoa(len(sim.Contracts()))) +
 			"  ·  Board style: " + th.Value.Render(nameStyleLabel(st.LeaderboardNameStyle))
-		if len(st.AvailableLeaderboardNameStyles()) > 1 {
+		switch {
+		case st.ContractsCompleted >= 3:
+			line += th.Hint.Render("  (l to change · L wave)")
+		case len(st.AvailableLeaderboardNameStyles()) > 1:
 			line += th.Hint.Render("  (l to change)")
 		}
 		b.WriteString(line + "\n")
@@ -1478,9 +1483,14 @@ func totalCount(m map[string]int) int {
 	return t
 }
 
+// nameStyleLabel names a style for Stats. A wave is named by its colour, so
+// violet's reads "violet wave" even though it is stored as purple_wave.
 func nameStyleLabel(style string) string {
 	if style == "" {
 		return "traditional"
+	}
+	if sim.IsWaveNameStyle(style) {
+		return sim.NameStyleBase(style) + " wave"
 	}
 	return strings.ReplaceAll(style, "_", " ")
 }

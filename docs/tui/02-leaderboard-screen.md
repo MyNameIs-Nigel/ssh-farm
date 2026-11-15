@@ -91,6 +91,6 @@ actually catch.
 ## Contract cosmetics
 
 The three-contract campaign in `../gameplay/04-contracts.md` is implemented:
-rows carry completion seals and selectable name colors, including a final
-animated purple gradient. The animation has its own presentation-only tick;
-rank, earnings, board refresh, and scrolling behavior remain unchanged.
+rows carry completion seals and selectable name colors, each with an animated
+wave once Contract 3 is complete. The animation has its own presentation-only
+tick; rank, earnings, board refresh, and scrolling behavior remain unchanged.
