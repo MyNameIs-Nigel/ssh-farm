@@ -67,6 +67,12 @@ func (s *State) SeedCost(c *content.Content, crop *content.Crop) int64 {
 			discount = 99
 		}
 		cost = cost * (100 - discount) / 100
+		// Integer division rounds a cheap seed down to 0 even at the 99%
+		// cap, which would make it free. A crop that costs anything stays
+		// purchasable for at least a coin; only a base cost of 0 is free.
+		if cost < 1 && crop.SeedCost > 0 {
+			cost = 1
+		}
 	}
 	if cost < 0 {
 		cost = 0
