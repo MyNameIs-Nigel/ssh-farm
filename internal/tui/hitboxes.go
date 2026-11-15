@@ -49,6 +49,8 @@ func (g *Game) registerHitboxes() {
 		g.registerRebirthConfirmHits()
 	case ovContractConfirm:
 		g.registerContractConfirmHits()
+	case ovFertilizerConfirm:
+		g.registerFertilizerConfirmHits()
 	case ovName:
 		g.registerNameHits()
 	case ovDev:
@@ -203,6 +205,26 @@ func (g *Game) registerContractConfirmHits() {
 	g.addHit(x+accept+len(contractPromptGap), y, lipgloss.Width(contractCancel), 1, "contract:cancel", nil)
 }
 
+// registerFertilizerConfirmHits places the prompt's checkbox and buttons
+// from the box's real size, the same way registerContractConfirmHits does.
+func (g *Game) registerFertilizerConfirmHits() {
+	box := g.viewFertilizerConfirm()
+	w := min(lipgloss.Width(box), g.layout.cw-4)
+	h := lipgloss.Height(box)
+	if h > g.layout.bodyH {
+		return // clipped; keyboard still works
+	}
+	// Offsets come from the box style itself: th.Box pads 1 row and 2
+	// columns, unlike the contract modal's Padding(0, 1).
+	bs := g.theme().Box
+	x := g.layout.cx + (g.layout.cw-w)/2 + bs.GetBorderLeftSize() + bs.GetPaddingLeft()
+	y := g.layout.bodyY + (g.layout.bodyH-h)/2 + h - 1 - bs.GetBorderBottomSize() - bs.GetPaddingBottom()
+	g.addHit(x, y-2, lipgloss.Width("[ ]"+fertilizerDontAsk), 1, "fertilizer:dontask", nil)
+	use := lipgloss.Width(fertilizerUseLabel)
+	g.addHit(x, y, use, 1, "fertilizer:use", nil)
+	g.addHit(x+use+len(fertilizerPromptGap), y, lipgloss.Width(fertilizerCancelLabel), 1, "fertilizer:cancel", nil)
+}
+
 func (g *Game) registerStarShopHits() {
 	if g.snap.State.ProgressionRebirths() < 1 && !g.snap.State.ContractsAvailable(g.content) {
 		return
@@ -293,10 +315,22 @@ func (g *Game) registerNameHits() {
 	g.addHit(g.layout.cx+g.layout.cw/2+2, cy+4, 8, 1, "name:cancel", nil)
 }
 
+// registerTutorialHits measures the rendered box, as the confirm modals do.
+// It used to assume a fixed cy+6 row, which put both targets on the box's
+// bottom border at every size and on every page.
 func (g *Game) registerTutorialHits() {
-	cy := g.layout.bodyY + g.layout.bodyH/2
-	g.addHit(g.layout.cx+g.layout.cw/2-12, cy+6, 10, 1, "tutorial:skip", nil)
-	g.addHit(g.layout.cx+g.layout.cw/2+2, cy+6, 12, 1, "tutorial:next", nil)
+	box := g.viewTutorial()
+	w := min(lipgloss.Width(box), g.layout.cw-4)
+	h := lipgloss.Height(box)
+	if h > g.layout.bodyH {
+		return // clipped; keyboard still works
+	}
+	bs := g.theme().Box
+	x := g.layout.cx + (g.layout.cw-w)/2 + bs.GetBorderLeftSize() + bs.GetPaddingLeft()
+	y := g.layout.bodyY + (g.layout.bodyH-h)/2 + h - 1 - bs.GetBorderBottomSize() - bs.GetPaddingBottom()
+	skip := lipgloss.Width("[ ] Skip")
+	g.addHit(x, y, skip, 1, "tutorial:skip", nil)
+	g.addHit(x+skip+len(tutorialSkipGap), y, lipgloss.Width(g.tutorialContinueLabel()), 1, "tutorial:next", nil)
 }
 
 func (g *Game) registerAwayHits() {

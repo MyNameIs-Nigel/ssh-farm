@@ -466,3 +466,52 @@ func TestRequiredRebirths(t *testing.T) {
 		}
 	}
 }
+
+func TestFertilizerConfigValidation(t *testing.T) {
+	load := func(balance string) (*Content, error) {
+		dir := t.TempDir()
+		writeFixture(t, dir, "crops.toml", minimalCrops)
+		writeFixture(t, dir, "balance.toml", balance)
+		return Load(dir)
+	}
+	c, err := load(minimalBalance)
+	if err != nil {
+		t.Fatalf("a balance with no [fertilizer] table must load (not sold, never dropped): %v", err)
+	}
+	if c.Fertilizer.CostStarseeds != 0 || c.Fertilizer.DropChancePct != 0 {
+		t.Fatalf("missing table should zero fertilizer tuning, got %+v", c.Fertilizer)
+	}
+	const block = "\n[fertilizer]\ncost_starseeds = 5\ndrop_chance_pct = 5\n"
+	if _, err := load(minimalBalance + block); err != nil {
+		t.Fatalf("valid fertilizer block rejected: %v", err)
+	}
+	for _, tc := range []struct{ name, from, to string }{
+		{"negative cost", "cost_starseeds = 5", "cost_starseeds = -1"},
+		{"negative chance", "drop_chance_pct = 5", "drop_chance_pct = -1"},
+		{"chance over 100", "drop_chance_pct = 5", "drop_chance_pct = 101"},
+	} {
+		if _, err := load(minimalBalance + strings.Replace(block, tc.from, tc.to, 1)); err == nil {
+			t.Errorf("%s: invalid fertilizer block loaded", tc.name)
+		}
+	}
+}
+
+// The shipped balance must sell fertilizer and drop it rarer than Starseeds.
+func TestShippedFertilizerTuning(t *testing.T) {
+	c, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Fertilizer.CostStarseeds != 5 {
+		t.Fatalf("fertilizer costs %d Starseeds, want 5", c.Fertilizer.CostStarseeds)
+	}
+	if p := c.Fertilizer.DropChancePct; p <= 0 || p >= c.Gifts.StarseedChancePct {
+		t.Fatalf("fertilizer drop %d%% must be positive and below Starseeds' %d%%", p, c.Gifts.StarseedChancePct)
+	}
+	if m := c.MultiplierByID("fertilizer"); m == nil || m.Name != "Rich Soil" {
+		t.Fatal("the Market's growth multiplier (id fertilizer) must be named Rich Soil")
+	}
+	if u := c.UpgradeByID("growth"); u == nil || u.Name == "Rich Soil" || u.Name == "Fertilizer" {
+		t.Fatal("the StarShop growth upgrade must not reuse the Rich Soil or Fertilizer names")
+	}
+}

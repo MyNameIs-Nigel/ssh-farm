@@ -262,6 +262,8 @@ func (s *State) checkContractCompletion() bool {
 	s.ContractRebirths = 0
 	s.ContractEarnings = 0
 	s.ContractStarseeds = 0
+	// Every completion raises the fertilizer cap by one and fills it.
+	s.setFertilizer(s.FertilizerMax())
 	return true
 }
 

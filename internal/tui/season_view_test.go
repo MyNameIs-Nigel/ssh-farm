@@ -266,11 +266,11 @@ func TestConfigSeasonalToggle(t *testing.T) {
 	if g.overlay != ovConfig {
 		t.Fatal("c should open the config overlay")
 	}
-	if n := len(g.configRows()); n != 5 {
-		t.Fatalf("config rows = %d, want 5 with seasonal themes", n)
+	if n := len(g.configRows()); n != 6 {
+		t.Fatalf("config rows = %d, want 6 with seasonal themes and the fertilizer prompt", n)
 	}
 	if label := g.configRows()[4].label; label != "Seasonal themes" {
-		t.Fatalf("row 4 = %q, want the seasonal toggle last", label)
+		t.Fatalf("row 4 = %q, want the seasonal toggle", label)
 	}
 	g = press(t, g, "down", "down", "down", "down", "enter")
 	if g.snap.State.SeasonalEnabled() {

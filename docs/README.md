@@ -79,6 +79,7 @@ Phase 7:             gameplay/04 (three-contract endgame campaign)
 | [gameplay/03-farm-names-and-moderation.md](gameplay/03-farm-names-and-moderation.md) | Display names, normalization pipeline, denylist best practices |
 | [gameplay/04-contracts.md](gameplay/04-contracts.md) | Three-contract hard-reset campaign and leaderboard cosmetics |
 | [gameplay/05-scarecrows.md](gameplay/05-scarecrows.md) | Up to four coin-dropping Scarecrows beside the plot grid; manual critter shooing |
+| [gameplay/06-fertilizer.md](gameplay/06-fertilizer.md) | One-shot Fertilizer (F) that ripens the farm; parcels, StarShop, contract refills |
 | [tui/01-mouse-retrofit.md](tui/01-mouse-retrofit.md) | Hitbox registry + click/wheel semantics across every v1 screen |
 | [tui/02-leaderboard-screen.md](tui/02-leaderboard-screen.md) | The board: rank header, top list, window around you |
 | [tui/03-theme-day-night-and-event-feedback.md](tui/03-theme-day-night-and-event-feedback.md) | Day/night background, solid-colour setting, size warning, event bar |

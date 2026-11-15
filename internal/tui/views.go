@@ -54,6 +54,8 @@ func (g *Game) overlayBox() string {
 		return g.viewKicked()
 	case ovGuestQuit:
 		return g.viewGuestQuit()
+	case ovFertilizerConfirm:
+		return g.viewFertilizerConfirm()
 	}
 	return ""
 }
@@ -86,13 +88,9 @@ func (g *Game) viewHeader() string {
 	th := g.theme()
 	st := g.snap.State
 
-	// The wallet and the identity run (slot and clock) are fixed priority and
-	// never shrink, so both are built and measured before the farm title, which
-	// is the only part of this row allowed to give up columns.
-	right := th.Value.Render("⛀ " + money(st.Coins) + " coins")
-	if st.Rebirths > 0 || st.PrestigeCurrency > 0 {
-		right += th.Header.Render("  ✦ " + money(st.PrestigeCurrency) + " " + g.starseedLabel())
-	}
+	// The identity run (slot and clock) is fixed priority and the wallet only
+	// compacts (see headerWallet), so both are built and measured before the
+	// farm title, which is the part of this row that gives up columns.
 	tail := th.Header.Render("  ·  " + sanitizeText(g.id.Label()) + "  ·  " + formatClock(g.now))
 
 	name := "ssh-farm"
@@ -106,6 +104,8 @@ func (g *Game) viewHeader() string {
 	// the ASCII names this row is sized around, and a wide rune inside a name
 	// can still cost one extra column.
 	titlePrefix := g.titleGlyph()
+	fixed := lipgloss.Width(tail) + lipgloss.Width(titlePrefix) + 1
+	right := g.headerWallet(g.contentWidth() - fixed - min(lipgloss.Width(name), headerNameReserve))
 	budget := g.contentWidth() - lipgloss.Width(right) - lipgloss.Width(tail) - lipgloss.Width(titlePrefix) - 1
 	left := th.Title.Render(titlePrefix+truncate(name, budget)) + tail
 
@@ -234,6 +234,46 @@ func (g *Game) viewNav() string {
 	return strings.Join(parts, "")
 }
 
+// headerNameReserve is how many columns of the farm name the wallet will
+// compact itself to leave room for — "ssh-farm" in full.
+const headerNameReserve = 8
+
+// headerWallet renders the header's coins, Starseeds and fertilizer in the
+// widest form that fits within limit columns. Long balances would otherwise
+// push the farm name off the row entirely, so it steps down: full labels,
+// then bare numbers, then abbreviated numbers (1.2M). Abbreviation truncates,
+// so it never overstates a balance. The last step is returned even if it
+// still does not fit; the farm name absorbs the rest.
+func (g *Game) headerWallet(limit int) string {
+	th := g.theme()
+	st := g.snap.State
+	showSS := st.Rebirths > 0 || st.PrestigeCurrency > 0
+	build := func(num func(int64) string, words bool) string {
+		coins := "⛀ " + num(st.Coins)
+		ss := "  ✦ " + num(st.PrestigeCurrency)
+		if words {
+			coins += " coins"
+			ss += " " + g.starseedLabel()
+		}
+		out := th.Value.Render(coins)
+		if showSS {
+			out += th.Header.Render(ss)
+		}
+		return out + th.Header.Render("  "+fertilizerCount(st))
+	}
+	var out string
+	for _, form := range []struct {
+		num   func(int64) string
+		words bool
+	}{{money, true}, {money, false}, {shortMoney, false}} {
+		out = build(form.num, form.words)
+		if lipgloss.Width(out) <= limit {
+			break
+		}
+	}
+	return out
+}
+
 func (g *Game) viewNotices() string {
 	th := g.theme()
 	if len(g.notices) == 0 {
@@ -271,6 +311,8 @@ func (g *Game) viewFooter() string {
 		hints = "press any key to continue"
 	case g.overlay == ovContractConfirm:
 		hints = "y confirm · n/esc/q cancel"
+	case g.overlay == ovFertilizerConfirm:
+		hints = "y use · d don't ask again · n/esc/q cancel"
 	case g.overlay == ovContractReward:
 		hints = "press any key to continue"
 	case g.overlay == ovTutorial:
@@ -278,9 +320,9 @@ func (g *Game) viewFooter() string {
 	case g.overlay == ovAway:
 		hints = "press any key to continue"
 	case g.scr == scrFarm && g.scareSel >= 0:
-		hints = "←↑↓→ · enter collect · a harvest all · r replant all · g gift · q leave"
+		hints = "←↑↓→ · enter collect · a harvest all · r replant all · F fertilizer · q leave"
 	case g.scr == scrFarm:
-		hints = "←↑↓→ · enter plant/harvest · a harvest all · r replant all · u upgrades · g gift · q leave"
+		hints = "←↑↓→ · a harvest all · r replant all · u upgrades · F fertilizer · q leave"
 	case g.scr == scrMarket:
 		hints = "↑/↓ select · enter buy · q quit"
 	case g.scr == scrLand:
@@ -301,10 +343,16 @@ func (g *Game) viewFooter() string {
 	case g.scr == scrBoard:
 		hints = "↑/↓/wheel scroll · n rename farm · r refresh · esc back"
 	default:
-		hints = "1-6 screens · tab/shift+tab cycle · g gift · q leave"
+		hints = "1-6 screens · tab/shift+tab cycle · F fertilizer · q leave"
 	}
 	if g.sess != nil && g.sess.DevMode() && g.overlay == ovNone {
 		hints = "Ctrl+D dev tools · " + hints
+	}
+	// The arrow keys explain themselves, so they are the first thing to go
+	// when the farm hints overflow — a stock 80-column terminal then still
+	// shows "F fertilizer · q leave" at the end instead of an ellipsis.
+	if lipgloss.Width(hints) > g.contentWidth()-1 {
+		hints = strings.Replace(hints, "←↑↓→ · ", "", 1)
 	}
 	return th.Hint.Render(truncate(hints, g.contentWidth()-1))
 }
@@ -845,7 +893,8 @@ func (g *Game) viewContractReward() string {
 	contract, _ := sim.ContractByID(g.completedContract)
 	return th.Box.Render(th.Section.Render("CONTRACT COMPLETE ◆") + "\n\n" +
 		th.Ready.Render(sanitizeText(contract.Name)) + "\n" +
-		th.Value.Render(sanitizeText(contract.Reward)) + "\n\n" +
+		th.Value.Render(sanitizeText(contract.Reward)) + "\n" +
+		th.Value.Render("Fertilizer sack grown and refilled: ") + th.Ready.Render(fertilizerCount(g.snap.State)) + "\n\n" +
 		th.Hint.Render("Your new flair is ready on the leaderboard."))
 }
 
@@ -858,6 +907,34 @@ func (g *Game) viewRebirthConfirm() string {
 		"You will lose  " + th.Value.Render(money(st.Coins)+" coins, "+itoa(len(st.Plots))+" plots, and this run's progress") + "\n\n" +
 		"Your " + g.starseedLabel() + ", upgrades, and achievements stay forever.\n\n" +
 		th.Ready.Render("y") + " — yes, begin anew    " + th.Hint.Render("n — keep farming")
+	return th.Box.Render(text)
+}
+
+// Fertilizer prompt labels. registerFertilizerConfirmHits measures these, so
+// the render and the hitboxes cannot drift apart.
+const (
+	fertilizerUseLabel    = "y — use it"
+	fertilizerCancelLabel = "n — not now"
+	fertilizerPromptGap   = "    "
+	fertilizerDontAsk     = " Don't ask again (d)"
+)
+
+// viewFertilizerConfirm is the "use fertilizer?" prompt. Its last three rows
+// are the checkbox, a blank, and the buttons; the hitboxes depend on that.
+func (g *Game) viewFertilizerConfirm() string {
+	th := g.theme()
+	st := g.snap.State
+	n := st.GrowingPlots(g.content, g.now)
+	check := "[ ]"
+	if g.fertDontAsk {
+		check = th.Ready.Render("[x]")
+	}
+	text := th.Section.Render("Use fertilizer?") + "  " + th.Ready.Render(fertilizerCount(st)) + "\n\n" +
+		th.Value.Render(rewrap("Every growing crop ripens right now — "+itoa(n)+" "+
+			plural(n, "plot is", "plots are")+" growing. It is used up, leaving "+
+			itoa(st.Fertilizer()-1)+".", g.overlayTextWidth())) + "\n\n" +
+		check + th.Value.Render(fertilizerDontAsk) + "\n\n" +
+		th.Ready.Render(fertilizerUseLabel) + fertilizerPromptGap + th.Hint.Render(fertilizerCancelLabel)
 	return th.Box.Render(text)
 }
 
@@ -1032,6 +1109,7 @@ func (g *Game) viewHelpControls() string {
 			"  r                 replant every empty plot (last crop)\n"+
 			"  u                 plot automation upgrades\n"+
 			"  g                 redeem a gift parcel\n"+
+			"  F                 use fertilizer: every growing crop ripens at once\n"+
 			"  x                 shoo a critter off a plot\n"+
 			"  n                 name your farm (stats screen)\n"+
 			"  c                 settings / config (stats screen)\n"+
@@ -1083,7 +1161,7 @@ func (g *Game) viewHelpGameplay() string {
 			b.WriteString(g.helpSubHint(action) + "\n")
 		}
 	}
-	b.WriteString(g.helpHint("Stacks with Market upgrades (Merchant's Scale, Fertilizer).") + "\n")
+	b.WriteString(g.helpHint("Stacks with Market upgrades (Merchant's Scale, Rich Soil).") + "\n")
 
 	b.WriteString("\n" + th.Section.Render("Risky crops") + "\n")
 	b.WriteString(g.helpBody("Glimmercorn, Moonberry, and Thunderpod can fail at harvest. "+
@@ -1132,6 +1210,9 @@ func (g *Game) viewHelpGameplay() string {
 		", scaled by run earnings). After your first rebirth, "+
 		money(c.Gifts.StarseedChancePct)+"% chance of "+ss+" instead.") + "\n")
 
+	b.WriteString("\n" + th.Section.Render("Fertilizer "+fertilizerGlyph) + "\n")
+	b.WriteString(g.helpBody(g.fertilizerHelp()) + "\n")
+
 	b.WriteString("\n" + th.Section.Render("Mercy plant") + "\n")
 	b.WriteString(g.helpBody("Broke with empty plots? The cheapest unlocked seed plants "+
 		"for FREE — \"the land provides\".") + "\n")
@@ -1156,6 +1237,23 @@ func (g *Game) viewHelpGameplay() string {
 		"The seeds stay buyable in-season either way.") + "\n")
 
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// fertilizerHelp is the Help screen's Fertilizer paragraph, built from the
+// live balance so it cannot drift from the numbers the game uses.
+func (g *Game) fertilizerHelp() string {
+	f := g.content.Fertilizer
+	text := "Every farm starts with " + itoa(sim.FertilizerStart) + " and holds up to " +
+		itoa(sim.FertilizerBaseMax) + " (" + fertilizerGlyph + " in the header). Press F to spread one: " +
+		"every growing crop ripens at once. Fertilizer is kept through rebirths and contracts."
+	if sim.FertilizerForSale(g.content) {
+		text += " The StarShop sells more for ✦ " + money(f.CostStarseeds) + " each."
+	}
+	if f.DropChancePct > 0 {
+		text += " About " + money(f.DropChancePct) + "% of parcels hold one instead of coins; " +
+			"if your sack is already full, it is spread on the spot."
+	}
+	return text + " Each completed contract adds room for one more and fills the sack."
 }
 
 func eventHelpEffect(ev content.Event) string {
@@ -1202,12 +1300,13 @@ func (g *Game) tutorialContent(page int) (string, string) {
 				"picks which farm (save slot) you open. No password, no account."
 	case 1:
 		return "Tending the farm 🌾",
-			"• Move with the arrow keys; press enter on a plot to plant or harvest.\n" +
+			"• Arrow keys move; enter on a plot plants or harvests.\n" +
 				"• a  harvests every ready plot at once.\n" +
 				"• r  replants every empty plot with what it last grew.\n" +
 				"• u  adds per-plot automation once you can afford it.\n" +
 				"• x  shoos a critter off an empty plot for a few coins.\n" +
-				"• Scarecrows sit beside your plots; enter on one collects its coins."
+				"• F  spreads fertilizer: every growing crop ripens at once.\n" +
+				"• Scarecrows sit beside your plots; enter collects their coins."
 	case 2:
 		return "Growing richer 💰",
 			"• Sell crops for coins. Buy plots on the Land screen and run-scoped\n" +
@@ -1225,6 +1324,19 @@ func (g *Game) tutorialContent(page int) (string, string) {
 	}
 }
 
+// tutorialSkipGap separates the tutorial's Skip box from Continue;
+// registerTutorialHits measures from it.
+const tutorialSkipGap = "      "
+
+func (g *Game) tutorialContinueLabel() string {
+	if g.tutorialSkip || g.tutorialPage == tutorialPages-1 {
+		return "Continue to farm ▸"
+	}
+	return "Continue ▸"
+}
+
+// viewTutorial's last content row is the Skip/Continue controls; the
+// hitboxes depend on that.
 func (g *Game) viewTutorial() string {
 	th := g.theme()
 	if g.tutorialPage < 0 {
@@ -1240,11 +1352,7 @@ func (g *Game) viewTutorial() string {
 	if g.tutorialSkip {
 		check = th.Ready.Render("[x]")
 	}
-	cont := "Continue ▸"
-	if g.tutorialSkip || g.tutorialPage == tutorialPages-1 {
-		cont = "Continue to farm ▸"
-	}
-	controls := check + " Skip" + "      " + th.Ready.Render(cont)
+	controls := check + " Skip" + tutorialSkipGap + th.Ready.Render(g.tutorialContinueLabel())
 
 	text := th.Title.Render(title) + "\n\n" +
 		th.Value.Render(rewrap(body, g.overlayTextWidth())) + "\n\n" +

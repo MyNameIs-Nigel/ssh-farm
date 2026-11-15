@@ -250,7 +250,7 @@ func TestClockworkDeniedBlocksPassiveSystemsAndCompletesAtFiveRebirths(t *testin
 		t.Fatalf("buy scarecrow = %v, want ErrContractRestricted", err)
 	}
 	s.GiftPending = true
-	if _, err := RedeemGift(s, c); !errors.Is(err, ErrContractRestricted) {
+	if _, err := RedeemGift(s, c, s.UpdatedAt); !errors.Is(err, ErrContractRestricted) {
 		t.Fatalf("redeem gift = %v, want ErrContractRestricted", err)
 	}
 	s.GiftPending = false

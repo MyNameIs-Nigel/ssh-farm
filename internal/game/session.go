@@ -201,10 +201,37 @@ func (s *Session) RedeemGift(now int64) (sim.GiftResult, Snapshot, []string, err
 	var res sim.GiftResult
 	snap, newly, err := s.intent(now, func(st *sim.State) error {
 		var gerr error
-		res, gerr = sim.RedeemGift(st, s.actor.content())
+		res, gerr = sim.RedeemGift(st, s.actor.content(), now)
 		return gerr
 	})
 	return res, snap, newly, err
+}
+
+// UseFertilizer spends one fertilizer to ripen every growing crop.
+func (s *Session) UseFertilizer(now int64) (int, Snapshot, []string, error) {
+	var n int
+	snap, newly, err := s.intent(now, func(st *sim.State) error {
+		var ferr error
+		n, ferr = sim.UseFertilizer(st, s.actor.content(), now)
+		return ferr
+	})
+	return n, snap, newly, err
+}
+
+// BuyFertilizer spends Starseeds on one fertilizer.
+func (s *Session) BuyFertilizer(now int64) (Snapshot, []string, error) {
+	return s.intent(now, func(st *sim.State) error {
+		return sim.BuyFertilizer(st, s.actor.content())
+	})
+}
+
+// SetFertilizerConfirm turns the "use fertilizer?" prompt on or off.
+func (s *Session) SetFertilizerConfirm(now int64, enabled bool) (Snapshot, error) {
+	snap, _, err := s.intent(now, func(st *sim.State) error {
+		st.FertilizerNoConfirm = !enabled
+		return nil
+	})
+	return snap, err
 }
 
 // ReplantAll fills every empty plot with its remembered crop.

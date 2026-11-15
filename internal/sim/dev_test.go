@@ -61,7 +61,7 @@ func TestDevFixturesUseNormalGameplay(t *testing.T) {
 	if !s.GiftPending || s.GiftArrivedAt != 1000 {
 		t.Fatal("no gift")
 	}
-	if _, err := RedeemGift(s, c); err != nil {
+	if _, err := RedeemGift(s, c, s.UpdatedAt); err != nil {
 		t.Fatal(err)
 	}
 	if err := DevApply(s, c, "contracts", 0, 1000); err != nil {

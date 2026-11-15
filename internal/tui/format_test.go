@@ -56,3 +56,12 @@ func TestOrdinal(t *testing.T) {
 		}
 	}
 }
+
+func TestRewrapKeepsBulletsOnTheirOwnLines(t *testing.T) {
+	in := "Intro line\nthat continues.\n\n• first point that is long enough to wrap here\n• second\n  continued"
+	got := rewrap(in, 24)
+	want := "Intro line that\ncontinues.\n\n• first point that is\n  long enough to wrap\n  here\n• second continued"
+	if got != want {
+		t.Fatalf("rewrap:\n%s\nwant:\n%s", got, want)
+	}
+}

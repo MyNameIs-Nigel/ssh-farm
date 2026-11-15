@@ -219,6 +219,68 @@ func TestGoldenRenders(t *testing.T) {
 		}},
 	}...)
 
+	// Fertilizer goldens (gameplay/06): the prompt at both sizes, the
+	// StarShop row, a compacted header wallet, and the contract reward.
+	growing := func(g *Game) {
+		st := g.snap.State
+		st.Plots = []sim.Plot{
+			{Crop: "turnip", PlantedAt: g.now - 20}, {Crop: "pumpkin", PlantedAt: g.now - 600},
+			{Crop: "turnip", PlantedAt: g.now - 600},
+		}
+	}
+	cases = append(cases, []struct {
+		name  string
+		w, h  int
+		setup func(g *Game)
+	}{
+		{"fertilizer-confirm", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			growing(g)
+			g.snap.State.FertilizerHeld, g.snap.State.FertilizerTracked = 2, true
+			g.overlay = ovFertilizerConfirm
+		}},
+		{"fertilizer-confirm-80x24", 80, 24, func(g *Game) {
+			g.now = goldenBase + 3*theme.PhaseSeconds
+			growing(g)
+			g.overlay = ovFertilizerConfirm
+			g.fertDontAsk = true
+		}},
+		{"starshop-fertilizer", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			st := g.snap.State
+			st.Rebirths, st.PrestigeCurrency = 2, 14
+			st.ContractsUnlocked = true
+			g.scr = scrStarShop
+			g.progressIdx = fertilizerRowIdx(g.content)
+		}},
+		{"starshop-fertilizer-80x24", 80, 24, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			st := g.snap.State
+			st.Rebirths, st.PrestigeCurrency = 2, 3
+			st.ContractsUnlocked = true
+			st.ContractsCompleted = 1
+			st.FertilizerHeld, st.FertilizerTracked = 4, true
+			g.scr = scrStarShop
+			g.progressIdx = fertilizerRowIdx(g.content)
+		}},
+		{"header-wallet-compact-80x24", 80, 24, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			st := g.snap.State
+			st.FarmName = "Northfield"
+			st.Coins = 9_123_456_789_012
+			st.Rebirths, st.PrestigeCurrency = 40, 1_234_567
+			growing(g)
+		}},
+		{"contract-reward", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = goldenBase + theme.PhaseSeconds
+			st := g.snap.State
+			st.ContractsCompleted = 1
+			st.FertilizerHeld, st.FertilizerTracked = 4, true
+			g.completedContract = sim.ContractBareHands
+			g.overlay = ovContractReward
+		}},
+	}...)
+
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			g := goldenGame(t, c.w, c.h)
