@@ -185,8 +185,11 @@ choice, and `L` (shift+l) turns the wave off for a static color or back on.
 On the colorless traditional style, `L` only records the choice for the next
 color.
 
-Saves that picked a static color before this reward existed keep it; their
-first `L` turns that color's wave on. Violet's wave is stored as
+Completing Contract 3 while on a static color switches it to that color's
+wave, so the reward is visible at once and `L` is the way back to static.
+Saves that had already completed all three contracts when per-color waves
+shipped, and had chosen a static color, keep it; their first `L` turns that
+color's wave on. Violet's wave is stored as
 `purple_wave`, the ID it shipped with when it was the only wave, so earlier
 saves and board rows need no migration. The opt-out is the save field
 `leaderboard_wave_off`, consulted only while the style is traditional and so

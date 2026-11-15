@@ -80,6 +80,30 @@ func TestStyleCycleKeepsTheWaveChoice(t *testing.T) {
 	}
 }
 
+// "If you have 3 contracts completed, you get the wave": finishing the third
+// contract on a static colour turns that colour's wave on, so L is the
+// opt-out the issue describes. Traditional stays traditional.
+func TestCompletingContractThreeTurnsTheWaveOn(t *testing.T) {
+	for style, want := range map[string]string{
+		NameStyleGold:        NameStyleGoldWave,
+		NameStyleViolet:      NameStylePurpleWave,
+		NameStyleTraditional: NameStyleTraditional,
+	} {
+		s := &State{ContractsCompleted: 2, ActiveContract: ContractClockworkDenied, ContractRebirths: contractClockworkRebirths, LeaderboardNameStyle: style}
+		if !s.checkContractCompletion() {
+			t.Fatalf("%s: fixture did not complete Clockwork Denied", style)
+		}
+		if s.LeaderboardNameStyle != want || s.LeaderboardWaveOff {
+			t.Fatalf("finishing contract 3 on %q = %q off=%v, want %q", style, s.LeaderboardNameStyle, s.LeaderboardWaveOff, want)
+		}
+	}
+	// Completing an earlier contract leaves the style alone.
+	s := &State{ContractsCompleted: 1, ActiveContract: ContractLeanSeason, ContractStarseeds: contractLeanSeasonStarseeds, LeaderboardNameStyle: NameStyleTraditional}
+	if !s.checkContractCompletion() || s.LeaderboardNameStyle != NameStyleTraditional {
+		t.Fatalf("contract 2 changed the style to %q", s.LeaderboardNameStyle)
+	}
+}
+
 func TestToggleNameWave(t *testing.T) {
 	s := &State{ContractsCompleted: 2, LeaderboardNameStyle: NameStyleGold}
 	if err := ToggleLeaderboardNameWave(s); !errors.Is(err, ErrNameStyleLocked) {

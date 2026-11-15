@@ -282,6 +282,13 @@ func (s *State) checkContractCompletion() bool {
 	s.ContractStarseeds = 0
 	// Every completion raises the fertilizer cap by one and fills it.
 	s.setFertilizer(s.FertilizerMax())
+	// The third contract's reward is the wave, on by default: a static
+	// colour starts waving at once, and L on Stats is the opt-out.
+	if s.ContractsCompleted == len(contractDefinitions) && !IsWaveNameStyle(s.LeaderboardNameStyle) {
+		if wave := NameStyleWave(s.LeaderboardNameStyle); wave != "" {
+			s.LeaderboardNameStyle = wave
+		}
+	}
 	return true
 }
 

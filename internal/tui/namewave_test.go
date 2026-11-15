@@ -99,6 +99,31 @@ func TestStatsShiftLTogglesTheWave(t *testing.T) {
 	}
 }
 
+// Traditional cannot show the wave, so L there says what the next colour
+// will do, and the colour cycle honours it.
+func TestStatsShiftLOnTraditionalExplainsItself(t *testing.T) {
+	g := contractGame(t, 3)
+	g.scr = scrStats
+	g = press(t, g, `L`)
+	if got := g.snap.State.LeaderboardNameStyle; got != sim.NameStyleTraditional || !g.snap.State.LeaderboardWaveOff {
+		t.Fatalf("L on traditional = %q off=%v, want traditional with the wave off", got, g.snap.State.LeaderboardWaveOff)
+	}
+	if n := strings.Join(noticeTexts(g), "|"); !strings.Contains(n, "Name wave off") {
+		t.Fatalf("no notice for the hidden change; notices: %q", n)
+	}
+	g = press(t, g, `l`)
+	if got := g.snap.State.LeaderboardNameStyle; got != sim.NameStyleLeaf {
+		t.Fatalf("l after turning the wave off = %q, want static leaf", got)
+	}
+	g = press(t, g, `l`, `l`, `l`, `l`, `l`, `L`)
+	if n := strings.Join(noticeTexts(g), "|"); !strings.Contains(n, "Name wave on") {
+		t.Fatalf("no notice turning the wave back on; notices: %q", n)
+	}
+	if g = press(t, g, `l`); g.snap.State.LeaderboardNameStyle != sim.NameStyleLeafWave {
+		t.Fatalf("l after turning the wave on = %q, want the leaf wave", g.snap.State.LeaderboardNameStyle)
+	}
+}
+
 // Before contract 3 there is no wave to toggle: L is not offered and does
 // nothing, rather than surfacing a "locked" error for an unadvertised key.
 func TestStatsShiftLIsInertBeforeTheWave(t *testing.T) {
