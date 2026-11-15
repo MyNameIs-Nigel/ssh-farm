@@ -103,6 +103,19 @@ SENTINELS = [
         "factor-of-two interval bug clears by sitting exactly on the edge, while "
         "the offline interval had no test at all.",
     ),
+    (
+        "sim-online-boundary",
+        "internal/sim/advance.go",
+        "const onlineTickThreshold = 2",
+        "const onlineTickThreshold = 3",
+        "./internal/sim",
+        "TestOnlineTickBoundary",
+        "Whether an Advance is a live tick decides online event rolls, critter "
+        "visits, the gift interval and the scarecrow clock rate. At 3 a brief "
+        "network stall counts as live; at 1 a connected player gets offline "
+        "odds. Both used to leave the whole suite green and only a wild value "
+        "was caught, by rate tests that were not aimed at the boundary.",
+    ),
 ]
 
 
