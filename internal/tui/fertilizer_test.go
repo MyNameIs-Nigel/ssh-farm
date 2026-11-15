@@ -351,14 +351,14 @@ func TestStarShopSellsFertilizer(t *testing.T) {
 }
 
 func TestParcelFertilizerNotices(t *testing.T) {
-	g, now := fertFarm(t, func(st *sim.State) { st.GiftPending = true })
+	g, _ := fertFarm(t, func(st *sim.State) { st.GiftPending = true })
 	g.content.Fertilizer.DropChancePct = 100
 	g = press(t, g, "g")
 	if n := noticeTexts(g); len(n) == 0 || !strings.Contains(n[len(n)-1], "Fertilizer! ϟ2/3 (F to use)") {
 		t.Fatalf("notices %q", n)
 	}
 
-	g, now = fertFarm(t, func(st *sim.State) {
+	g, now := fertFarm(t, func(st *sim.State) {
 		st.GiftPending = true
 		st.FertilizerHeld, st.FertilizerTracked = 3, true
 	})

@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -845,7 +846,7 @@ func TestProfitPerSecondIncreasesWithGrowTime(t *testing.T) {
 func TestGiftRedeemAndCap(t *testing.T) {
 	c := testContent(t)
 	s := newTestState(t, c)
-	if _, err := RedeemGift(s, c, s.UpdatedAt); err != ErrNoGift {
+	if _, err := RedeemGift(s, c, s.UpdatedAt); !errors.Is(err, ErrNoGift) {
 		t.Fatalf("expected ErrNoGift, got %v", err)
 	}
 	s.GiftPending = true
