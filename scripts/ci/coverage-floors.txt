@@ -14,9 +14,6 @@
 #
 # Floors are set one point below the measured value at the time they were
 # written, so ordinary statement-count churn does not trip the gate.
-# internal/sim gets a wider band: sim_test.go has a sampled-event case that
-# legitimately skips when no event rolls in the window, which moves its
-# statement count run to run.
 #
 # Baseline measured 2026-09-20 on go1.26.4 (`go test -covermode=atomic ./...`).
 
@@ -37,7 +34,7 @@ internal/moderation                    94.0
 internal/moderation/cmd/gen-denylist    0.0   # operator tool, runs against the private corpus off-CI
 internal/season                        99.0
 internal/server                        72.0
-internal/sim                           78.0
+internal/sim                           84.0
 internal/store                         75.0
 internal/tui                           77.0
 internal/tui/hitbox                    74.0

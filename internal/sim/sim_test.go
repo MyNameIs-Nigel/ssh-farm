@@ -1181,7 +1181,11 @@ func TestRolledEventRecordsItsStart(t *testing.T) {
 		Advance(s, c, now)
 	}
 	if s.EventID == "" {
-		t.Skip("no event rolled in the sampled window")
+		// New(c, 42, 1000) is fully seeded, so this cannot be bad luck: if no
+		// event rolls in 20,000 ticks (~15 mean cycles) the fixture's event
+		// interval or seed changed, and a skip here would silently stop
+		// guarding what the countdown bar renders from.
+		t.Fatal("no event rolled in 20000 ticks; the fixture event interval or seed changed")
 	}
 	if s.EventStartedAt == 0 {
 		t.Fatal("a rolled event recorded no start time")
