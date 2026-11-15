@@ -27,8 +27,26 @@ const (
 	NameStyleSky         = "sky"
 	NameStyleRose        = "rose"
 	NameStyleViolet      = "violet"
-	NameStylePurpleWave  = "purple_wave"
+
+	// Contract 3's animated styles: one wave per colour. Violet's wave keeps
+	// the purple_wave ID it shipped with, before every colour had a wave, so
+	// saves and leaderboard rows that already hold it need no migration.
+	NameStyleLeafWave   = "leaf_wave"
+	NameStyleGoldWave   = "gold_wave"
+	NameStyleSkyWave    = "sky_wave"
+	NameStyleRoseWave   = "rose_wave"
+	NameStylePurpleWave = "purple_wave"
 )
+
+// nameStyleColours is the colour cycle in order; each pairs a static style
+// (Contract 2) with its wave (Contract 3).
+var nameStyleColours = [...]struct{ static, wave string }{
+	{NameStyleLeaf, NameStyleLeafWave},
+	{NameStyleGold, NameStyleGoldWave},
+	{NameStyleSky, NameStyleSkyWave},
+	{NameStyleRose, NameStyleRoseWave},
+	{NameStyleViolet, NameStylePurpleWave},
+}
 
 var (
 	ErrContractsLocked    = errors.New("finish the base game to unlock contracts")
@@ -82,7 +100,7 @@ var contractDefinitions = [...]ContractDefinition{
 			"Random events and gifts are disabled.",
 			"The Scarecrow is locked.",
 		},
-		Reward: "Third contract seal and the animated purple name wave.",
+		Reward: "Third contract seal and a name wave in every color.",
 	},
 }
 
@@ -271,31 +289,122 @@ func (s *State) checkContractCompletion() bool {
 func (s *State) AvailableLeaderboardNameStyles() []string {
 	styles := []string{NameStyleTraditional}
 	if s.ContractsCompleted >= 2 {
-		styles = append(styles, NameStyleLeaf, NameStyleGold, NameStyleSky, NameStyleRose, NameStyleViolet)
+		for _, c := range nameStyleColours {
+			styles = append(styles, c.static)
+		}
 	}
 	if s.ContractsCompleted >= 3 {
-		styles = append(styles, NameStylePurpleWave)
+		for _, c := range nameStyleColours {
+			styles = append(styles, c.wave)
+		}
 	}
 	return styles
 }
 
-// SetLeaderboardNameStyle selects one earned cosmetic.
-func SetLeaderboardNameStyle(s *State, style string) error {
-	known := style == NameStyleTraditional
-	for _, candidate := range []string{NameStyleLeaf, NameStyleGold, NameStyleSky, NameStyleRose, NameStyleViolet, NameStylePurpleWave} {
-		if style == candidate {
-			known = true
+// IsWaveNameStyle reports whether style is one of Contract 3's animated
+// styles.
+func IsWaveNameStyle(style string) bool {
+	for _, c := range nameStyleColours {
+		if style == c.wave {
+			return true
+		}
+	}
+	return false
+}
+
+// NameStyleBase returns the static colour behind a style: a wave's colour,
+// or the style itself when it is already static or traditional.
+func NameStyleBase(style string) string {
+	for _, c := range nameStyleColours {
+		if style == c.wave {
+			return c.static
+		}
+	}
+	return style
+}
+
+// NameStyleWave returns the animated style for a colour (static or wave), or
+// "" for traditional and any ID that is not a colour.
+func NameStyleWave(style string) string {
+	for _, c := range nameStyleColours {
+		if style == c.static || style == c.wave {
+			return c.wave
+		}
+	}
+	return ""
+}
+
+// waveWanted is whether the next colour picked should animate. On a colour
+// the current style answers; on traditional, which cannot show it, the
+// remembered choice does.
+func (s *State) waveWanted() bool {
+	if s.ContractsCompleted < 3 {
+		return false
+	}
+	if NameStyleWave(s.LeaderboardNameStyle) != "" {
+		return IsWaveNameStyle(s.LeaderboardNameStyle)
+	}
+	return !s.LeaderboardWaveOff
+}
+
+// NextLeaderboardNameStyle is the style the Stats screen's colour cycle moves
+// to: traditional, then each unlocked colour in order. Once Contract 3 is
+// done the colours keep the player's wave choice, which is on by default.
+func (s *State) NextLeaderboardNameStyle() string {
+	if s.ContractsCompleted < 2 {
+		return NameStyleTraditional
+	}
+	base := NameStyleBase(s.LeaderboardNameStyle)
+	next := 0 // from traditional, or an ID this build does not know
+	for i, c := range nameStyleColours {
+		if base == c.static {
+			next = i + 1
 			break
 		}
 	}
+	if next == len(nameStyleColours) {
+		return NameStyleTraditional
+	}
+	if s.waveWanted() {
+		return nameStyleColours[next].wave
+	}
+	return nameStyleColours[next].static
+}
+
+// SetLeaderboardNameStyle selects one earned cosmetic.
+func SetLeaderboardNameStyle(s *State, style string) error {
+	known := style == NameStyleTraditional || NameStyleWave(style) != ""
 	if !known {
 		return ErrUnknownNameStyle
 	}
 	for _, candidate := range s.AvailableLeaderboardNameStyles() {
 		if style == candidate {
 			s.LeaderboardNameStyle = style
+			// Picking a colour once the wave is earned is also a wave
+			// choice, remembered for when the cycle comes back round.
+			if s.ContractsCompleted >= 3 && style != NameStyleTraditional {
+				s.LeaderboardWaveOff = !IsWaveNameStyle(style)
+			}
 			return nil
 		}
 	}
 	return ErrNameStyleLocked
+}
+
+// ToggleLeaderboardNameWave turns the wave on or off for the current colour
+// (gameplay/04). On traditional there is nothing to animate, so it only
+// flips the choice the next colour will use.
+func ToggleLeaderboardNameWave(s *State) error {
+	if s.ContractsCompleted < 3 {
+		return ErrNameStyleLocked
+	}
+	wave := NameStyleWave(s.LeaderboardNameStyle)
+	if wave == "" {
+		s.LeaderboardWaveOff = !s.LeaderboardWaveOff
+		return nil
+	}
+	if IsWaveNameStyle(s.LeaderboardNameStyle) {
+		return SetLeaderboardNameStyle(s, NameStyleBase(s.LeaderboardNameStyle))
+	}
+	return SetLeaderboardNameStyle(s, wave)
 }

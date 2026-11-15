@@ -988,17 +988,30 @@ func (g *Game) handleStatsKey(key string) (tea.Model, tea.Cmd) {
 			g.guestLocked("change leaderboard identity")
 			return g, nil
 		}
-		styles := g.snap.State.AvailableLeaderboardNameStyles()
-		if len(styles) > 1 {
-			next := 0
-			for i, style := range styles {
-				if style == g.snap.State.LeaderboardNameStyle {
-					next = (i + 1) % len(styles)
-					break
-				}
-			}
-			snap, err := g.sess.SetLeaderboardNameStyle(g.now, styles[next])
+		if len(g.snap.State.AvailableLeaderboardNameStyles()) > 1 {
+			snap, err := g.sess.SetLeaderboardNameStyle(g.now, g.snap.State.NextLeaderboardNameStyle())
 			g.applyAction(snap, nil, err)
+		}
+	case "L":
+		// Only advertised once Contract 3 has earned the wave; before that
+		// the key is inert rather than an error for a control nobody saw.
+		if g.snap.State.ContractsCompleted < 3 {
+			return g, nil
+		}
+		if g.id.IsGuest() {
+			g.guestLocked("change leaderboard identity")
+			return g, nil
+		}
+		snap, err := g.sess.ToggleLeaderboardNameWave(g.now)
+		g.applyAction(snap, nil, err)
+		// Traditional has nothing to animate, so the Stats line cannot
+		// show the change; say what the next colour will do instead.
+		if err == nil && g.snap.State.LeaderboardNameStyle == sim.NameStyleTraditional {
+			if g.snap.State.LeaderboardWaveOff {
+				g.addNotice("Name wave off: colors will hold still.")
+			} else {
+				g.addNotice("Name wave on: colors will animate.")
+			}
 		}
 	}
 	return g, nil
@@ -1057,10 +1070,6 @@ func (g *Game) refreshBoard() {
 	g.clampBoardScroll()
 }
 
-// nameWaveStaticStep is the wave stop shown when the terminal cannot draw
-// the ramp: its most saturated purple.
-const nameWaveStaticStep = 3
-
 // boardAnimates reports whether the wave tick should run right now.
 func (g *Game) boardAnimates() bool {
 	return g.scr == scrBoard && !g.limitedColor && g.boardHasAnimatedName()
@@ -1069,7 +1078,7 @@ func (g *Game) boardAnimates() bool {
 func (g *Game) boardHasAnimatedName() bool {
 	for _, rows := range [][]leaderboard.Row{g.lbBoard.Top, g.lbBoard.Window} {
 		for _, r := range rows {
-			if r.NameStyle == sim.NameStylePurpleWave {
+			if sim.IsWaveNameStyle(r.NameStyle) {
 				return true
 			}
 		}
@@ -1205,17 +1214,23 @@ func (g *Game) renderBoardName(name, style string, rowStyle lipgloss.Style) stri
 	if s, ok := th.LeaderboardName(style); ok {
 		return s.Render(name)
 	}
-	if style != sim.NameStylePurpleWave {
+	colour := sim.NameStyleBase(style)
+	if _, ok := th.NameWave(colour, 0); !sim.IsWaveNameStyle(style) || !ok {
 		return rowStyle.Render(name)
 	}
 	if g.limitedColor {
 		// A 16-colour terminal would quantise the ramp into a flicker
-		// between two unrelated colours; one steady purple reads better.
-		return th.NameWave(nameWaveStaticStep).Render(name)
+		// between two unrelated colours; the wave's own static colour,
+		// which every ramp ends on, reads better.
+		if s, ok := th.LeaderboardName(colour); ok {
+			return s.Render(name)
+		}
+		return rowStyle.Render(name)
 	}
 	var b strings.Builder
 	for i, r := range []rune(name) {
-		b.WriteString(th.NameWave(i + g.boardAnimPhase).Render(string(r)))
+		s, _ := th.NameWave(colour, i+g.boardAnimPhase)
+		b.WriteString(s.Render(string(r)))
 	}
 	return b.String()
 }

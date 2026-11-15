@@ -177,10 +177,20 @@ each cycle becomes faster through choices the player makes. It revisits the
 manual restriction from Bare Hands, but the objective is now repeated rebirth
 optimization and the ambient safety nets are gone.
 
-**Reward:** a third `◆` contract seal and the animated leaderboard-name style.
-The style is an optional two-color purple wave that travels left to right
-through the farm-name characters. Players may switch back to any unlocked
-static style.
+**Reward:** a third `◆` contract seal and a name wave in every color. Each
+Contract 2 color gains an animated wave in its own hue (leaf, gold, sky, rose,
+violet) that travels left to right through the farm-name characters. The wave
+is on by default once earned: on Stats, `l` cycles colors and keeps the wave
+choice, and `L` (shift+l) turns the wave off for a static color or back on.
+On the colorless traditional style, `L` only records the choice for the next
+color.
+
+Saves that picked a static color before this reward existed keep it; their
+first `L` turns that color's wave on. Violet's wave is stored as
+`purple_wave`, the ID it shipped with when it was the only wave, so earlier
+saves and board rows need no migration. The opt-out is the save field
+`leaderboard_wave_off`, consulted only while the style is traditional and so
+cannot show it; otherwise the stored style ID is the whole truth.
 
 ## Contract modal and lifecycle
 
@@ -315,9 +325,13 @@ rebirths, `YOU` marker, and coins after it would lose the row's highlight.
 
 ### Animated final style
 
-Contract 3 unlocks an optional purple wave. For each rendered rune `i`, blend
-between two theme-approved purples using `i + phase`; increment `phase` on a
-lightweight animation tick. Apply a background to every Lip Gloss span just as
+Contract 3 unlocks a wave for every static color, stored as its own style ID
+(`leaf_wave`, `gold_wave`, `sky_wave`, `rose_wave`, `purple_wave`). For each
+rendered rune `i`, take stop `i + phase` along that color's ramp; increment
+`phase` on a lightweight animation tick. Each ramp (`theme.NameWave`) has
+seven stops climbing from a deeper shade of the hue to the color's static
+tone, so turning the wave off lands on a shade the wave was already showing.
+All ramps share one length, so every wave on the Board keeps the same period. Apply a background to every Lip Gloss span just as
 the rest of the painted canvas does, or the terminal's default background will
 show through between colored characters.
 
@@ -329,12 +343,12 @@ Animation is presentation-only:
 - keep display width identical to the unstyled name so alignment and hitboxes
   do not move;
 - use one synchronized phase for deterministic rendering;
-- fall back to a static purple treatment when the active color profile cannot
-  render the gradient cleanly. The ramp (`theme.NameWave`) is built from
-  xterm-256 indices, not RGB: the server forces the TrueColor profile on every
-  session, so hex colours would reach 256-colour terminals as 24-bit escapes,
-  while an index renders the same on both. A profile below 256 colours, as
-  reported by Bubble Tea's `ColorProfileMsg`, holds the name on one purple and
+- fall back to the wave's static color when the active color profile cannot
+  render the gradient cleanly. The ramps are built from xterm-256 indices,
+  not RGB: the server forces the TrueColor profile on every session, so hex
+  colours would reach 256-colour terminals as 24-bit escapes, while an index
+  renders the same on both. A profile below 256 colours, as reported by
+  Bubble Tea's `ColorProfileMsg`, holds each wave on its own static color and
   starts no tick chain;
 - honor a future reduced-motion setting if one is added.
 

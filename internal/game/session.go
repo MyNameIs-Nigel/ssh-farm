@@ -428,6 +428,17 @@ func (s *Session) SetLeaderboardNameStyle(now int64, style string) (Snapshot, er
 	return snap, err
 }
 
+// ToggleLeaderboardNameWave turns Contract 3's name wave on or off.
+func (s *Session) ToggleLeaderboardNameWave(now int64) (Snapshot, error) {
+	if s.actor.key.guestID != "" {
+		return Snapshot{}, ErrGuestRequiresKey
+	}
+	snap, _, err := s.intent(now, func(st *sim.State) error {
+		return sim.ToggleLeaderboardNameWave(st)
+	})
+	return snap, err
+}
+
 // SetFlavor toggles ambient discoveries for this save.
 func (s *Session) SetFlavor(now int64, enabled bool) (Snapshot, error) {
 	snap, _, err := s.intent(now, func(st *sim.State) error {

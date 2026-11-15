@@ -305,15 +305,28 @@ var leaderboardNameColors = map[string]string{
 	"violet": "183",
 }
 
-// nameWaveStops is the purple ramp Contract 3's animated name travels
-// through. Every stop is an xterm-256 index rather than RGB: the server
-// forces the TrueColor profile, so hex colours reach every client as 24-bit
+// nameWaveLen is the number of stops in every wave ramp. One length for all
+// of them keeps NameWavePeriod a constant and every colour's wave in step.
+const nameWaveLen = 7
+
+// nameWaveRamps are the ramps Contract 3's animated names travel through,
+// one per static colour above, keyed by the same ID. Each climbs from a
+// deeper shade of its hue and ends on that colour's static tone, so the wave
+// visibly belongs to the colour and turning it off lands on a familiar
+// shade. Every stop is an xterm-256 index rather than RGB: the server forces
+// the TrueColor profile, so hex colours reach every client as 24-bit
 // escapes, while an index is sent as-is and a 256-colour terminal draws the
 // same wave a truecolour one does.
-var nameWaveStops = [...]string{"97", "98", "134", "135", "141", "177", "183"}
+var nameWaveRamps = map[string][nameWaveLen]string{
+	"leaf":   {"34", "40", "76", "77", "113", "114", "120"},
+	"gold":   {"130", "136", "172", "178", "214", "221", "220"},
+	"sky":    {"25", "31", "32", "38", "74", "81", "117"},
+	"rose":   {"125", "161", "162", "168", "204", "205", "211"},
+	"violet": {"97", "98", "134", "135", "141", "177", "183"},
+}
 
 // NameWavePeriod is how many animation steps one full wave takes.
-const NameWavePeriod = 2 * (len(nameWaveStops) - 1)
+const NameWavePeriod = 2 * (nameWaveLen - 1)
 
 // LeaderboardName returns the style for a static leaderboard name style ID,
 // or false for the traditional treatment and any ID it does not know.
@@ -325,17 +338,22 @@ func (t Theme) LeaderboardName(style string) (lipgloss.Style, bool) {
 	return lipgloss.NewStyle().Background(t.Bg).Foreground(lipgloss.Color(c)).Bold(true), true
 }
 
-// NameWave returns the style at step along the animated name's ramp. The
-// ramp runs out and back, so consecutive steps never jump in colour.
-func (t Theme) NameWave(step int) lipgloss.Style {
+// NameWave returns the style at step along colour's wave ramp, where colour
+// is a static style ID, or false for any ID without a wave. The ramp runs
+// out and back, so consecutive steps never jump in colour.
+func (t Theme) NameWave(colour string, step int) (lipgloss.Style, bool) {
+	ramp, ok := nameWaveRamps[colour]
+	if !ok {
+		return lipgloss.Style{}, false
+	}
 	step %= NameWavePeriod
 	if step < 0 {
 		step += NameWavePeriod
 	}
-	if step >= len(nameWaveStops) {
+	if step >= nameWaveLen {
 		step = NameWavePeriod - step
 	}
-	return lipgloss.NewStyle().Background(t.Bg).Foreground(lipgloss.Color(nameWaveStops[step])).Bold(true)
+	return lipgloss.NewStyle().Background(t.Bg).Foreground(lipgloss.Color(ramp[step])).Bold(true), true
 }
 
 // sgr is the sequence that re-establishes the theme's colours.

@@ -130,6 +130,10 @@ type State struct {
 	ContractEarnings     int64      `json:"contract_earnings,omitempty"`
 	ContractStarseeds    int64      `json:"contract_starseeds_earned,omitempty"`
 	LeaderboardNameStyle string     `json:"leaderboard_name_style,omitempty"`
+	// LeaderboardWaveOff is the player's opt-out of Contract 3's name wave,
+	// remembered while the style is traditional and cannot show it. Zero
+	// keeps the wave on, which is the default once it is earned.
+	LeaderboardWaveOff bool `json:"leaderboard_wave_off,omitempty"`
 }
 
 // SeasonalEnabled reports whether the festival skins may render for this

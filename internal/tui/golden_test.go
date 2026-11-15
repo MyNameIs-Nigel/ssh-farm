@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mynameis-nigel/ssh-farm/internal/leaderboard"
 	"github.com/mynameis-nigel/ssh-farm/internal/sim"
 	"github.com/mynameis-nigel/ssh-farm/internal/tui/theme"
 )
@@ -278,6 +279,35 @@ func TestGoldenRenders(t *testing.T) {
 			st.FertilizerHeld, st.FertilizerTracked = 4, true
 			g.completedContract = sim.ContractBareHands
 			g.overlay = ovContractReward
+		}},
+		// Issue #59: every colour has a wave. One row per wave, mid-phase so
+		// each ramp is visibly travelling, beside the static colours and a
+		// traditional name for comparison.
+		{"board-name-waves", canvasMaxWidth, canvasMaxHeight, func(g *Game) {
+			g.now = goldenBase + 3*theme.PhaseSeconds
+			g.scr = scrBoard
+			g.boardAnimPhase = 4
+			g.lbBoard = leaderboard.Board{Total: 12, AsOf: g.now - 42, Top: []leaderboard.Row{
+				{Rank: 1, DisplayName: "LEAF WAVE FARM", ContractsCompleted: 3, NameStyle: sim.NameStyleLeafWave, Coins: 9_000_000, Rebirths: 40},
+				{Rank: 2, DisplayName: "GOLD WAVE FARM", ContractsCompleted: 3, NameStyle: sim.NameStyleGoldWave, Coins: 8_000_000, Rebirths: 38},
+				{Rank: 3, DisplayName: "SKY WAVE FARM", ContractsCompleted: 3, NameStyle: sim.NameStyleSkyWave, Coins: 7_000_000, Rebirths: 35},
+				{Rank: 4, DisplayName: "ROSE WAVE FARM", ContractsCompleted: 3, NameStyle: sim.NameStyleRoseWave, Coins: 6_000_000, Rebirths: 30},
+				{Rank: 5, DisplayName: "VIOLET WAVE FARM", ContractsCompleted: 3, NameStyle: sim.NameStylePurpleWave, Coins: 5_000_000, Rebirths: 29},
+				{Rank: 6, DisplayName: "Leaf Static", ContractsCompleted: 3, NameStyle: sim.NameStyleLeaf, Coins: 4_000_000, Rebirths: 20},
+				{Rank: 7, DisplayName: "Gold Static", ContractsCompleted: 2, NameStyle: sim.NameStyleGold, Coins: 3_000_000, Rebirths: 18},
+				{Rank: 8, DisplayName: "Sky Static", ContractsCompleted: 2, NameStyle: sim.NameStyleSky, Coins: 2_000_000, Rebirths: 15},
+				{Rank: 9, DisplayName: "Rose Static", ContractsCompleted: 2, NameStyle: sim.NameStyleRose, Coins: 1_000_000, Rebirths: 12},
+				{Rank: 10, DisplayName: "Violet Static", ContractsCompleted: 2, NameStyle: sim.NameStyleViolet, Coins: 900_000, Rebirths: 10},
+			}}
+		}},
+		{"stats-name-wave-80x24", 80, 24, func(g *Game) {
+			g.now = goldenBase + 3*theme.PhaseSeconds
+			st := g.snap.State
+			st.FarmName = "Northfield"
+			st.ContractsUnlocked = true
+			st.ContractsCompleted = 3
+			st.LeaderboardNameStyle = sim.NameStyleSkyWave
+			g.scr = scrStats
 		}},
 	}...)
 

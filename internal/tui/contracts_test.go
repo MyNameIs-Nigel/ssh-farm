@@ -371,7 +371,7 @@ func TestStatsShowsContractsOnlyOnceTheyMatter(t *testing.T) {
 func TestEveryStaticNameStyleHasAThemeColour(t *testing.T) {
 	th := (&Game{snap: game.Snapshot{State: &sim.State{}}}).theme()
 	for _, style := range (&sim.State{ContractsCompleted: 3}).AvailableLeaderboardNameStyles() {
-		if style == sim.NameStyleTraditional || style == sim.NameStylePurpleWave {
+		if style == sim.NameStyleTraditional || sim.IsWaveNameStyle(style) {
 			continue
 		}
 		if _, ok := th.LeaderboardName(style); !ok {
