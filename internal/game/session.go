@@ -433,9 +433,7 @@ func (s *Session) ToggleLeaderboardNameWave(now int64) (Snapshot, error) {
 	if s.actor.key.guestID != "" {
 		return Snapshot{}, ErrGuestRequiresKey
 	}
-	snap, _, err := s.intent(now, func(st *sim.State) error {
-		return sim.ToggleLeaderboardNameWave(st)
-	})
+	snap, _, err := s.intent(now, sim.ToggleLeaderboardNameWave)
 	return snap, err
 }
 
