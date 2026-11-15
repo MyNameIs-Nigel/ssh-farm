@@ -1209,3 +1209,68 @@ func TestRebirthClearsEventStart(t *testing.T) {
 		t.Fatalf("EventStartedAt = %d after rebirth, want 0", s.EventStartedAt)
 	}
 }
+
+// onlineTickThreshold decides whether an Advance is a live tick (online event
+// rolls, critter visits, the online gift interval) or an offline catch-up. An
+// off-by-one is silent and player-visible, and nothing used to pin it: moving
+// the constant to 1 or 3 left the whole suite green. This asserts through what
+// each branch does rather than reading the constant, and the elapsed values
+// are literals on purpose: a table built from onlineTickThreshold moves with
+// the constant and pins nothing. Retuning the threshold on purpose means
+// updating the rows below, which is the point of a guard.
+//
+// Every effect is made certain on the online side and impossible on the other,
+// so the outcome never depends on the RNG stream.
+func TestOnlineTickBoundary(t *testing.T) {
+	// setup returns a state and content where the online branch is guaranteed
+	// to fire each effect and the offline branch is guaranteed not to.
+	setup := func(t *testing.T) (*State, *content.Content) {
+		c := testContent(t)
+		// Critters: visit every empty plot, but only on live ticks.
+		c.Critters.VisitChancePct = 100
+		c.Critters.MaxActive = 0
+		// Gifts: certain on the online interval, impossible on the offline
+		// one (chance = elapsed*10000/interval floors to 0).
+		c.Gifts.OnlineIntervalSec = 1
+		c.Gifts.OfflineIntervalSec = 1 << 40
+		// Events: a one-second interval makes any live tick roll certain.
+		c.EventsConfig.MinIntervalSec = 1
+		c.EventsConfig.MaxIntervalSec = 1
+		if len(c.Events) == 0 {
+			t.Fatal("test content has no events; the event arm of this test needs one")
+		}
+		s := newTestState(t, c)
+		s.Plots = make([]Plot, 3) // all empty, so critters may visit
+		s.CrittersEnabled = true
+		return s, c
+	}
+
+	tests := []struct {
+		name    string
+		elapsed int64
+		online  bool
+	}{
+		{"one second is live", 1, true},
+		{"two seconds is still live", 2, true},
+		{"three seconds is offline", 3, false},
+		{"a long gap is offline", 3600, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, c := setup(t)
+			ev := Advance(s, c, s.UpdatedAt+tc.elapsed)
+			if ev.Elapsed != tc.elapsed {
+				t.Fatalf("Elapsed = %d, want %d", ev.Elapsed, tc.elapsed)
+			}
+			if got := len(ev.CritterVisits) > 0; got != tc.online {
+				t.Errorf("critters visited = %v at elapsed %d, want %v", got, tc.elapsed, tc.online)
+			}
+			if got := ev.GiftArrived; got != tc.online {
+				t.Errorf("gift arrived = %v at elapsed %d, want %v", got, tc.elapsed, tc.online)
+			}
+			if got := ev.EventStarted != ""; got != tc.online {
+				t.Errorf("event started = %v at elapsed %d, want %v", got, tc.elapsed, tc.online)
+			}
+		})
+	}
+}

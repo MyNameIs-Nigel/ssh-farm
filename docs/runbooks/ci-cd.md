@@ -76,7 +76,7 @@ checking that the tests still bite. Green CI cannot distinguish a correct
 implementation from an implementation whose tests have stopped looking at it.
 
 Each sentinel injects a specific realistic bug, asserts the named test
-**fails**, and reverts. Five run today:
+**fails**, and reverts. Six run today:
 
 | Sentinel | Injects | Must be caught by |
 | --- | --- | --- |
@@ -85,10 +85,11 @@ Each sentinel injects a specific realistic bug, asserts the named test
 | `sim-parity-payout-drift` | one extra coin per harvest | `TestScriptedSequenceMatchesV1Golden` |
 | `sim-grow-time-drift` | one extra second per crop | `TestScriptedSequenceMatchesV1Golden` |
 | `sim-gift-rate-drift` | gift interval doubled | the online and offline gift-rate tests |
+| `sim-online-boundary` | `onlineTickThreshold` 2 → 3 | `TestOnlineTickBoundary` |
 
 This is deliberately a short hand-written list, not general mutation testing: a
 full mutation run is slow, noisy with equivalent mutants, and needs triage
-nobody has time for. Five sentinels that each encode a real acceptance
+nobody has time for. Six sentinels that each encode a real acceptance
 criterion beat four hundred generated mutants that get ignored.
 
 > **Two gaps the harness found, both now closed.** Its first run turned up a
