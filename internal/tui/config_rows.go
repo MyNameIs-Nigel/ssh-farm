@@ -65,6 +65,15 @@ func (g *Game) configRows() []configRow {
 				}
 			},
 		},
+		{
+			label: "Fertilizer prompt", hint: "ask before F spreads fertilizer", on: !st.FertilizerNoConfirm,
+			toggle: func(g *Game, enabled bool) {
+				if snap, err := g.sess.SetFertilizerConfirm(g.now, enabled); err == nil {
+					g.snap = snap
+					g.addNotice("Fertilizer prompt " + onOff(enabled) + ".")
+				}
+			},
+		},
 	}
 }
 

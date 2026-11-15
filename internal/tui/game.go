@@ -106,6 +106,7 @@ const (
 	ovKicked
 	ovGuestQuit
 	ovDev
+	ovFertilizerConfirm
 )
 
 // tutorialPages is the number of pages in the new-player tutorial.
@@ -168,9 +169,12 @@ type Game struct {
 
 	tutorialPage int
 	tutorialSkip bool
-	devSel       int
-	devInput     string
-	configIdx    int
+	// fertDontAsk is the fertilizer prompt's "don't ask again" box. It is
+	// only saved when the player confirms with it ticked.
+	fertDontAsk bool
+	devSel      int
+	devInput    string
+	configIdx   int
 
 	notices    []notice
 	away       sim.Events
@@ -375,6 +379,8 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return g.handleReplantWarnKey(key)
 	case ovContractConfirm:
 		return g.handleContractConfirmKey(key)
+	case ovFertilizerConfirm:
+		return g.handleFertilizerConfirmKey(key)
 	case ovContractReward:
 		g.overlay = ovNone
 		return g, nil
@@ -392,6 +398,8 @@ func (g *Game) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return g.requestQuit()
 	case "g":
 		return g.redeemGift()
+	case "F":
+		return g.requestFertilizer()
 	case "1":
 		g.scr = scrFarm
 		return g, nil
@@ -837,6 +845,10 @@ func (g *Game) handleStarShopKey(key string) (tea.Model, tea.Cmd) {
 			g.openContracts()
 			return g, nil
 		}
+		if g.progressIdx == fertilizerRowIdx(g.content) {
+			g.buyFertilizer()
+			return g, nil
+		}
 		if g.progressIdx >= len(ups) {
 			return g, nil
 		}
@@ -850,16 +862,32 @@ func (g *Game) handleStarShopKey(key string) (tea.Model, tea.Cmd) {
 	return g, nil
 }
 
+// fertilizerRowIdx is the StarShop row index of the Fertilizer purchase,
+// directly after the lifetime upgrades, or -1 when this balance does not
+// sell it (gameplay/06).
+func fertilizerRowIdx(c *content.Content) int {
+	if !sim.FertilizerForSale(c) {
+		return -1
+	}
+	return len(c.Upgrades)
+}
+
 // contractsRowIdx is the StarShop row index of the Contracts entry, which
-// sits directly after the lifetime upgrades (gameplay/04: no ninth nav tab).
-func contractsRowIdx(c *content.Content) int { return len(c.Upgrades) }
+// sits after the lifetime upgrades and the Fertilizer row (gameplay/04: no
+// ninth nav tab).
+func contractsRowIdx(c *content.Content) int {
+	if fertilizerRowIdx(c) >= 0 {
+		return len(c.Upgrades) + 1
+	}
+	return len(c.Upgrades)
+}
 
 // starShopRowCount is how many StarShop rows the cursor can land on.
 func (g *Game) starShopRowCount() int {
 	if g.snap.State.ContractsAvailable(g.content) {
-		return len(g.content.Upgrades) + 1
+		return contractsRowIdx(g.content) + 1
 	}
-	return len(g.content.Upgrades)
+	return contractsRowIdx(g.content)
 }
 
 // openContracts moves to the Contracts screen with the next contract (or
@@ -1295,12 +1323,104 @@ func (g *Game) redeemGift() (tea.Model, tea.Cmd) {
 	if err != nil {
 		return g, nil
 	}
-	if res.Starseeds > 0 {
+	st := g.snap.State
+	switch {
+	case res.FertilizerUsed && res.Ripened > 0:
+		g.addNotice("📦 Parcel opened — Fertilizer! Your sack was full, so it went straight on: " +
+			itoa(res.Ripened) + " " + plural(res.Ripened, "crop", "crops") + " ripened.")
+	case res.FertilizerUsed:
+		g.addNotice("📦 Parcel opened — Fertilizer! Your sack was full and nothing was growing, so it soaked away.")
+	case res.Fertilizer:
+		g.addNotice("📦 Parcel opened — Fertilizer! " + fertilizerCount(st) + " (F to use)")
+	case res.Starseeds > 0:
 		g.addNotice("📦 Parcel opened! +" + money(res.Starseeds) + " " + g.starseedLabel() + "!")
-	} else {
+	default:
 		g.addNotice("📦 Parcel opened! +" + money(res.Coins) + " coins!")
 	}
 	return g, nil
+}
+
+// fertilizerGlyph marks fertilizer everywhere it is counted. It is the Greek
+// koppa, the classic text lightning bolt: one cell wide like ✦ and ⛀,
+// where ⚡ is an emoji that terminals draw two cells wide (and that already
+// stands for random events in the notices).
+const fertilizerGlyph = "ϟ"
+
+// fertilizerCount renders the held/max count, e.g. "ϟ2/3".
+func fertilizerCount(st *sim.State) string {
+	return fertilizerGlyph + itoa(st.Fertilizer()) + "/" + itoa(st.FertilizerMax())
+}
+
+// requestFertilizer is the F key. It explains a use that cannot happen
+// rather than open a prompt for it, and skips the prompt once the player has
+// ticked "don't ask again".
+func (g *Game) requestFertilizer() (tea.Model, tea.Cmd) {
+	st := g.snap.State
+	switch {
+	case st.Fertilizer() < 1:
+		msg := "No fertilizer left."
+		if sim.FertilizerForSale(g.content) {
+			msg += " The StarShop sells it for ✦ " + money(g.content.Fertilizer.CostStarseeds) + "."
+		}
+		g.addNotice(msg)
+		return g, nil
+	case st.GrowingPlots(g.content, g.now) == 0:
+		g.addNotice("Nothing is growing — plant something before using fertilizer.")
+		return g, nil
+	}
+	if st.FertilizerNoConfirm {
+		g.useFertilizer()
+		return g, nil
+	}
+	g.fertDontAsk = false
+	g.overlay = ovFertilizerConfirm
+	return g, nil
+}
+
+func (g *Game) handleFertilizerConfirmKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	// Only y confirms, like the rebirth and contract prompts: enter is the
+	// farm's most-pressed key, and a harvest reflex must not spend a rare item.
+	case "y", "Y":
+		g.overlay = ovNone
+		if g.fertDontAsk {
+			if snap, err := g.sess.SetFertilizerConfirm(g.now, false); err == nil {
+				g.snap = snap
+			}
+		}
+		g.useFertilizer()
+	case "d", "D", "space", " ":
+		g.fertDontAsk = !g.fertDontAsk
+	case "n", "N", "esc", "q":
+		g.overlay = ovNone
+	}
+	return g, nil
+}
+
+func (g *Game) useFertilizer() {
+	n, snap, ach, err := g.sess.UseFertilizer(g.now)
+	g.applyAction(snap, ach, err)
+	if err != nil {
+		return
+	}
+	g.addNotice(fertilizerGlyph + " Fertilizer spread: " + itoa(n) + " " + plural(n, "crop", "crops") +
+		" ripened. " + fertilizerCount(g.snap.State) + " left.")
+}
+
+func (g *Game) buyFertilizer() {
+	snap, ach, err := g.sess.BuyFertilizer(g.now)
+	if errors.Is(err, sim.ErrMaxed) {
+		// The generic "already at maximum" says nothing about how to raise it.
+		g.addNotice("Your fertilizer sack is full (" + fertilizerCount(g.snap.State) + "). Each contract you complete adds room for one more.")
+		if snap.State != nil {
+			g.snap = snap
+		}
+		return
+	}
+	g.applyAction(snap, ach, err)
+	if err == nil {
+		g.addNotice("Bought fertilizer. " + fertilizerCount(g.snap.State) + " — press F to use.")
+	}
 }
 
 func (g *Game) doHarvest(i int) {
@@ -1727,6 +1847,27 @@ func (g *Game) starShopLines() []starShopLine {
 			row = marker + th.Value.Render(alignSides(line, "✦ "+money(cost), lineWidth))
 		}
 		lines = append(lines, starShopLine{text: row, idx: i})
+	}
+	if idx := fertilizerRowIdx(g.content); idx >= 0 {
+		marker := "  "
+		if g.progressIdx == idx {
+			marker = th.Selected.Render("▸ ")
+		}
+		cost := g.content.Fertilizer.CostStarseeds
+		line := fertilizerGlyph + " Fertilizer (" + itoa(st.Fertilizer()) + "/" + itoa(st.FertilizerMax()) +
+			") — Ripens every growing crop at once (F)."
+		var row string
+		switch {
+		case st.Fertilizer() >= st.FertilizerMax():
+			row = marker + th.Ready.Render(alignSides("✓ "+line, "full", lineWidth))
+		case st.PrestigeCurrency < cost:
+			row = marker + th.Locked.Render(alignSides(line, "✦ "+money(cost), lineWidth))
+		default:
+			row = marker + th.Value.Render(alignSides(line, "✦ "+money(cost), lineWidth))
+		}
+		lines = append(lines, starShopLine{idx: noShopItem})
+		lines = append(lines, starShopLine{text: th.Section.Render("Supplies"), idx: noShopItem})
+		lines = append(lines, starShopLine{text: row, idx: idx})
 	}
 	if st.ContractsAvailable(g.content) {
 		marker := "  "

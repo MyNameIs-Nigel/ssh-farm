@@ -299,7 +299,8 @@ func TestOfflineCompletionFollowsTheWelcomeBack(t *testing.T) {
 func TestStarShopContractsRowOpensContractsByKeyAndMouse(t *testing.T) {
 	g := contractGame(t, 0)
 	g = press(t, g, `5`)
-	for range g.content.Upgrades {
+	// The upgrades, then the Fertilizer row, then Contracts.
+	for range len(g.content.Upgrades) + 1 {
 		g = press(t, g, `down`)
 	}
 	if g.progressIdx != contractsRowIdx(g.content) {

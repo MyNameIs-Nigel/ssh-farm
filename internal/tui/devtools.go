@@ -21,19 +21,22 @@ var devRows = []struct {
 	{"gift", "Spawn parcel", 0},
 	{"event", "Event", 0},
 	{"contracts", "Unlock contracts", 0},
+	{"fertilizer", "Fertilizer", 1},
 }
 
 func (g *Game) devValue(index int) int64 {
 	st := g.snap.State
-	switch index {
-	case 0:
+	switch devRows[index].action {
+	case "coins":
 		return st.Coins
-	case 1:
+	case "starseeds":
 		return st.PrestigeCurrency
-	case 2:
+	case "earnings":
 		return st.RunEarnings
-	case 3:
+	case "rebirths":
 		return st.Rebirths
+	case "fertilizer":
+		return int64(st.Fertilizer())
 	}
 	return 0
 }

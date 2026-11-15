@@ -18,7 +18,7 @@ starseed_name = "Starseeds"
 
 [[upgrade]]
 id = "growth"
-name = "Rich Soil"
+name = "Deep Roots"
 description = "Crops grow 10% faster per level."
 cost = 2
 cost_growth_pct = 200
@@ -58,7 +58,7 @@ effect_value = 10
 
 [[multiplier]]
 id = "fertilizer"
-name = "Fertilizer"
+name = "Rich Soil"
 description = "Grow 8% faster per level."
 cost = 200
 cost_growth_pct = 250
@@ -108,6 +108,16 @@ offline_interval_sec = 18000
 starseed_chance_pct = 20
 coin_reward_floor = 8
 coin_reward_ceiling = 5000
+
+# Fertilizer (gameplay/06) is a permanent one-shot item: using it (F) ripens
+# every growing crop at once. Every farm starts with one and holds at most 3,
+# plus 1 per completed contract (each completion also refills it). Extra ones
+# cost cost_starseeds in the StarShop, and drop_chance_pct of parcels hold one
+# instead of coins or Starseeds — rarer than a Starseed parcel on purpose. A
+# parcel that finds you at the cap is used on the spot.
+[fertilizer]
+cost_starseeds = 5
+drop_chance_pct = 5
 
 [golden_harvest]
 chance_pct = 0

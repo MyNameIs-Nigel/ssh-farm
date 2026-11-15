@@ -90,7 +90,7 @@ func (g *Game) dismissOverlay() (tea.Model, tea.Cmd) {
 		return g.ackReplantWarning()
 	case ovGuestQuit:
 		g.overlay = ovNone
-	case ovDev, ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovAway, ovContractConfirm, ovContractReward:
+	case ovDev, ovRebirthConfirm, ovName, ovConfig, ovUpgrade, ovTutorial, ovAway, ovContractConfirm, ovContractReward, ovFertilizerConfirm:
 		g.overlay = ovNone
 	}
 	return g, nil
@@ -196,6 +196,12 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 			return g.pressKey("y")
 		}
 	case id == "contract:cancel":
+		g.overlay = ovNone
+	case id == "fertilizer:use":
+		return g.pressKey("y")
+	case id == "fertilizer:dontask":
+		return g.pressKey("d")
+	case id == "fertilizer:cancel":
 		g.overlay = ovNone
 	case strings.HasPrefix(id, "contract:"):
 		if idx, ok := box.Data.(int); ok {

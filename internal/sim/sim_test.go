@@ -845,11 +845,11 @@ func TestProfitPerSecondIncreasesWithGrowTime(t *testing.T) {
 func TestGiftRedeemAndCap(t *testing.T) {
 	c := testContent(t)
 	s := newTestState(t, c)
-	if _, err := RedeemGift(s, c); err != ErrNoGift {
+	if _, err := RedeemGift(s, c, s.UpdatedAt); err != ErrNoGift {
 		t.Fatalf("expected ErrNoGift, got %v", err)
 	}
 	s.GiftPending = true
-	res, err := RedeemGift(s, c)
+	res, err := RedeemGift(s, c, s.UpdatedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1082,7 +1082,7 @@ func TestGiftCoinRewardNeverExceedsCeiling(t *testing.T) {
 
 	for i := 0; i < 200; i++ {
 		s.GiftPending = true
-		res, err := RedeemGift(s, c)
+		res, err := RedeemGift(s, c, s.UpdatedAt)
 		if err != nil {
 			t.Fatalf("redeem: %v", err)
 		}

@@ -94,6 +94,12 @@ type State struct {
 	FlavorEnabled    bool             `json:"flavor_enabled"`
 	FarmName         string           `json:"farm_name,omitempty"`
 	MoonEpoch        int64            `json:"moon_epoch,omitempty"` // unix day anchor for moon phase
+	// Fertilizer (gameplay/06) is read through State.Fertilizer, never these
+	// directly. FertilizerTracked false means "still holds the starter", so a
+	// save that never touched fertilizer writes neither key and v1 payloads
+	// round-trip byte-identically.
+	FertilizerHeld    int  `json:"fertilizer,omitempty"`
+	FertilizerTracked bool `json:"fertilizer_tracked,omitempty"`
 
 	// Player settings (Config screen) and replant memory. Persist across rebirth.
 	NewsEnabled     bool   `json:"news_enabled"`             // Daily Furrow headline banner
@@ -110,6 +116,9 @@ type State struct {
 	// byte-identical). Seasonal seeds are unaffected by it and stay gated
 	// only by the calendar.
 	SeasonalOff bool `json:"seasonal_off,omitempty"`
+	// FertilizerNoConfirm is the "don't ask again" box on the fertilizer
+	// prompt. Same omitempty reasoning: false (always ask) is the default.
+	FertilizerNoConfirm bool `json:"fertilizer_no_confirm,omitempty"`
 
 	// Contracts are an additive post-game campaign. Zero values deliberately
 	// mean "never started" and stay omitted so old v1/v2 payloads continue to

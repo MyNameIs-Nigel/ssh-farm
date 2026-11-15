@@ -121,6 +121,14 @@ type GiftTuning struct {
 	CoinRewardCeiling  int64 `toml:"coin_reward_ceiling"`
 }
 
+// FertilizerTuning prices the one-shot Fertilizer item and sets how often a
+// parcel holds one (gameplay/06). CostStarseeds 0 means it is not for sale. The starter count and the base cap are not
+// here: they are part of what a zero-valued save means, so they live in sim.
+type FertilizerTuning struct {
+	CostStarseeds int64 `toml:"cost_starseeds"`
+	DropChancePct int64 `toml:"drop_chance_pct"`
+}
+
 // GoldenHarvest tunes the rare golden harvest bonus.
 type GoldenHarvest struct {
 	ChancePct  int64 `toml:"chance_pct"`
@@ -266,25 +274,26 @@ type cropsFile struct {
 }
 
 type balanceFile struct {
-	Start          Start           `toml:"start"`
-	Land           Land            `toml:"land"`
-	Prestige       Prestige        `toml:"prestige"`
-	Labels         Labels          `toml:"labels"`
-	Upgrades       []Upgrade       `toml:"upgrade"`
-	Multipliers    []Multiplier    `toml:"multiplier"`
-	SeedUpgrades   []SeedUpgrade   `toml:"seed_upgrade"`
-	Zones          []Zone          `toml:"zone"`
-	Events         []Event         `toml:"event"`
-	EventsConfig   EventsConfig    `toml:"events"`
-	PlotAutomation PlotAutomation  `toml:"plot_automation"`
-	Gifts          GiftTuning      `toml:"gifts"`
-	GoldenHarvest  GoldenHarvest   `toml:"golden_harvest"`
-	Moon           MoonConfig      `toml:"moon"`
-	Critters       CritterConfig   `toml:"critters"`
-	Scarecrow      ScarecrowConfig `toml:"scarecrow"`
-	Headlines      []Headline      `toml:"headline"`
-	Achievements   []Achievement   `toml:"achievement"`
-	Flavor         Flavor          `toml:"flavor"`
+	Start          Start            `toml:"start"`
+	Land           Land             `toml:"land"`
+	Prestige       Prestige         `toml:"prestige"`
+	Labels         Labels           `toml:"labels"`
+	Upgrades       []Upgrade        `toml:"upgrade"`
+	Multipliers    []Multiplier     `toml:"multiplier"`
+	SeedUpgrades   []SeedUpgrade    `toml:"seed_upgrade"`
+	Zones          []Zone           `toml:"zone"`
+	Events         []Event          `toml:"event"`
+	EventsConfig   EventsConfig     `toml:"events"`
+	PlotAutomation PlotAutomation   `toml:"plot_automation"`
+	Gifts          GiftTuning       `toml:"gifts"`
+	GoldenHarvest  GoldenHarvest    `toml:"golden_harvest"`
+	Moon           MoonConfig       `toml:"moon"`
+	Critters       CritterConfig    `toml:"critters"`
+	Scarecrow      ScarecrowConfig  `toml:"scarecrow"`
+	Headlines      []Headline       `toml:"headline"`
+	Achievements   []Achievement    `toml:"achievement"`
+	Flavor         Flavor           `toml:"flavor"`
+	Fertilizer     FertilizerTuning `toml:"fertilizer"`
 }
 
 // Content is the validated, immutable game configuration. Lookup maps are
@@ -310,6 +319,7 @@ type Content struct {
 	Critters       CritterConfig
 	Scarecrow      ScarecrowConfig
 	Flavor         Flavor
+	Fertilizer     FertilizerTuning
 
 	cropByID          map[string]*Crop
 	upgradeByID       map[string]*Upgrade
@@ -358,6 +368,7 @@ func Load(overrideDir string) (*Content, error) {
 		Critters:       bf.Critters,
 		Scarecrow:      bf.Scarecrow,
 		Flavor:         bf.Flavor,
+		Fertilizer:     bf.Fertilizer,
 	}
 	if err := c.validate(); err != nil {
 		return nil, err
@@ -647,6 +658,15 @@ func (c *Content) validate() error {
 	if c.Critters.RebirthBonusPct < 0 {
 		return fmt.Errorf("content: critters rebirth_bonus_pct must be >= 0")
 	}
+	// A balance without a [fertilizer] table loads with fertilizer not for
+	// sale and never in parcels (cost 0, chance 0); the starter still works.
+	if c.Fertilizer.CostStarseeds < 0 {
+		return fmt.Errorf("content: fertilizer cost_starseeds must be >= 0")
+	}
+	if c.Fertilizer.DropChancePct < 0 || c.Fertilizer.DropChancePct > 100 {
+		return fmt.Errorf("content: fertilizer drop_chance_pct must be 0-100")
+	}
+
 	if err := c.Scarecrow.validate(); err != nil {
 		return err
 	}

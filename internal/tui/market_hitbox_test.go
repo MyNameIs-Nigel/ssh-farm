@@ -90,7 +90,7 @@ func TestMarketRowHitboxesMatchRenderedText(t *testing.T) {
 		name string
 		idx  int
 	}{
-		{"Fertilizer", 0},
+		{"Rich Soil", 0},
 		{"Hardier Gamble", 1},
 		{"Scarecrow 0/4", 2},
 		{"Greenhouse", 3},
@@ -122,7 +122,7 @@ func TestMarketBlankLineBetweenSectionsHasNoHitbox(t *testing.T) {
 
 // TestMarketClickMerchantScaleNotFertilizer reproduces the reported bug: with
 // two multipliers stacked one row apart, clicking Merchant's Scale must select
-// merchant_scale — not fertilizer — and the blank line below must not select it.
+// merchant_scale — not Rich Soil (id fertilizer) — and the blank line below must not select it.
 func TestMarketClickMerchantScaleNotFertilizer(t *testing.T) {
 	c, err := content.Load("")
 	if err != nil {
@@ -130,13 +130,13 @@ func TestMarketClickMerchantScaleNotFertilizer(t *testing.T) {
 	}
 	g := marketScreen(t, marketGame(t, c))
 
-	fertRow := bodyRowForText(t, g, "Fertilizer")
+	fertRow := bodyRowForText(t, g, "Rich Soil")
 	merchantRow := bodyRowForText(t, g, "Merchant's Scale")
 	if merchantRow <= fertRow {
-		t.Fatalf("expected Merchant's Scale below Fertilizer, got rows %d and %d", fertRow, merchantRow)
+		t.Fatalf("expected Merchant's Scale below Rich Soil, got rows %d and %d", fertRow, merchantRow)
 	}
 	if merchantRow != fertRow+1 {
-		t.Fatalf("expected consecutive multiplier rows, got Fertilizer@%d Merchant@%d", fertRow, merchantRow)
+		t.Fatalf("expected consecutive multiplier rows, got Rich Soil@%d Merchant@%d", fertRow, merchantRow)
 	}
 
 	m, _ := g.handleMouseClick(tea.Mouse(tea.MouseClickMsg{X: g.layout.cx + 2, Y: merchantRow, Button: tea.MouseLeft}))
@@ -160,7 +160,7 @@ func TestMarketClickMerchantScaleNotFertilizer(t *testing.T) {
 	m, _ = g.handleMouseClick(tea.Mouse(tea.MouseClickMsg{X: g.layout.cx + 2, Y: fertRow, Button: tea.MouseLeft}))
 	g = m.(*Game)
 	if items[g.marketIdx].id != "fertilizer" {
-		t.Fatalf("clicking Fertilizer selected %q", items[g.marketIdx].id)
+		t.Fatalf("clicking Rich Soil selected %q", items[g.marketIdx].id)
 	}
 }
 

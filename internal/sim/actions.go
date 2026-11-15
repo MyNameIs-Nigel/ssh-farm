@@ -334,14 +334,19 @@ func BuyUpgrade(s *State, c *content.Content, id string) error {
 	return nil
 }
 
-// GiftResult reports what a redeemed parcel contained.
+// GiftResult reports what a redeemed parcel contained. A fertilizer parcel
+// holds nothing else; FertilizerUsed means the player was already at the cap,
+// so it was spent on the spot and Ripened plots grew.
 type GiftResult struct {
-	Coins     int64
-	Starseeds int64
+	Coins          int64
+	Starseeds      int64
+	Fertilizer     bool
+	FertilizerUsed bool
+	Ripened        int
 }
 
-// RedeemGift opens the pending parcel.
-func RedeemGift(s *State, c *content.Content) (GiftResult, error) {
+// RedeemGift opens the pending parcel at now.
+func RedeemGift(s *State, c *content.Content, now int64) (GiftResult, error) {
 	if s.contractBlocksGifts() {
 		return GiftResult{}, ErrContractRestricted
 	}
@@ -352,6 +357,16 @@ func RedeemGift(s *State, c *content.Content) (GiftResult, error) {
 	s.GiftArrivedAt = 0
 
 	var res GiftResult
+	if s.fertilizerDropped(c) {
+		res.Fertilizer = true
+		if s.Fertilizer() >= s.FertilizerMax() {
+			res.FertilizerUsed = true
+			res.Ripened = s.ripenAll(c, now)
+		} else {
+			s.setFertilizer(s.Fertilizer() + 1)
+		}
+		return res, nil
+	}
 	progressionRebirths := s.ProgressionRebirths()
 	if progressionRebirths >= 1 && s.roll100() < c.Gifts.StarseedChancePct {
 		base := isqrt(s.RunEarnings/c.Prestige.Divisor) + 1

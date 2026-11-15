@@ -248,8 +248,35 @@ func (g *Game) fitRow(s string) string { return fitWidth(s, g.contentWidth()) }
 func rewrap(text string, width int) string {
 	paras := strings.Split(text, "\n\n")
 	for i, p := range paras {
-		flat := strings.Join(strings.Fields(strings.ReplaceAll(p, "\n", " ")), " ")
-		paras[i] = wrapIndent(width, "", flat)
+		// A line opening with "• " starts a new item; every other line joins
+		// the item above it. Without this a bullet list flattened into one
+		// run-on paragraph (every tutorial page did, until gameplay/06).
+		var items []string
+		for _, line := range strings.Split(p, "\n") {
+			if strings.HasPrefix(line, "• ") || len(items) == 0 {
+				items = append(items, line)
+			} else {
+				items[len(items)-1] += " " + line
+			}
+		}
+		for j, item := range items {
+			flat := strings.Join(strings.Fields(item), " ")
+			if rest, ok := strings.CutPrefix(flat, "• "); ok {
+				// Hanging indent: continuation lines align under the text.
+				wrapped := strings.Split(wrapIndent(width-2, "", rest), "\n")
+				for k := range wrapped {
+					if k == 0 {
+						wrapped[k] = "• " + wrapped[k]
+					} else {
+						wrapped[k] = "  " + wrapped[k]
+					}
+				}
+				items[j] = strings.Join(wrapped, "\n")
+			} else {
+				items[j] = wrapIndent(width, "", flat)
+			}
+		}
+		paras[i] = strings.Join(items, "\n")
 	}
 	return strings.Join(paras, "\n\n")
 }

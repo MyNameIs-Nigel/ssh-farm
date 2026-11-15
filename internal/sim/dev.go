@@ -10,6 +10,11 @@ import (
 // rewards. Callers must enforce dev mode before invoking it.
 func DevApply(s *State, c *content.Content, action string, value, now int64) error {
 	switch action {
+	case "fertilizer":
+		if value < 0 || value > int64(s.FertilizerMax()) {
+			return fmt.Errorf("dev fertilizer must be 0-%d", s.FertilizerMax())
+		}
+		s.setFertilizer(int(value))
 	case "coins", "starseeds", "earnings", "rebirths":
 		if value < 0 {
 			return fmt.Errorf("dev value must be non-negative")

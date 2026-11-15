@@ -84,6 +84,7 @@ Preserve permanently:
 - lifetime harvest count and achievements;
 - total historical rebirth count used by the leaderboard;
 - completed contracts and their cosmetic rewards;
+- Fertilizer (gameplay/06) — the count is neither reset nor refunded;
 - farm name and player settings.
 
 The reset creates an important implementation distinction. The existing
@@ -209,7 +210,9 @@ modal to that size.
 Once accepted, reconnecting or going offline does not cancel the contract.
 The Contracts screen shows the active terms and progress. Completing the goal
 immediately records the completion, clears its restrictions, and opens a reward
-modal. The current farm state remains; starting the next contract performs the
+modal. Every completion also raises the Fertilizer cap by one and fills it to
+the new cap (gameplay/06: 4/4 after Bare Hands, 5/5, then 6/6); the reward
+modal shows the new count. The current farm state remains; starting the next contract performs the
 next hard reset.
 
 A goal can be crossed inside the catch-up `sim.Advance` that precedes every tick

@@ -93,7 +93,7 @@ func TestScriptedSequenceMatchesV1Golden(t *testing.T) {
 	}
 	Advance(s, c, startedAt+50_000)
 	if s.GiftPending {
-		if _, err := RedeemGift(s, c); err != nil {
+		if _, err := RedeemGift(s, c, startedAt+50_000); err != nil {
 			t.Fatalf("redeem gift: %v", err)
 		}
 	}
