@@ -53,6 +53,13 @@ type Board struct {
 	// activity window and coin floor are applied, not every save that
 	// exists.
 	Total int
+	// Rows is every ranked farm, best first — what the board screen scrolls
+	// through. Top and Window are slices of the same list kept for callers
+	// that only want the headline view.
+	Rows []Row
+	// YouIndex is You's position in Rows. It is meaningful only when You is
+	// non-nil (a zero Board has no You, and 0 would otherwise read as "first").
+	YouIndex int
 	// Top holds up to the top 10 rows.
 	Top []Row
 	// Window holds up to 3 rows on each side of You when You.Rank places

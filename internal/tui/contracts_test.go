@@ -131,7 +131,7 @@ func TestContractRestrictionsAreExplainedAtBlockedControls(t *testing.T) {
 }
 
 func TestBoardAnimationStartsOnlyOneTickChain(t *testing.T) {
-	g := &Game{scr: scrBoard, snap: game.Snapshot{State: &sim.State{}}, lbBoard: leaderboard.Board{Top: []leaderboard.Row{{NameStyle: sim.NameStylePurpleWave}}}}
+	g := &Game{scr: scrBoard, snap: game.Snapshot{State: &sim.State{}}, lbBoard: leaderboard.Board{Rows: []leaderboard.Row{{NameStyle: sim.NameStylePurpleWave}}}}
 	if cmd := g.startBoardAnimation(); cmd == nil {
 		t.Fatal("first visible animated row should start a tick chain")
 	}
@@ -151,7 +151,7 @@ func TestBoardAnimationStartsOnlyOneTickChain(t *testing.T) {
 }
 
 func TestLimitedColourHoldsTheWaveStill(t *testing.T) {
-	g := &Game{scr: scrBoard, snap: game.Snapshot{State: &sim.State{}}, lbBoard: leaderboard.Board{Top: []leaderboard.Row{{NameStyle: sim.NameStylePurpleWave}}}}
+	g := &Game{scr: scrBoard, snap: game.Snapshot{State: &sim.State{}}, lbBoard: leaderboard.Board{Rows: []leaderboard.Row{{NameStyle: sim.NameStylePurpleWave}}}}
 	m, _ := g.Update(tea.ColorProfileMsg{Profile: colorprofile.ANSI})
 	g = m.(*Game)
 	if cmd := g.startBoardAnimation(); cmd != nil {

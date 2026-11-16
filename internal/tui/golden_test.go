@@ -287,7 +287,7 @@ func TestGoldenRenders(t *testing.T) {
 			g.now = goldenBase + 3*theme.PhaseSeconds
 			g.scr = scrBoard
 			g.boardAnimPhase = 4
-			g.lbBoard = leaderboard.Board{Total: 12, AsOf: g.now - 42, Top: []leaderboard.Row{
+			g.lbBoard = leaderboard.Board{Total: 12, AsOf: g.now - 42, Rows: []leaderboard.Row{
 				{Rank: 1, DisplayName: "LEAF WAVE FARM", ContractsCompleted: 3, NameStyle: sim.NameStyleLeafWave, Coins: 9_000_000, Rebirths: 40},
 				{Rank: 2, DisplayName: "GOLD WAVE FARM", ContractsCompleted: 3, NameStyle: sim.NameStyleGoldWave, Coins: 8_000_000, Rebirths: 38},
 				{Rank: 3, DisplayName: "SKY WAVE FARM", ContractsCompleted: 3, NameStyle: sim.NameStyleSkyWave, Coins: 7_000_000, Rebirths: 35},
@@ -299,6 +299,31 @@ func TestGoldenRenders(t *testing.T) {
 				{Rank: 9, DisplayName: "Rose Static", ContractsCompleted: 2, NameStyle: sim.NameStyleRose, Coins: 1_000_000, Rebirths: 12},
 				{Rank: 10, DisplayName: "Violet Static", ContractsCompleted: 2, NameStyle: sim.NameStyleViolet, Coins: 900_000, Rebirths: 10},
 			}}
+		}},
+		// The board is the whole ranked list. Fits on screen: no divider, You
+		// in the list ("#15 of 19", the layout this was reported from).
+		{"board-whole-list-fits", 100, 32, func(g *Game) {
+			g.scr = scrBoard
+			g.lbBoard = goldenBoardOf(19, 15, g.now)
+		}},
+		// Longer than the screen with You below it: the list from #1, a
+		// divider, then You ±3.
+		{"board-pinned-you", 100, 32, func(g *Game) {
+			g.scr = scrBoard
+			g.lbBoard = goldenBoardOf(60, 41, g.now)
+		}},
+		// The same board scrolled until You is in the list: the divider and
+		// the pinned block are gone and the ranks run on unbroken.
+		{"board-merged-you", 100, 32, func(g *Game) {
+			g.scr = scrBoard
+			g.lbBoard = goldenBoardOf(60, 41, g.now)
+			g.lbScroll = 32
+		}},
+		// Last place, scrolled to the end: You on the bottom row of the list.
+		{"board-last-place", 100, 32, func(g *Game) {
+			g.scr = scrBoard
+			g.lbBoard = goldenBoardOf(60, 60, g.now)
+			g.lbScroll = 60
 		}},
 		{"stats-name-wave-80x24", 80, 24, func(g *Game) {
 			g.now = goldenBase + 3*theme.PhaseSeconds
@@ -346,4 +371,40 @@ func lateFarm(g *Game) {
 	st.RunEarnings = 400_000_000
 	st.Scarecrows = []sim.Scarecrow{{Pouch: 0}, {Pouch: 46}, {Pouch: 12_480}, {Pouch: 123_456_789}}
 	st.ScarecrowClock = 6 * 20
+}
+
+// goldenBoardOf builds a believable n-farm board with You at youRank: a steep
+// coin curve (the real top ten of a live board), a few veterans with contract seals and earned name colours, and
+// a tail of unnamed farms that show their suffix.
+func goldenBoardOf(n, youRank int, now int64) leaderboard.Board {
+	names := []string{"BCHECKETTS", "PARZIVAL", "ERNIE ACRES", "NIGEL", "EL LLANITO", "AMELIE FARMS", "JOKIFARM", "CHICKEN BANANA", "SNOIGEL", "ZAMPANO"}
+	styles := []string{sim.NameStyleViolet, sim.NameStyleSky, sim.NameStylePurpleWave, sim.NameStyleLeaf}
+	suffixes := []string{"XWZ0c", "hgYY8", "Hp060", "ta6WU", "Ugyeo", "aZSRw", "q3LmP", "Rk7vD"}
+	head := []int64{1_081_398_488, 437_519_604, 63_914_429, 36_138_088, 8_556_775, 93_566, 44_856, 14_057, 4_648, 2_461}
+	rows := make([]leaderboard.Row, n)
+	for i := range rows {
+		coins := max(300-4*int64(i-len(head)), 20) // a strictly falling tail
+		if i < len(head) {
+			coins = head[i]
+		}
+		r := leaderboard.Row{Rank: i + 1, Coins: coins}
+		switch {
+		case i < len(names):
+			r.DisplayName, r.Rebirths = names[i], int64(13-i)
+			if i < 4 {
+				r.ContractsCompleted, r.NameStyle = 3, styles[i]
+			}
+		default:
+			r.Suffix, r.ShowSuffix = suffixes[i%len(suffixes)], true
+		}
+		if i+1 == youRank {
+			r.DisplayName, r.Suffix, r.ShowSuffix, r.IsYou = "ASDFLOL", "", false, true
+		}
+		rows[i] = r
+	}
+	b := leaderboard.Board{Rows: rows, Total: n, AsOf: now - 2}
+	if youRank > 0 {
+		b.You, b.YouIndex = &rows[youRank-1], youRank-1
+	}
+	return b
 }

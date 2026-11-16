@@ -3,6 +3,7 @@ package leaderboard
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -89,19 +90,36 @@ func New(src Source, ttl, activityWindow time.Duration, minCoins int64, now func
 // identifies which row, if any, is "You" — pass a zero SaveRef if there is
 // none (You will simply come back nil).
 func (e *Engine) Get(ctx context.Context, you SaveRef) (Board, error) {
-	rows, asOf, err := e.snapshot(ctx)
+	rows, asOf, err := e.snapshot(ctx, e.ttl)
 	if err != nil {
 		return Board{}, err
 	}
 	return buildBoard(rows, asOf, you), nil
 }
 
-// snapshot returns the current ranked rows, rebuilding at most once every
-// ttl. Concurrent callers during a rebuild share the single in-flight
-// database read (singleflight) rather than each issuing their own.
-func (e *Engine) snapshot(ctx context.Context) ([]rankedRow, int64, error) {
+// minRefreshInterval is the youngest a snapshot may be before Refresh will
+// rebuild it. It bounds the database cost of a held-down refresh key without
+// making the key a no-op for the far longer ttl.
+const minRefreshInterval = 2 * time.Second
+
+// Refresh is Get for an explicit "refresh now": it skips the ttl and rebuilds
+// unless the snapshot is under minRefreshInterval old (or ttl, if shorter).
+// Concurrent callers still share one in-flight rebuild.
+func (e *Engine) Refresh(ctx context.Context, you SaveRef) (Board, error) {
+	rows, asOf, err := e.snapshot(ctx, min(e.ttl, minRefreshInterval))
+	if err != nil {
+		return Board{}, err
+	}
+	return buildBoard(rows, asOf, you), nil
+}
+
+// snapshot returns the current ranked rows, rebuilding when the cached ones
+// are maxAge old or more. Concurrent callers during a rebuild share the
+// single in-flight database read (singleflight) rather than each issuing
+// their own.
+func (e *Engine) snapshot(ctx context.Context, maxAge time.Duration) ([]rankedRow, int64, error) {
 	e.mu.Lock()
-	if e.building == nil && e.ranked != nil && e.now().Sub(e.builtAt) < e.ttl {
+	if e.building == nil && e.ranked != nil && e.now().Sub(e.builtAt) < maxAge {
 		rows, asOf := e.ranked, e.builtAt.Unix()
 		e.mu.Unlock()
 		return rows, asOf, nil
@@ -200,32 +218,26 @@ func (e *Engine) rebuild(ctx context.Context) ([]rankedRow, error) {
 func buildBoard(rows []rankedRow, asOf int64, you SaveRef) Board {
 	board := Board{Total: len(rows), AsOf: asOf}
 
-	topN := len(rows)
-	if topN > topSize {
-		topN = topSize
-	}
-	board.Top = make([]Row, topN)
+	// toRow per farm is the render-time moderation re-check; at the scale
+	// this engine targets (see the type comment) one pass per Get is cheap.
+	board.Rows = make([]Row, len(rows))
 	youIdx := -1
-	for i := 0; i < topN; i++ {
-		board.Top[i] = toRow(rows[i], you)
-		if isYou(rows[i], you) {
+	for i := range rows {
+		board.Rows[i] = toRow(rows[i], you)
+		if youIdx == -1 && board.Rows[i].IsYou {
 			youIdx = i
 		}
 	}
-	if youIdx == -1 {
-		for i := topN; i < len(rows); i++ {
-			if isYou(rows[i], you) {
-				youIdx = i
-				break
-			}
-		}
-	}
+
+	topN := min(len(rows), topSize)
+	board.Top = slices.Clone(board.Rows[:topN])
 	if youIdx == -1 {
 		return board
 	}
 
-	yourRow := toRow(rows[youIdx], you)
+	yourRow := board.Rows[youIdx]
 	board.You = &yourRow
+	board.YouIndex = youIdx
 
 	// Window only kicks in once You falls outside Top by rank (not merely
 	// by index — a tie whose rank is exactly topSize but whose index sits
@@ -236,16 +248,8 @@ func buildBoard(rows []rankedRow, asOf int64, you SaveRef) Board {
 		return board
 	}
 
-	lo, hi := youIdx-windowRadius, youIdx+windowRadius
-	if lo < topN {
-		lo = topN
-	}
-	if hi > len(rows)-1 {
-		hi = len(rows) - 1
-	}
-	for i := lo; i <= hi; i++ {
-		board.Window = append(board.Window, toRow(rows[i], you))
-	}
+	lo, hi := max(youIdx-windowRadius, topN), min(youIdx+windowRadius, len(rows)-1)
+	board.Window = slices.Clone(board.Rows[lo : hi+1])
 	return board
 }
 

@@ -74,22 +74,16 @@ var errBoardUnavailable = errors.New("board fixture: store unavailable")
 
 // wideBoardFixture stresses boardRowLine's alignSides layout with the
 // longest names moderation.MaxNameLen allows, the biggest coin totals
-// money() formats, a three-digit rebirth count, top-3 accent styling, and a
-// full Top+window with You outside Top so the divider renders too.
+// money() formats, a three-digit rebirth count, and top-3 accent styling —
+// over a board long enough that You sits below the viewport, so the pinned
+// divider and neighbour block render too.
 func wideBoardFixture() leaderboard.Board {
-	row := func(rank int, name string, coins int64, isYou bool) leaderboard.Row {
-		return leaderboard.Row{Rank: rank, DisplayName: name, Suffix: "wX9zK", Coins: coins, Rebirths: 999, IsYou: isYou}
+	const n, youIdx = 40, 23
+	rows := make([]leaderboard.Row, n)
+	for i := range rows {
+		rows[i] = leaderboard.Row{Rank: i + 1, DisplayName: "TWENTY CHARACTER NAME", Suffix: "wX9zK", Coins: 999_999_999_999 - int64(i), Rebirths: 999, IsYou: i == youIdx}
 	}
-	top := make([]leaderboard.Row, 10)
-	for i := range top {
-		top[i] = row(i+1, "TWENTY CHARACTER NAME", 999_999_999_999-int64(i), false)
-	}
-	window := []leaderboard.Row{
-		row(23, "TWENTY CHARACTER NAME", 4_200, false),
-		row(24, "TWENTY CHARACTER NAME", 4_199, true),
-		row(25, "TWENTY CHARACTER NAME", 4_198, false),
-	}
-	return leaderboard.Board{Top: top, Window: window, Total: 400, You: &window[1], AsOf: time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC).Unix()}
+	return leaderboard.Board{Rows: rows, Total: n, You: &rows[youIdx], YouIndex: youIdx, AsOf: time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC).Unix()}
 }
 
 // TestOverlayBoxesFitContentWidth guards modal overlays. Overlay content is

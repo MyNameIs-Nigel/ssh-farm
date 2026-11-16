@@ -215,7 +215,8 @@ func (g *Game) dispatchHit(box hitbox.Box, isDouble bool) (tea.Model, tea.Cmd) {
 	case id == "board:yourow":
 		g.openRename()
 	case id == "board:refresh":
-		g.refreshBoard()
+		g.refreshBoardNow()
+		return g, g.startBoardAnimation()
 	case id == "stats:config":
 		g.configIdx = 0
 		g.overlay = ovConfig

@@ -260,17 +260,14 @@ func (g *Game) registerBoardHits() {
 	}
 	ly := g.layout
 	cw := ly.cw
-	lines := g.boardLines(cw)
-	start, end := g.boardVisibleRange(len(lines))
-
 	y := ly.bodyY + 2
-	for i := start; i < end; i++ {
-		if l := lines[i]; l.row != nil && l.row.IsYou {
+	for _, l := range g.boardFrame(cw) {
+		if l.row != nil && l.row.IsYou {
 			g.addHit(ly.cx, y, cw, 1, "board:yourow", nil)
 		}
 		y++
 	}
-	if start > 0 || end < len(lines) {
+	if g.boardScrollable() {
 		y++ // scroll hint line
 	}
 	y++ // blank line before "updated…"

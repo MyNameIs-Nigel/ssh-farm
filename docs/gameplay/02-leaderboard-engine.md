@@ -81,12 +81,22 @@ type Row struct {
 type Board struct {
     You        *Row  // nil when unranked
     Total      int
-    Top        []Row // top 10
+    Rows       []Row // EVERY ranked farm, best first (what the board scrolls)
+    YouIndex   int   // You's index in Rows; meaningful only when You != nil
+    Top        []Row // top 10 (a copy of Rows[:10])
     Window     []Row // ±3 around You when You.Rank > 10 (dedup'd vs Top)
     AsOf       int64 // snapshot time for the staleness hint
 }
-Get(ctx, you SaveRef) (Board, error)
+Get(ctx, you SaveRef) (Board, error)     // cached for FARM_LEADERBOARD_TTL
+Refresh(ctx, you SaveRef) (Board, error) // explicit "refresh now": bypasses the TTL
 ```
+
+`Refresh` rebuilds even inside the TTL, unless the snapshot is under
+`minRefreshInterval` (2 s) old, and concurrent callers still share one rebuild.
+`Rows` is built per call from the cached snapshot (one pass of the render-time
+moderation re-check); that is the thing to revisit at the ~100k-save cliff
+below. `Top`/`Window` remain for callers that only want the headline view; the
+board screen (tui/02) reads `Rows`/`YouIndex` and does its own pinning.
 
 ### Caching (do not hammer the DB from renders)
 
