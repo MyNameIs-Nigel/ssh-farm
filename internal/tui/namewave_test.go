@@ -31,7 +31,7 @@ func TestEveryWaveStyleAnimatesOnTheBoard(t *testing.T) {
 	}
 	seen := map[string]string{}
 	for _, style := range waves {
-		g := &Game{scr: scrBoard, snap: game.Snapshot{State: &sim.State{}}, lbBoard: leaderboard.Board{Top: []leaderboard.Row{{NameStyle: style}}}}
+		g := &Game{scr: scrBoard, snap: game.Snapshot{State: &sim.State{}}, lbBoard: leaderboard.Board{Rows: []leaderboard.Row{{NameStyle: style}}}}
 		if cmd := g.startBoardAnimation(); cmd == nil {
 			t.Errorf("%s: a visible wave row should start the tick chain", style)
 		}
@@ -57,7 +57,7 @@ func TestEveryWaveStyleAnimatesOnTheBoard(t *testing.T) {
 // A 16-colour terminal holds every wave on its own static colour.
 func TestLimitedColourHoldsEachWaveOnItsColour(t *testing.T) {
 	for _, style := range waveStyles() {
-		g := &Game{scr: scrBoard, snap: game.Snapshot{State: &sim.State{}}, lbBoard: leaderboard.Board{Top: []leaderboard.Row{{NameStyle: style}}}}
+		g := &Game{scr: scrBoard, snap: game.Snapshot{State: &sim.State{}}, lbBoard: leaderboard.Board{Rows: []leaderboard.Row{{NameStyle: style}}}}
 		m, _ := g.Update(tea.ColorProfileMsg{Profile: colorprofile.ANSI})
 		g = m.(*Game)
 		static, _ := g.theme().LeaderboardName(sim.NameStyleBase(style))

@@ -377,6 +377,66 @@ func TestCacheHonorsTTLWithInjectedClock(t *testing.T) {
 	}
 }
 
+// TestRowsIsTheWholeRankedList: the board screen scrolls through everyone, so
+// the engine must hand over the full list in rank order — not just Top 10 —
+// and say where You sits in it.
+func TestRowsIsTheWholeRankedList(t *testing.T) {
+	clock := newFakeClock()
+	var rows []store.LeaderboardRow
+	for i := 0; i < 25; i++ {
+		rows = append(rows, row("fp"+string(rune('a'+i)), int64(1000-i*10), clock.now().Unix(), "N"+string(rune('a'+i))))
+	}
+	// A three-way tie at rank 4 (indexes 3..5), with You in the middle of it.
+	rows[4].Coins, rows[5].Coins = rows[3].Coins, rows[3].Coins
+	eng := New(&fakeSource{rows: rows}, time.Minute, 0, 1, clock.now)
+
+	b, err := eng.Get(context.Background(), ref("fpe")) // index 4
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Rows) != 25 || b.Total != 25 {
+		t.Fatalf("len(Rows)=%d Total=%d, want 25/25", len(b.Rows), b.Total)
+	}
+	if b.You == nil || b.YouIndex != 4 {
+		t.Fatalf("You=%v YouIndex=%d, want You set at index 4", b.You, b.YouIndex)
+	}
+	you := 0
+	for i, r := range b.Rows {
+		if r.IsYou {
+			you++
+			if i != b.YouIndex {
+				t.Fatalf("IsYou on index %d, YouIndex says %d", i, b.YouIndex)
+			}
+		}
+		if i > 0 && r.Rank < b.Rows[i-1].Rank {
+			t.Fatalf("Rows not in rank order at %d: %d after %d", i, r.Rank, b.Rows[i-1].Rank)
+		}
+	}
+	if you != 1 {
+		t.Fatalf("IsYou set on %d rows, want exactly 1 even amid a tie", you)
+	}
+	if b.Rows[3].Rank != 4 || b.Rows[5].Rank != 4 || b.Rows[6].Rank != 7 {
+		t.Fatalf("competition ranking lost in Rows: %d %d %d", b.Rows[3].Rank, b.Rows[5].Rank, b.Rows[6].Rank)
+	}
+	// Top and Window are views of the same list, not a second opinion.
+	for i, r := range b.Top {
+		if r != b.Rows[i] {
+			t.Fatalf("Top[%d] = %+v differs from Rows[%d] = %+v", i, r, i, b.Rows[i])
+		}
+	}
+
+	// Unranked / absent viewer: the list is still there, You is not.
+	b, err = eng.Get(context.Background(), ref("nobody"))
+	if err != nil || b.You != nil || len(b.Rows) != 25 {
+		t.Fatalf("unranked viewer: You=%v rows=%d err=%v", b.You, len(b.Rows), err)
+	}
+	for _, r := range b.Rows {
+		if r.IsYou {
+			t.Fatal("no row may be IsYou for an unranked viewer")
+		}
+	}
+}
+
 // TestRefreshBypassesTTLButNotTheFloor is the engine half of the board's "r"
 // key: Get inside the TTL serves the cache (so a refresh key built on Get does
 // nothing), while Refresh must rebuild — except under minRefreshInterval, so a

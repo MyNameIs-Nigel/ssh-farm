@@ -345,7 +345,7 @@ func (g *Game) viewFooter() string {
 	case g.scr == scrBoard:
 		hints = "n rename farm · r refresh · esc back"
 		if g.boardScrollable() {
-			hints = "↑/↓/wheel scroll · " + hints
+			hints = "↑/↓/pgup/pgdn/wheel scroll · " + hints
 		}
 	default:
 		hints = "1-6 screens · tab/shift+tab cycle · F fertilizer · q leave"
@@ -1006,17 +1006,14 @@ func (g *Game) viewBoard() string {
 		return header + "\n\n" + th.Locked.Render(truncate("LEADERBOARD UNAVAILABLE — TRY AGAIN SOON", cw))
 	}
 
-	lines := g.boardLines(cw)
-	start, end := g.boardVisibleRange(len(lines))
-
 	var b strings.Builder
 	b.WriteString(header)
 	b.WriteString("\n\n")
-	for i := start; i < end; i++ {
-		b.WriteString(lines[i].text)
+	for _, l := range g.boardFrame(cw) {
+		b.WriteString(l.text)
 		b.WriteString("\n")
 	}
-	if start > 0 || end < len(lines) {
+	if g.boardScrollable() {
 		b.WriteString(th.Hint.Render("  ↑↓ scroll for more"))
 		b.WriteString("\n")
 	}

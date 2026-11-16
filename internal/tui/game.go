@@ -1031,6 +1031,17 @@ func (g *Game) handleBoardKey(key string) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		g.lbScroll++
 		g.clampBoardScroll()
+	case "pgup":
+		g.lbScroll -= g.boardVisibleRows()
+		g.clampBoardScroll()
+	case "pgdown":
+		g.lbScroll += g.boardVisibleRows()
+		g.clampBoardScroll()
+	case "home":
+		g.lbScroll = 0
+	case "end":
+		g.lbScroll = len(g.lbBoard.Rows)
+		g.clampBoardScroll()
 	case "n":
 		g.openRename()
 	case "r", "R":
@@ -1087,15 +1098,16 @@ func (g *Game) boardAnimates() bool {
 	return g.scr == scrBoard && !g.limitedColor && g.boardHasAnimatedName()
 }
 
+// boardHasAnimatedName reports whether a wave-styled farm is actually on
+// screen — rows scrolled out of view don't need the 120 ms tick.
 func (g *Game) boardHasAnimatedName() bool {
-	for _, rows := range [][]leaderboard.Row{g.lbBoard.Top, g.lbBoard.Window} {
-		for _, r := range rows {
-			if sim.IsWaveNameStyle(r.NameStyle) {
-				return true
-			}
+	found := false
+	g.boardPlan().each(func(i int) {
+		if sim.IsWaveNameStyle(g.lbBoard.Rows[i].NameStyle) {
+			found = true
 		}
-	}
-	return false
+	})
+	return found
 }
 
 // startBoardAnimation starts the wave's tick chain, at most one at a time,
@@ -1109,39 +1121,59 @@ func (g *Game) startBoardAnimation() tea.Cmd {
 	return boardAnimCmd()
 }
 
-// boardLine is one rendered line of the board's scrollable region, paired
-// with its source Row (nil for the divider/status lines) so hitboxes can
-// be attached without re-deriving the same line layout twice.
+// boardLine is one rendered line of the board's list region, paired with its
+// source Row (nil for the divider/status lines) so hitboxes can be attached
+// without re-deriving the same line layout twice.
 type boardLine struct {
 	text string
 	row  *leaderboard.Row
 }
 
-// boardLines lays out gameplay/02's Top (up to 10) then, only when it
-// exists, a divider and the ±3 Window around you — gameplay/02 already
-// dedupes the window against Top, so this never repeats a row.
-func (g *Game) boardLines(cw int) []boardLine {
-	th := g.theme()
-	rankWidth := 0
-	for _, r := range g.lbBoard.Top {
-		rankWidth = max(rankWidth, len(itoa(r.Rank)))
+// boardYouIndex is your position in the ranked list, or -1 when unranked.
+func (g *Game) boardYouIndex() int {
+	if g.lbBoard.You == nil {
+		return -1
 	}
-	for _, r := range g.lbBoard.Window {
-		rankWidth = max(rankWidth, len(itoa(r.Rank)))
-	}
+	return g.lbBoard.YouIndex
+}
 
-	var lines []boardLine
-	for i := range g.lbBoard.Top {
-		lines = append(lines, boardLine{text: g.boardRowLine(g.lbBoard.Top[i], cw, rankWidth), row: &g.lbBoard.Top[i]})
+// boardPlan lays the full ranked list into the viewport (see planBoard).
+func (g *Game) boardPlan() boardPlan {
+	return planBoard(len(g.lbBoard.Rows), g.boardYouIndex(), g.lbScroll, g.boardVisibleRows())
+}
+
+// boardRankWidth is the width of the largest rank on the board, so "#1" and
+// "#100" line up and the name column doesn't shift while scrolling.
+func (g *Game) boardRankWidth() int {
+	if n := len(g.lbBoard.Rows); n > 0 {
+		return len(itoa(g.lbBoard.Rows[n-1].Rank))
 	}
-	if len(g.lbBoard.Window) > 0 {
+	return 0
+}
+
+// boardFrame renders only the lines the plan draws: the scrolled list and,
+// when you are ranked but below it, a divider and your ±3 neighbours. Cost is
+// the viewport, not the board, because this runs on every frame and tick.
+func (g *Game) boardFrame(cw int) []boardLine {
+	th := g.theme()
+	if len(g.lbBoard.Rows) == 0 {
+		return []boardLine{{text: th.Hint.Render("No farms on the board yet — be the first!")}}
+	}
+	plan := g.boardPlan()
+	rankWidth := g.boardRankWidth()
+	lines := make([]boardLine, 0, plan.lines())
+	add := func(i int) {
+		r := &g.lbBoard.Rows[i]
+		lines = append(lines, boardLine{text: g.boardRowLine(*r, cw, rankWidth), row: r})
+	}
+	for i := plan.start; i < plan.end; i++ {
+		add(i)
+	}
+	if plan.pinned {
 		lines = append(lines, boardLine{text: th.Rule.Render(strings.Repeat("─", max(cw, 1)))})
-		for i := range g.lbBoard.Window {
-			lines = append(lines, boardLine{text: g.boardRowLine(g.lbBoard.Window[i], cw, rankWidth), row: &g.lbBoard.Window[i]})
+		for i := plan.pinLo; i <= plan.pinHi; i++ {
+			add(i)
 		}
-	}
-	if len(lines) == 0 {
-		lines = append(lines, boardLine{text: th.Hint.Render("No farms on the board yet — be the first!")})
 	}
 	return lines
 }
@@ -1265,48 +1297,21 @@ func (g *Game) boardHeaderLine(cw int) string {
 	return alignSides(title, th.Value.Render(rank), cw)
 }
 
-// boardVisibleRows is how many of boardLines' rows fit under the pinned
-// header, above the scroll hint + staleness line.
+// boardVisibleRows is how many list lines fit under the pinned header, above
+// the scroll hint + staleness line.
 func (g *Game) boardVisibleRows() int {
 	return max(g.contentHeight()-11, 3)
 }
 
-// boardVisibleRange clamps g.lbScroll and returns the [start,end) slice of
-// boardLines currently on screen — shared by the renderer and the hitbox
-// registration so the two can never disagree about which line is where.
-func (g *Game) boardVisibleRange(total int) (start, end int) {
-	visible := g.boardVisibleRows()
-	maxStart := max(total-visible, 0)
-	start = g.lbScroll
-	if start > maxStart {
-		start = maxStart
-	}
-	if start < 0 {
-		start = 0
-	}
-	end = start + visible
-	if end > total {
-		end = total
-	}
-	return start, end
-}
-
-// boardScrollable reports whether the board has more lines than fit on
-// screen. Top 10 plus the ±3 window is at most 18 lines, so on a normal
-// terminal it never does.
+// boardScrollable reports whether the board has more rows than fit on
+// screen, i.e. whether the arrow keys have anything to do.
 func (g *Game) boardScrollable() bool {
-	return len(g.boardLines(g.contentWidth())) > g.boardVisibleRows()
+	return len(g.lbBoard.Rows) > g.boardVisibleRows()
 }
 
 func (g *Game) clampBoardScroll() {
-	total := len(g.boardLines(g.contentWidth()))
-	maxStart := max(total-g.boardVisibleRows(), 0)
-	if g.lbScroll > maxStart {
-		g.lbScroll = maxStart
-	}
-	if g.lbScroll < 0 {
-		g.lbScroll = 0
-	}
+	maxStart := max(len(g.lbBoard.Rows)-g.boardVisibleRows(), 0)
+	g.lbScroll = min(max(g.lbScroll, 0), maxStart)
 }
 
 func (g *Game) handleNameKey(key string, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
