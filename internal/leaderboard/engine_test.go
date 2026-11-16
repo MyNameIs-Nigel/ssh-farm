@@ -377,6 +377,64 @@ func TestCacheHonorsTTLWithInjectedClock(t *testing.T) {
 	}
 }
 
+// TestRefreshBypassesTTLButNotTheFloor is the engine half of the board's "r"
+// key: Get inside the TTL serves the cache (so a refresh key built on Get does
+// nothing), while Refresh must rebuild — except under minRefreshInterval, so a
+// held key cannot turn into one database pass per repeat.
+func TestRefreshBypassesTTLButNotTheFloor(t *testing.T) {
+	clock := newFakeClock()
+	src := &fakeSource{rows: []store.LeaderboardRow{row("A", 100, clock.now().Unix(), "A")}}
+	eng := New(src, time.Minute, 0, 1, clock.now)
+	ctx := context.Background()
+
+	if _, err := eng.Get(ctx, ref("A")); err != nil {
+		t.Fatal(err)
+	}
+	src.mu.Lock()
+	src.rows = append([]store.LeaderboardRow{row("B", 500, clock.now().Unix(), "B")}, src.rows...) // coins DESC
+	src.mu.Unlock()
+
+	// Inside the TTL a plain Get is served from cache and cannot see B.
+	clock.advance(minRefreshInterval + time.Second)
+	b, err := eng.Get(ctx, ref("A"))
+	if err != nil || b.Total != 1 {
+		t.Fatalf("Get inside TTL: total=%d err=%v, want cached total 1", b.Total, err)
+	}
+
+	// Refresh ignores the TTL and sees B.
+	b, err = eng.Refresh(ctx, ref("A"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Total != 2 || b.You == nil || b.You.Rank != 2 {
+		t.Fatalf("Refresh: total=%d you=%+v, want total 2 and You at rank 2", b.Total, b.You)
+	}
+	if b.AsOf != clock.now().Unix() {
+		t.Fatalf("Refresh AsOf = %d, want now (%d)", b.AsOf, clock.now().Unix())
+	}
+	if got := src.callCount(); got != 2 {
+		t.Fatalf("calls = %d, want 2 (build + forced rebuild)", got)
+	}
+
+	// A second Refresh right behind it is under the floor: cached.
+	clock.advance(time.Second)
+	if _, err := eng.Refresh(ctx, ref("A")); err != nil {
+		t.Fatal(err)
+	}
+	if got := src.callCount(); got != 2 {
+		t.Fatalf("calls after Refresh under the floor = %d, want 2", got)
+	}
+
+	// Once the snapshot is old enough again it rebuilds.
+	clock.advance(minRefreshInterval)
+	if _, err := eng.Refresh(ctx, ref("A")); err != nil {
+		t.Fatal(err)
+	}
+	if got := src.callCount(); got != 3 {
+		t.Fatalf("calls after floor elapsed = %d, want 3", got)
+	}
+}
+
 // TestRebirthsFlowThroughToTopAndYou proves each row's rebirth count
 // survives the engine's ranking/filtering pipeline unchanged, both in Top
 // and in You — the source-side counterpart to tui's board rendering test.

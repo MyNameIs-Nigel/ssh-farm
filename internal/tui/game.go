@@ -1034,7 +1034,8 @@ func (g *Game) handleBoardKey(key string) (tea.Model, tea.Cmd) {
 	case "n":
 		g.openRename()
 	case "r", "R":
-		g.refreshBoard()
+		g.refreshBoardNow()
+		return g, g.startBoardAnimation()
 	}
 	return g, nil
 }
@@ -1056,12 +1057,23 @@ func (g *Game) openRename() {
 // schedules the next automatic refresh boardRefreshSeconds out. Called on
 // every path that enters the board screen, on the tick loop while it's
 // open, and on an explicit r/click refresh.
-func (g *Game) refreshBoard() {
+func (g *Game) refreshBoard() { g.loadBoard(false) }
+
+// refreshBoardNow is the explicit r/click refresh. Unlike refreshBoard it
+// skips the engine's TTL cache — otherwise the key would re-read the same
+// snapshot it already had and visibly do nothing for up to a TTL.
+func (g *Game) refreshBoardNow() { g.loadBoard(true) }
+
+func (g *Game) loadBoard(force bool) {
 	you := leaderboard.SaveRef{}
 	if !g.id.IsGuest() {
 		you = leaderboard.SaveRef{Fingerprint: g.id.Fingerprint, Slot: g.id.Slot}
 	}
-	board, err := g.board.Get(context.Background(), you)
+	get := g.board.Get
+	if force {
+		get = g.board.Refresh
+	}
+	board, err := get(context.Background(), you)
 	g.lbErr = err
 	if err == nil {
 		g.lbBoard = board
@@ -1277,6 +1289,13 @@ func (g *Game) boardVisibleRange(total int) (start, end int) {
 		end = total
 	}
 	return start, end
+}
+
+// boardScrollable reports whether the board has more lines than fit on
+// screen. Top 10 plus the ±3 window is at most 18 lines, so on a normal
+// terminal it never does.
+func (g *Game) boardScrollable() bool {
+	return len(g.boardLines(g.contentWidth())) > g.boardVisibleRows()
 }
 
 func (g *Game) clampBoardScroll() {

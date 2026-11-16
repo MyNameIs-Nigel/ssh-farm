@@ -360,6 +360,125 @@ func TestBoardRefreshFromKeyAndClick(t *testing.T) {
 	}
 }
 
+// TestBoardRefreshBypassesEngineTTL is the regression for "r does nothing":
+// with the production-shaped engine (15s TTL) a refresh pressed mid-window
+// used to re-read the cached snapshot, so a newly-ranked farm never appeared
+// and "updated Ns ago" kept counting. The earlier refresh test used a zero
+// TTL, which hid this.
+func TestBoardRefreshBypassesEngineTTL(t *testing.T) {
+	for _, via := range []string{"key", "click"} {
+		t.Run(via, func(t *testing.T) {
+			f := newFixture(t)
+			base := time.Now().Unix()
+			src := &fakeBoardSource{rows: []store.LeaderboardRow{boardRow(f.id.Fingerprint, "AAA", 100)}}
+			clock := base
+			eng := leaderboard.New(src, 15*time.Second, 0, 0, func() time.Time { return time.Unix(clock, 0) })
+			res := f.attach(t, base)
+			t.Cleanup(res.Session.Detach)
+			g := NewGame(f.id, res, f.content, eng, 100, 35, base, 0)
+			g = dismissIntro(t, g)
+			g, _ = tick(t, g, base)
+			g = press(t, g, "7")
+
+			src.mu.Lock()
+			// The Source contract is coins DESC, so the richer farm goes first.
+			src.rows = append([]store.LeaderboardRow{boardRow("SHA256:new", "NEWBIE", 999)}, src.rows...)
+			src.mu.Unlock()
+
+			clock = base + 5 // inside the TTL, past the engine's refresh floor
+			g, _ = tick(t, g, base+5)
+			if out := view(g); strings.Contains(out, "NEWBIE") || !strings.Contains(out, "updated 5s ago") {
+				t.Fatalf("precondition: the tick must not refresh early, got:\n%s", out)
+			}
+
+			if via == "key" {
+				g = press(t, g, "r")
+			} else {
+				view(g)
+				var refresh *hitbox.Box
+				for _, b := range g.hits.Boxes() {
+					if b.ID == "board:refresh" {
+						bb := b
+						refresh = &bb
+					}
+				}
+				if refresh == nil {
+					t.Fatal("expected a board:refresh hitbox")
+				}
+				m, _ := g.handleMouseClick(tea.Mouse(tea.MouseClickMsg{X: refresh.X, Y: refresh.Y, Button: tea.MouseLeft}))
+				g = m.(*Game)
+			}
+
+			out := view(g)
+			if !strings.Contains(out, "NEWBIE") || !strings.Contains(out, "YOU: #2/2") {
+				t.Fatalf("refresh must show the farm added since entry, got:\n%s", out)
+			}
+			if !strings.Contains(out, "updated 0s ago") {
+				t.Fatalf("refresh must reset the staleness line, got:\n%s", out)
+			}
+		})
+	}
+}
+
+// boardOf26 seeds 26 farms with you last, so Top 10 + the window overflow a
+// short terminal.
+func boardOf26(f *fixture) *fakeBoardSource {
+	var rows []store.LeaderboardRow
+	for i := 0; i < 26; i++ {
+		fp := "SHA256:" + string(rune('A'+i))
+		if i == 25 {
+			fp = f.id.Fingerprint
+		}
+		rows = append(rows, boardRow(fp, strings.Repeat(string(rune('A'+i)), 3), int64(1000-i)))
+	}
+	return &fakeBoardSource{rows: rows}
+}
+
+// TestBoardArrowKeysScrollTheRenderedRows drives the real keys (not just the
+// wheel) and checks the rows actually drawn change, not only lbScroll.
+func TestBoardArrowKeysScrollTheRenderedRows(t *testing.T) {
+	f := newFixture(t)
+	g := f.newBoardGame(t, time.Now().Unix(), boardOf26(f), 0, 0)
+	g = resize(t, g, 100, 24)
+	g = press(t, g, "7")
+
+	if out := view(g); !strings.Contains(out, "AAA") || strings.Contains(out, "ZZZ") {
+		t.Fatalf("unscrolled board should show the top and not the tail, got:\n%s", out)
+	}
+	g = press(t, g, "down", "down", "j")
+	if out := view(g); strings.Contains(out, "AAA") || !strings.Contains(out, "DDD") {
+		t.Fatalf("three downs should scroll AAA off and keep DDD, got:\n%s", out)
+	}
+	g = press(t, g, "up")
+	if out := view(g); !strings.Contains(out, "CCC") {
+		t.Fatalf("up should bring CCC back, got:\n%s", out)
+	}
+	for i := 0; i < 50; i++ {
+		g = press(t, g, "down")
+	}
+	if out := view(g); !strings.Contains(out, "ZZZ") || !strings.Contains(out, "← YOU") {
+		t.Fatalf("scrolled to the end should show your row, got:\n%s", out)
+	}
+}
+
+// TestBoardScrollHintOnlyWhenThereIsSomethingToScroll: Top 10 + ±3 is at most
+// 18 lines, so on a normal terminal ↑/↓ have nothing to do. The footer must
+// not advertise a scroll that cannot happen.
+func TestBoardScrollHintOnlyWhenThereIsSomethingToScroll(t *testing.T) {
+	f := newFixture(t)
+	g := f.newBoardGame(t, time.Now().Unix(), boardOf26(f), 0, 0)
+	g = press(t, g, "7")
+
+	g = resize(t, g, 100, 50)
+	if out := view(g); strings.Contains(out, "scroll") {
+		t.Fatalf("a roomy terminal fits the whole board; no scroll hint expected, got:\n%s", out)
+	}
+	g = resize(t, g, 100, 24)
+	if out := view(g); !strings.Contains(out, "wheel scroll") {
+		t.Fatalf("a short terminal overflows; the scroll hint is expected, got:\n%s", out)
+	}
+}
+
 func TestBoardWheelScrollsWithoutLosingHeader(t *testing.T) {
 	f := newFixture(t)
 	base := time.Now().Unix()

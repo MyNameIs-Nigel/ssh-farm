@@ -343,7 +343,10 @@ func (g *Game) viewFooter() string {
 	case g.scr == scrStats:
 		hints = "n name farm · c config · q quit"
 	case g.scr == scrBoard:
-		hints = "↑/↓/wheel scroll · n rename farm · r refresh · esc back"
+		hints = "n rename farm · r refresh · esc back"
+		if g.boardScrollable() {
+			hints = "↑/↓/wheel scroll · " + hints
+		}
 	default:
 		hints = "1-6 screens · tab/shift+tab cycle · F fertilizer · q leave"
 	}
