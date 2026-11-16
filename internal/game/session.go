@@ -324,14 +324,14 @@ func (s *Session) SetSeasonal(now int64, enabled bool) (Snapshot, error) {
 }
 
 // ShooCritter removes a critter from a plot.
-func (s *Session) ShooCritter(now int64, plot int) (int64, Snapshot, []string, error) {
-	var reward int64
+func (s *Session) ShooCritter(now int64, plot int) (sim.ShooResult, Snapshot, []string, error) {
+	var res sim.ShooResult
 	snap, newly, err := s.intent(now, func(st *sim.State) error {
 		var serr error
-		reward, serr = sim.ShooCritter(st, s.actor.content(), plot)
+		res, serr = sim.ShooCritter(st, s.actor.content(), plot, now)
 		return serr
 	})
-	return reward, snap, newly, err
+	return res, snap, newly, err
 }
 
 // SetFarmName sets the farm's display name directly, with no rate limiting

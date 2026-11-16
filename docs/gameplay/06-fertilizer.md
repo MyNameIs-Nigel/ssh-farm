@@ -21,6 +21,7 @@ reads as a treat to spend at the right moment rather than a routine speed-up.
 | Buying | StarShop → *Supplies* → Fertilizer, **✦ 5** each, never past the cap. |
 | Parcels | A **5%** chance a parcel holds fertilizer instead of coins or Starseeds — rarer than the 20% Starseed parcel. |
 | Parcel at the cap | Used **on the spot**: the farm ripens and the count stays full. |
+| Shooing | A **0.10%** chance a shoo also drops one, on top of the coins — rarer than the 0.30% Starseed drop from the same roll. At the cap it is used on the spot, like a parcel. |
 | Persistence | Kept through rebirths, starting a contract, and abandoning one. |
 | Prompt | F asks *"Use fertilizer?"* with a **Don't ask again (d)** box. Only `y` confirms — not `enter`, the farm's harvest key. Until the box is ticked *and confirmed*, F always asks. Settings → **Fertilizer prompt** turns it back on. |
 | Header | `ϟ2/3` sits right of the Starseeds count, always visible. |
@@ -31,6 +32,7 @@ reads as a treat to spend at the right moment rather than a routine speed-up.
 | --- | --- | --- |
 | `cost_starseeds` | 5 | StarShop price; `0` (or no table) means not for sale |
 | `drop_chance_pct` | 5 | share of parcels that hold one; `0` (or no table) means never |
+| `[critters] fertilizer_chance_bp` | 10 | share of shoos (in basis points, 100 = 1%) that also drop one; `0` means never |
 
 The starter count (1) and base cap (3) are constants in `internal/sim/fertilizer.go`
 rather than balance keys, because they define what an untouched save *means* —
@@ -59,6 +61,14 @@ would have silently wiped every player's levels.
   `ErrNoFertilizer`), so no client can spend one on a bare farm.
 - **An at-cap parcel on a bare farm is wasted.** The request was "it just gets
   used instantly", so it is; the notice says it soaked away.
+- **Shoo drops are one roll in two bands.** `fertilizer_chance_bp` takes the first
+  slice of a single draw and `starseed_chance_bp` the next, so a shoo pays at most one
+  extra and neither can steal from the other (validation caps the sum at 10000). Unlike
+  the parcel roll this one *does* advance the RNG — shooing is not in the v1 parity
+  replay — but only when a chance is non-zero, so a balance without them is unchanged.
+  The Starseed is flat (`sim.ShooStarseedReward`, 1) and gated on `ProgressionRebirths() >= 1`
+  like parcels, so inside a contract it waits for the contract's own first rebirth.
+  Clockwork Denied does not stop it: shooing is by hand.
 - **A fertilizer parcel holds only fertilizer** — no coins or Starseeds on top.
 - **Fertilizer is allowed in every contract.** None of the three restrict it.
   Clockwork Denied disables parcels, so there it can only be bought.

@@ -359,12 +359,7 @@ func RedeemGift(s *State, c *content.Content, now int64) (GiftResult, error) {
 	var res GiftResult
 	if s.fertilizerDropped(c) {
 		res.Fertilizer = true
-		if s.Fertilizer() >= s.FertilizerMax() {
-			res.FertilizerUsed = true
-			res.Ripened = s.ripenAll(c, now)
-		} else {
-			s.setFertilizer(s.Fertilizer() + 1)
-		}
+		res.FertilizerUsed, res.Ripened = s.grantFertilizer(c, now)
 		return res, nil
 	}
 	progressionRebirths := s.ProgressionRebirths()
@@ -402,19 +397,50 @@ func giftCoinReward(s *State, c *content.Content) int64 {
 	return reward
 }
 
+// ShooStarseedReward is what a lucky shoo pays. It is flat: the drop is a
+// treat, not a rival to the 20% parcel's run-scaled Starseeds.
+const ShooStarseedReward = 1
+
+// ShooResult reports what a shoo paid. Coins always; at most one rare extra
+// on top. FertilizerUsed means the sack was already full, so it was spent on
+// the spot and Ripened plots grew (see GiftResult).
+type ShooResult struct {
+	Coins          int64
+	Starseeds      int64
+	Fertilizer     bool
+	FertilizerUsed bool
+	Ripened        int
+}
+
 // ShooCritter removes a critter and awards a few coins, more per rebirth.
-func ShooCritter(s *State, c *content.Content, plotIdx int) (int64, error) {
+// Very rarely it also turns up a Starseed or, rarer still, a fertilizer.
+func ShooCritter(s *State, c *content.Content, plotIdx int, now int64) (ShooResult, error) {
 	if plotIdx < 0 || plotIdx >= len(s.Plots) {
-		return 0, ErrUnknownPlot
+		return ShooResult{}, ErrUnknownPlot
 	}
 	plot := &s.Plots[plotIdx]
 	if plot.Critter == "" {
-		return 0, ErrNoCritter
+		return ShooResult{}, ErrNoCritter
 	}
 	plot.Critter = ""
-	reward := s.shooScaled(c, s.rollRange(c.Critters.ShooRewardMin, c.Critters.ShooRewardMax))
-	s.credit(reward)
-	return reward, nil
+	res := ShooResult{Coins: s.shooScaled(c, s.rollRange(c.Critters.ShooRewardMin, c.Critters.ShooRewardMax))}
+	s.credit(res.Coins)
+
+	// Skip the roll when both chances are zero so a balance without them
+	// leaves the RNG stream exactly as it was.
+	fert, star := c.Critters.FertilizerChanceBp, c.Critters.StarseedChanceBp
+	if fert <= 0 && star <= 0 {
+		return res, nil
+	}
+	switch roll := s.rollBp(); {
+	case roll < fert:
+		res.Fertilizer = true
+		res.FertilizerUsed, res.Ripened = s.grantFertilizer(c, now)
+	case roll < fert+star && s.ProgressionRebirths() >= 1:
+		res.Starseeds = ShooStarseedReward
+		s.creditStarseeds(res.Starseeds)
+	}
+	return res, nil
 }
 
 // SetFarmName sets the player's farm name (max 24 runes).

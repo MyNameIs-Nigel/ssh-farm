@@ -357,9 +357,9 @@ func TestShooRewardScalesWithRebirths(t *testing.T) {
 		s := newTestState(t, c)
 		s.Rebirths = tc.rebirths
 		s.Plots[0].Critter = "crow"
-		got, err := ShooCritter(s, c, 0)
-		if err != nil || got != tc.want {
-			t.Errorf("%d rebirths: shoo = %d (%v), want %d", tc.rebirths, got, err, tc.want)
+		res, err := ShooCritter(s, c, 0, s.UpdatedAt)
+		if err != nil || res.Coins != tc.want {
+			t.Errorf("%d rebirths: shoo = %d (%v), want %d", tc.rebirths, res.Coins, err, tc.want)
 		}
 		if lo, hi := s.ShooRewardRange(c); lo != tc.want || hi != tc.want {
 			t.Errorf("%d rebirths: displayed range %d–%d, want %d", tc.rebirths, lo, hi, tc.want)
