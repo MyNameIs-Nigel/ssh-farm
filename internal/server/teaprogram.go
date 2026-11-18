@@ -23,6 +23,8 @@ func (srv *Server) newTeaProgram(s ssh.Session) *tea.Program {
 		return nil
 	}
 	opts := append(bubbletea.MakeOptions(s), windowsPtyOptions(s)...)
+	pty, _, _ := s.Pty()
+	opts = append(opts, tea.WithEnvironment(teaSessionEnvironment(s.Environ(), pty.Term)))
 	opts = append(opts, tea.WithColorProfile(colorprofile.TrueColor))
 	return tea.NewProgram(withMouseCellMotion(model), opts...)
 }
