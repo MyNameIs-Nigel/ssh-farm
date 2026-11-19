@@ -125,6 +125,7 @@ type (
 
 // Game is the root model for one connected session.
 type Game struct {
+	rtt     terminalRTT
 	sess    *game.Session
 	content *content.Content
 	id      identity.SessionIdentity
@@ -261,6 +262,10 @@ func (g *Game) waitKick() tea.Cmd {
 func (g *Game) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m, cmd := g.update(msg)
 	g.showPendingReward()
+	probe := g.rtt.observe(g.scr == scrHelp, msg, time.Now())
+	if probe != nil {
+		cmd = tea.Batch(cmd, probe)
+	}
 	return m, cmd
 }
 

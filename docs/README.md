@@ -107,3 +107,5 @@ conventions" applies verbatim (substituting `FARM_*`), plus:
    denylist update retroactively masks old names (gameplay/03).
 4. **Every new feature keeps the sim pure** — leaderboard reads are store
    queries, not sim state; moderation is a pure function over strings.
+
+[Capture development SSH screens and test terminal behavior](../scripts/tui-tools/README.md)
