@@ -40,6 +40,8 @@ click it). `a` (harvest all) also empties every pouch.
 | `rebirth_bonus_pct` | 10 | +10% to drops per rebirth |
 | `unlock_rebirths` | [0, 0, 1, 2] | rebirths needed to **buy** the 1st, 2nd, 3rd and 4th (see [Rebirth gates](#rebirth-gates)) |
 | `[critters] rebirth_bonus_pct` | 50 | +50% to shoo rewards per rebirth |
+| `[critters] starseed_chance_bp` | 30 | 0.30% of shoos also pay **1 Starseed** (once you have rebirthed) |
+| `[critters] fertilizer_chance_bp` | 10 | 0.10% of shoos also drop a **fertilizer** |
 
 "Rebirths" means `ProgressionRebirths()` — contract runs count their own
 rebirths from zero, as every other gameplay gate does.

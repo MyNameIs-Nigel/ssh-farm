@@ -115,6 +115,16 @@ func (s *State) ripenAll(c *content.Content, now int64) int {
 	return n
 }
 
+// grantFertilizer adds one fertilizer to the sack. A full sack uses it on the
+// spot instead: used reports that, and ripened how many plots grew.
+func (s *State) grantFertilizer(c *content.Content, now int64) (used bool, ripened int) {
+	if s.Fertilizer() >= s.FertilizerMax() {
+		return true, s.ripenAll(c, now)
+	}
+	s.setFertilizer(s.Fertilizer() + 1)
+	return false, 0
+}
+
 // fertilizerDropped rolls whether the parcel being opened holds fertilizer.
 // The roll is derived from the RNG without advancing it: drawing from the
 // stream would shift every later roll, and the v1 parity harness replays a

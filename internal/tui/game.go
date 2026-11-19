@@ -517,10 +517,10 @@ func (g *Game) handleFarmKey(key string) (tea.Model, tea.Cmd) {
 		g.overlay = ovUpgrade
 	case "x":
 		if !onScare && g.cursor < len(st.Plots) && st.Plots[g.cursor].Critter != "" {
-			reward, snap, ach, err := g.sess.ShooCritter(g.now, g.cursor)
+			res, snap, ach, err := g.sess.ShooCritter(g.now, g.cursor)
 			g.applyAction(snap, ach, err)
 			if err == nil {
-				g.addNotice("Shooed the " + sanitizeText(g.critterName(st.Plots[g.cursor].Critter)) + " (+" + money(reward) + " coins).")
+				g.addNotice(g.shooNotice(sanitizeText(g.critterName(st.Plots[g.cursor].Critter)), res))
 			}
 		}
 	case "enter", "space", " ":
@@ -1354,6 +1354,24 @@ func (g *Game) handleNameKey(key string, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 		}
 	}
 	return g, nil
+}
+
+// shooNotice words a shoo, with the rare extra (if any) after the coins.
+func (g *Game) shooNotice(critter string, res sim.ShooResult) string {
+	// Kept short: the notice line truncates, and the outcome comes last.
+	msg := "Shooed the " + critter + " (+" + money(res.Coins) + " coins)"
+	switch {
+	case res.FertilizerUsed && res.Ripened > 0:
+		return msg + " — it dropped Fertilizer! Sack full, so " +
+			itoa(res.Ripened) + " " + plural(res.Ripened, "crop", "crops") + " ripened."
+	case res.FertilizerUsed:
+		return msg + " — it dropped Fertilizer! Sack full, nothing growing: it soaked away."
+	case res.Fertilizer:
+		return msg + " — it dropped Fertilizer! " + fertilizerCount(g.snap.State) + " (F to use)"
+	case res.Starseeds > 0:
+		return msg + " — it dropped " + money(res.Starseeds) + " " + g.starseedLabel() + "!"
+	}
+	return msg + "."
 }
 
 func (g *Game) redeemGift() (tea.Model, tea.Cmd) {

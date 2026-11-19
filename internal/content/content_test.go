@@ -496,6 +496,34 @@ func TestFertilizerConfigValidation(t *testing.T) {
 	}
 }
 
+func TestCritterDropChanceValidation(t *testing.T) {
+	load := func(extra string) error {
+		dir := t.TempDir()
+		writeFixture(t, dir, "crops.toml", minimalCrops)
+		writeFixture(t, dir, "balance.toml", strings.Replace(minimalBalance, "[critters]\n", "[critters]\n"+extra, 1))
+		_, err := Load(dir)
+		return err
+	}
+	if err := load(""); err != nil {
+		t.Fatalf("a balance with no drop chances must load (never drops): %v", err)
+	}
+	if err := load("starseed_chance_bp = 30\nfertilizer_chance_bp = 10\n"); err != nil {
+		t.Fatalf("valid chances rejected: %v", err)
+	}
+	if err := load("starseed_chance_bp = 9000\nfertilizer_chance_bp = 1000\n"); err != nil {
+		t.Fatalf("chances summing to exactly 10000 rejected: %v", err)
+	}
+	for _, tc := range []struct{ name, extra string }{
+		{"negative starseed", "starseed_chance_bp = -1\n"},
+		{"negative fertilizer", "fertilizer_chance_bp = -1\n"},
+		{"sum over 10000", "starseed_chance_bp = 9000\nfertilizer_chance_bp = 1001\n"},
+	} {
+		if err := load(tc.extra); err == nil {
+			t.Errorf("%s: loaded", tc.name)
+		}
+	}
+}
+
 // The shipped balance must sell fertilizer and drop it rarer than Starseeds.
 func TestShippedFertilizerTuning(t *testing.T) {
 	c, err := Load("")

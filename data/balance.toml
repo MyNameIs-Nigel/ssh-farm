@@ -204,6 +204,13 @@ shoo_reward_min = 3
 shoo_reward_max = 12
 # Shooing is always by hand (x); each rebirth adds this % to the reward.
 rebirth_bonus_pct = 50
+# VERY rare extras on top of the coins, in basis points (100 = 1%). One roll
+# covers both, so they never stack. Fertilizer is rarer than a Starseed on
+# purpose: it is worth ✦ 5 in the StarShop. Starseeds only drop once you have
+# rebirthed, like parcels; a fertilizer that finds the sack full is used on
+# the spot, like a parcel.
+starseed_chance_bp = 30
+fertilizer_chance_bp = 10
 kind = ["crow", "rabbit", "mole"]
 
 # Scarecrows (gameplay/05) are run-scoped Market purchases, up to max_count.

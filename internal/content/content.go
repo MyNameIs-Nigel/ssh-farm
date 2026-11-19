@@ -145,12 +145,17 @@ type MoonConfig struct {
 // CritterConfig tunes critter visits on empty plots. Critters are only ever
 // shooed by hand (x); the reward grows with the run's rebirth count.
 type CritterConfig struct {
-	VisitChancePct  int64    `toml:"visit_chance_pct"`
-	MaxActive       int64    `toml:"max_active"` // cap on simultaneous critters; <=0 means unlimited
-	ShooRewardMin   int64    `toml:"shoo_reward_min"`
-	ShooRewardMax   int64    `toml:"shoo_reward_max"`
-	RebirthBonusPct int64    `toml:"rebirth_bonus_pct"` // +% shoo reward per progression rebirth
-	Kinds           []string `toml:"kind"`
+	VisitChancePct  int64 `toml:"visit_chance_pct"`
+	MaxActive       int64 `toml:"max_active"` // cap on simultaneous critters; <=0 means unlimited
+	ShooRewardMin   int64 `toml:"shoo_reward_min"`
+	ShooRewardMax   int64 `toml:"shoo_reward_max"`
+	RebirthBonusPct int64 `toml:"rebirth_bonus_pct"` // +% shoo reward per progression rebirth
+	// Rare extras on top of the coins, in basis points (10000 = every shoo).
+	// One roll decides both, so they never stack: the first FertilizerChanceBp
+	// of the range is a fertilizer, the next StarseedChanceBp a Starseed.
+	StarseedChanceBp   int64    `toml:"starseed_chance_bp"`
+	FertilizerChanceBp int64    `toml:"fertilizer_chance_bp"`
+	Kinds              []string `toml:"kind"`
 }
 
 // ScarecrowConfig tunes the run-scoped Scarecrows (gameplay/05). Each one
@@ -657,6 +662,10 @@ func (c *Content) validate() error {
 	}
 	if c.Critters.RebirthBonusPct < 0 {
 		return fmt.Errorf("content: critters rebirth_bonus_pct must be >= 0")
+	}
+	if c.Critters.StarseedChanceBp < 0 || c.Critters.FertilizerChanceBp < 0 ||
+		c.Critters.StarseedChanceBp+c.Critters.FertilizerChanceBp > 10000 {
+		return fmt.Errorf("content: critters starseed_chance_bp and fertilizer_chance_bp must be >= 0 and sum to at most 10000")
 	}
 	// A balance without a [fertilizer] table loads with fertilizer not for
 	// sale and never in parcels (cost 0, chance 0); the starter still works.
