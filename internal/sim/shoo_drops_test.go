@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/mynameis-nigel/ssh-farm/internal/content"
@@ -149,10 +150,10 @@ func TestShooCritterRefusalsDoNotRoll(t *testing.T) {
 	c := shooContent(t, 10000, 0)
 	s := shooState(t, c, 1)
 	rng := s.RNG
-	if _, err := ShooCritter(s, c, 1, 1001); err != ErrNoCritter {
+	if _, err := ShooCritter(s, c, 1, 1001); !errors.Is(err, ErrNoCritter) {
 		t.Fatalf("empty plot: %v, want ErrNoCritter", err)
 	}
-	if _, err := ShooCritter(s, c, 99, 1001); err != ErrUnknownPlot {
+	if _, err := ShooCritter(s, c, 99, 1001); !errors.Is(err, ErrUnknownPlot) {
 		t.Fatalf("bad plot: %v, want ErrUnknownPlot", err)
 	}
 	if s.RNG != rng || s.PrestigeCurrency != 0 {
