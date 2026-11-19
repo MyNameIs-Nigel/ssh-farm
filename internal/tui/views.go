@@ -1079,7 +1079,7 @@ func (g *Game) helpTabs() string {
 		controls = th.NavOff.Render(controls)
 		gameplay = th.NavOn.Render(gameplay)
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Top, controls, " ", gameplay) +
+	return lipgloss.JoinHorizontal(lipgloss.Top, controls, " ", gameplay, "  ", g.rtt.String()) +
 		"\n" + th.Hint.Render("  ← → switch pages · esc/q back to farm · Idle Farmer v"+
 		version.Version)
 }
