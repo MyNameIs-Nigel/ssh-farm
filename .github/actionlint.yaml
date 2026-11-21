@@ -1,0 +1,8 @@
+# actionlint runs in CI (verify.yml, static analysis). One known finding is
+# waived here rather than fixed, because release.yml is being reworked
+# separately: its SSM wait loop names a counter it never reads
+# (`for attempt in ...`, SC2034). Drop this entry when that loop changes.
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      - 'SC2034:warning:.*attempt appears unused'

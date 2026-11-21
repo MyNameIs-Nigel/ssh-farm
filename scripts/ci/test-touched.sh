@@ -36,6 +36,8 @@ if [ -z "$PROD" ]; then
 	exit 0
 fi
 
+# $PROD and $TESTS are newline-separated path lists, split on purpose below.
+# shellcheck disable=SC2086
 if [ -n "$TESTS" ]; then
 	echo "test-touched: OK — production code and tests both changed."
 	echo "  production:"
@@ -45,6 +47,7 @@ if [ -n "$TESTS" ]; then
 	exit 0
 fi
 
+# shellcheck disable=SC2086
 cat >&2 <<MSG
 test-touched: FAILED
 

@@ -52,6 +52,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Check workflows
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/bin/actionlint"
+
+      - name: Check shell scripts
+        run: shellcheck entrypoint.sh scripts/ci/*.sh scripts/deploy/remote-deploy.sh scripts/restore-drill/*.sh
+
       - name: Verify build-injected version
         run: go test -tags releasecheck -ldflags="-X github.com/mynameis-nigel/ssh-farm/internal/version.Version=2.4.3" ./internal/version ./internal/server ./internal/tui
 
@@ -60,7 +68,7 @@ jobs:
           unformatted=$(gofmt -l .)
           if [ -n "$unformatted" ]; then
             echo "::error::these files are not gofmt-clean"
-            echo "$unformatted" | sed 's/^/  /'
+            while IFS= read -r f; do echo "  $f"; done <<< "$unformatted"
             echo "fix with: gofmt -w ."
             exit 1
           fi

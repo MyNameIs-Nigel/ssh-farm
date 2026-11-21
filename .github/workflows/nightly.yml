@@ -145,6 +145,8 @@ jobs:
           {
             echo "### Lint backlog"
             echo
+            echo "Findings: $count"
+            echo
             echo '```'
             tail -20 lint.txt
             echo '```'
