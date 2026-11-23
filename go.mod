@@ -3,8 +3,8 @@ module github.com/mynameis-nigel/ssh-farm
 go 1.26.11
 
 require (
-	charm.land/bubbletea/v2 v2.1.1
-	charm.land/lipgloss/v2 v2.1.0
+	charm.land/bubbletea/v2 v2.1.2
+	charm.land/lipgloss/v2 v2.1.1
 	charm.land/ssh v0.4.3
 	charm.land/wish/v2 v2.0.5
 	github.com/BurntSushi/toml v1.6.0
